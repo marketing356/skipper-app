@@ -1064,8 +1064,9 @@ function TabVessel({ vessel, user, onVesselSaved }: {
               vessel.length_ft && ['LOA', `${vessel.length_ft} ft`],
               vessel.beam_ft && ['Beam', `${vessel.beam_ft} ft`],
               vessel.draft_ft && ['Draft', `${vessel.draft_ft} ft`],
+              vessel.air_draft_ft && ['Air Draft', `${vessel.air_draft_ft} ft`],
+              vessel.weight_lbs && ['Weight', `${vessel.weight_lbs.toLocaleString()} lbs`],
               vessel.shore_power && ['Shore Power', vessel.shore_power],
-              vessel.fuel_type && ['Fuel', vessel.fuel_type],
               vessel.registration_number && ['Reg #', vessel.registration_number],
             ].filter(Boolean).map(([l, v]) => (
               <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
@@ -1147,7 +1148,7 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
 }
 
 // ─── Marina Chat ──────────────────────────────────────────────────────────────
-function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; onBack:()=>void }) {
+function MarinaChat({ marina, user, profile, vessel, onBack, onAddVessel }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; onBack:()=>void; onAddVessel:()=>void }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
     { role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }
   ])
@@ -1158,6 +1159,9 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.display_name || user.email
     : user.email
+
+  const isTransient = (marina as Marina & {transient_available?: boolean}).transient_available ?? false
+  const vesselComplete = !!(vessel && vessel.length_ft && vessel.beam_ft && vessel.draft_ft && vessel.air_draft_ft && vessel.weight_lbs)
 
   async function send() {
     if (!draft.trim() || sending) return
@@ -1218,7 +1222,12 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
     try {
       const r = await fetch('https://skipper-engine-production.up.railway.app/chat', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ message:msg, marina_id:marina.id, identity: identityPackage })
+        body: JSON.stringify({
+            message: msg,
+            marina_id: marina.id,
+            identity: identityPackage,
+            session: { marina_id: marina.id, boater_id: user.id, access_type: 'anonymous' },
+          })
       })
       const d = await r.json()
       const reply = d.reply || 'Let me check on that.'
