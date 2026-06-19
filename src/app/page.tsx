@@ -40,12 +40,13 @@ const GLOBAL_CSS = `
 `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Screen = 'splash' | 'auth' | 'otp' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
+type Screen = 'splash' | 'auth' | 'magic_link_sent' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
 type HomeTab = 'vessel' | 'marinas' | 'messages' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
 type Profile = {
   id: string
+  contact_id: string | null
   first_name: string | null
   last_name: string | null
   email: string | null
@@ -128,6 +129,89 @@ async function hashPin(pin: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
+// ─── Contacts → Profile / Vessel mappers ─────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function contactToProfile(c: Record<string, any>): Profile {
+  return {
+    id: c.auth_user_id as string,
+    contact_id: c.id as string,
+    first_name: c.first_name ?? null,
+    last_name: c.last_name ?? null,
+    email: c.email ?? null,
+    display_name: [c.first_name, c.last_name].filter(Boolean).join(' ') || null,
+    phone: c.phone ?? null,
+    mobile: c.mobile ?? null,
+    avatar_url: c.photo_url ?? null,
+    pin_hash: c.pin_hash ?? null,
+    onboarding_complete: c.setup_complete ?? false,
+    address: c.address ?? null,
+    address_city: c.address_city ?? null,
+    address_state: c.address_state ?? null,
+    address_zip: c.address_zip ?? null,
+    billing_address: c.billing_address ?? null,
+    billing_city: c.billing_city ?? null,
+    billing_state: c.billing_state ?? null,
+    billing_zip: c.billing_zip ?? null,
+    emergency_contact: c.emergency_contact ?? null,
+    emergency_phone: c.emergency_phone ?? null,
+    title: c.title ?? null,
+    date_of_birth: c.date_of_birth ?? null,
+    driver_license_number: c.driver_license_number ?? null,
+    preferred_contact_method: c.preferred_contact_method ?? null,
+    language_preference: c.language_preference ?? null,
+  }
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function contactToVessel(c: Record<string, any>): Vessel | null {
+  if (!c.boat_name) return null
+  return {
+    id: c.id as string,
+    name: c.boat_name,
+    vessel_type: c.boat_type ?? '',
+    length_ft: c.boat_length_ft ?? null,
+    beam_ft: c.boat_beam_ft ?? null,
+    draft_ft: c.boat_draft_ft ?? null,
+    shore_power: c.boat_shore_power ?? null,
+    fuel_type: c.fuel_type ?? null,
+    make: c.boat_make ?? null,
+    model: c.boat_model ?? null,
+    year: c.boat_year ?? null,
+    color: c.boat_hull_color ?? null,
+    weight_lbs: c.boat_weight_lbs ?? null,
+    air_draft_ft: c.boat_air_draft_ft ?? null,
+    hin: c.boat_hin ?? null,
+    registration_number: c.boat_reg_number ?? null,
+    registration_state: c.boat_registration_state ?? null,
+    registration_expiry: c.state_reg_expiry ?? null,
+    documentation_number: c.boat_uscg_number ?? null,
+    mmsi_number: c.boat_mmsi_number ?? null,
+    flag_state: c.boat_flag_state ?? null,
+    hull_material: c.boat_hull_material ?? null,
+    engine_count: c.engine_count ?? null,
+    engine_type: c.engine_type ?? null,
+    engine_make: c.engine_make ?? null,
+    engine_model: c.engine_model ?? null,
+    engine_year: c.engine_year ?? null,
+    horsepower_per_engine: c.engine_hp ?? null,
+    fuel_tank_gallons: c.boat_fuel_tank_gallons ?? null,
+    insurance_provider: c.ins_carrier ?? null,
+    insurance_policy: c.ins_policy_number ?? null,
+    insurance_expiry: c.ins_expiry ?? null,
+    insurance_agent_name: c.boat_insurance_agent_name ?? null,
+    insurance_agent_phone: c.boat_insurance_agent_phone ?? null,
+    last_survey_date: c.last_survey_date ?? null,
+    photo_url: c.boat_photo_url ?? null,
+    notes: c.boat_notes ?? null,
+    doc_registration: c.doc_registration ?? false,
+    doc_insurance_cert: c.doc_insurance_cert ?? false,
+    doc_signed_contract: c.doc_signed_contract ?? false,
+    doc_photo_id: c.doc_photo_id ?? false,
+    liveaboard: c.liveaboard ?? false,
+    pet_on_board: c.pet_on_board ?? false,
+    parking_permit: c.parking_permit ?? null,
+  }
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function SkipperApp() {
   const [screen,    setScreen]    = useState<Screen>('splash')
@@ -196,58 +280,37 @@ export default function SkipperApp() {
   }, [])
 
   async function routeAfterAuth(u: User) {
-    // Persist user ID so PIN screen works after session expiry
     localStorage.setItem('skipper_user_id', u.id)
 
-    // Load profile
-    let { data: prof } = await supabase
-      .from('boater_profiles')
+    // Look up national-pool contacts row (marina_id IS NULL)
+    let { data: contact } = await supabase
+      .from('contacts')
       .select('*')
-      .eq('id', u.id)
+      .eq('auth_user_id', u.id)
+      .is('marina_id', null)
       .maybeSingle()
 
-    // New user — upsert bare row (guarantees FK always satisfied)
-    if (!prof) {
-      const { data: newProf, error: upsertErr } = await supabase
-        .from('boater_profiles')
-        .upsert({ id: u.id, email: u.email ?? null, onboarding_complete: false }, { onConflict: 'id' })
+    if (!contact) {
+      const { data: newContact, error: insertErr } = await supabase
+        .from('contacts')
+        .insert({ auth_user_id: u.id, email: u.email ?? null })
         .select()
         .single()
-      if (upsertErr) console.error('[Skipper] profile upsert:', upsertErr.message)
-      prof = newProf
+      if (insertErr) console.error('[Skipper] contact insert:', insertErr.message)
+      contact = newContact
     }
 
+    const prof = contact ? contactToProfile(contact) : null
+    const v    = contact ? contactToVessel(contact) : null
     setProfile(prof)
+    setVessel(v)
 
-    // Load vessel
-    const { data: vessels } = await supabase
-      .from('boater_vessels')
-      .select('*')
-      .eq('boater_id', u.id)
-      .limit(1)
-    setVessel(vessels?.[0] ?? null)
+    if (!prof?.first_name)  { setScreen('contact_setup'); return }
+    if (!contact?.pin_hash) { setScreen('pin_setup'); return }
 
-    // ── Routing logic ──
-    // 1. No first name = contact form not filled out yet
-    if (!prof?.first_name) {
-      setScreen('contact_setup')
-      return
-    }
-
-    // 2. No PIN = must set one before using app
-    if (!prof?.pin_hash) {
-      setScreen('pin_setup')
-      return
-    }
-
-    // 3. Already unlocked this device session
     const unlocked = localStorage.getItem(`skipper_unlocked_${u.id}`)
-    if (unlocked) {
-      setScreen('home')
-      return
-    }
+    if (unlocked) { setScreen('home'); return }
 
-    // 4. Returning user with PIN set — show PIN login
     setScreen('pin_login')
   }
 
@@ -266,12 +329,12 @@ export default function SkipperApp() {
   // ── Splash ──
   if (screen === 'splash') return <SplashScreen />
 
-  // ── Auth / OTP ──
-  if (screen === 'auth' || screen === 'otp') return (
+  // ── Auth / Magic Link ──
+  if (screen === 'auth' || screen === 'magic_link_sent') return (
     <AuthScreen
       screen={screen}
       savedEmail={savedEmail}
-      onOtpSent={(email) => { setSavedEmail(email); setScreen('otp') }}
+      onLinkSent={(email) => { setSavedEmail(email); setScreen('magic_link_sent') }}
       onAuthed={async (u, email) => {
         localStorage.setItem('skipper_email', email)
         localStorage.setItem('skipper_user_id', u.id)
@@ -351,43 +414,43 @@ function SplashScreen() {
   )
 }
 
-// ─── Auth (email + OTP) ───────────────────────────────────────────────────────
-function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: {
-  screen: 'auth' | 'otp'
+// ─── Auth (email → magic link, no OTP code entry) ────────────────────────────
+function AuthScreen({ screen, savedEmail, onLinkSent, onAuthed, onBackToEmail }: {
+  screen: 'auth' | 'magic_link_sent'
   savedEmail: string
-  onOtpSent: (email: string) => void
+  onLinkSent: (email: string) => void
   onAuthed: (u: User, email: string) => void
   onBackToEmail: () => void
 }) {
-  const [email,  setEmail]  = useState(savedEmail)
-  const [otp,    setOtp]    = useState('')
-  const [busy,   setBusy]   = useState(false)
-  const [err,    setErr]    = useState('')
+  const [email, setEmail] = useState(savedEmail)
+  const [busy,  setBusy]  = useState(false)
+  const [err,   setErr]   = useState('')
   const [resent, setResent] = useState(false)
 
-  async function sendOtp() {
+  // Auto-detect when Supabase processes the magic link
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user && screen === 'magic_link_sent') {
+        onAuthed(session.user, session.user.email ?? savedEmail)
+      }
+    })
+    return () => subscription.unsubscribe()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen])
+
+  async function sendLink() {
     if (!email.trim()) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: true }
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: 'https://app.ayeayeskipper.com',
+      }
     })
     setBusy(false)
     if (error) { setErr(error.message); return }
-    onOtpSent(email.trim().toLowerCase())
-  }
-
-  async function verifyOtp() {
-    if (otp.length < 6) { setErr('Enter the 6-digit code'); return }
-    setBusy(true); setErr('')
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token: otp.trim(),
-      type: 'email'
-    })
-    setBusy(false)
-    if (error) { setErr('Invalid code — check your email and try again'); return }
-    if (data.user) onAuthed(data.user, email.trim().toLowerCase())
+    onLinkSent(email.trim().toLowerCase())
   }
 
   return (
@@ -404,11 +467,7 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
           <p style={{ fontSize:14, color:C.muted, margin:0, lineHeight:1.6 }}>
             {screen === 'auth'
               ? 'Your marina, your slip, everything in one place.'
-              : <>
-                  {savedEmail
-                    ? <>Session expired — we sent a new code to<br/><strong style={{ color:C.white }}>{email || savedEmail}</strong></>
-                    : <>We sent a 6-digit code to<br/><strong style={{ color:C.white }}>{email}</strong></>}
-                </>}
+              : <><span>We sent a sign-in link to</span><br/><strong style={{ color:C.white }}>{email || savedEmail}</strong><br/><span style={{fontSize:12}}>Tap the link to sign in — no code needed.</span></>}
           </p>
         </div>
 
@@ -417,28 +476,28 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
             <>
               <FieldGroup label="Email address">
                 <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com" onKeyDown={e => e.key==='Enter' && sendOtp()} autoFocus />
+                  placeholder="you@example.com" onKeyDown={e => e.key==='Enter' && sendLink()} autoFocus />
               </FieldGroup>
               {err && <ErrMsg>{err}</ErrMsg>}
-              <PrimaryBtn onClick={sendOtp} loading={busy} style={{ marginTop:8 }}>Continue →</PrimaryBtn>
+              <PrimaryBtn onClick={sendLink} loading={busy} style={{ marginTop:8 }}>Send Sign-In Link →</PrimaryBtn>
               <p style={{ fontSize:12, color:C.muted2, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
                 New here? Just enter your email — we&apos;ll set up your account.
               </p>
             </>
           ) : (
             <>
-              <FieldGroup label="6-digit code">
-                <Input type="text" inputMode="numeric" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g,'').slice(0,6))}
-                  placeholder="000000" autoFocus onKeyDown={e => e.key==='Enter' && verifyOtp()} />
-              </FieldGroup>
-              {err && <ErrMsg>{err}</ErrMsg>}
-              <PrimaryBtn onClick={verifyOtp} loading={busy} style={{ marginTop:8 }}>Sign In →</PrimaryBtn>
-              <div style={{ textAlign:'center', marginTop:20, display:'flex', flexDirection:'column', gap:12 }}>
+              <div style={{ textAlign:'center', padding:'20px 0' }}>
+                <div style={{ fontSize:48, marginBottom:16 }}>✉️</div>
+                <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7 }}>
+                  Open your email and tap the sign-in link.<br/>This page will update automatically.
+                </div>
+              </div>
+              <div style={{ textAlign:'center', display:'flex', flexDirection:'column', gap:12, marginTop:8 }}>
                 {resent
-                  ? <span style={{ fontSize:13, color:C.green }}>✓ Code resent</span>
-                  : <button onClick={async () => { setResent(false); setBusy(true); await supabase.auth.signInWithOtp({ email, options:{shouldCreateUser:true} }); setBusy(false); setResent(true) }}
+                  ? <span style={{ fontSize:13, color:C.green }}>✓ New link sent</span>
+                  : <button onClick={async () => { setResent(false); setBusy(true); await supabase.auth.signInWithOtp({ email: email||savedEmail, options:{ shouldCreateUser:true, emailRedirectTo:'https://app.ayeayeskipper.com' } }); setBusy(false); setResent(true) }}
                       style={{ background:'none', border:'none', color:C.muted2, fontSize:13, cursor:'pointer', fontFamily:FONT }}>
-                      Resend code
+                      {busy ? 'Sending…' : 'Resend link'}
                     </button>
                 }
                 <button onClick={onBackToEmail}
@@ -479,28 +538,27 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
     setBusy(true); setErr('')
 
     const { data, error } = await supabase
-      .from('boater_profiles')
-      .upsert({
-        id:                        user.id,
-        email:                     user.email ?? null,
-        first_name:                firstName.trim(),
-        last_name:                 lastName.trim(),
-        display_name:              `${firstName.trim()} ${lastName.trim()}`,
-        phone:                     mobile.trim() || null,
-        mobile:                    mobile.trim() || null,
-        title:                     title || null,
-        date_of_birth:             dob || null,
-        driver_license_number:     dlNum.trim() || null,
-        preferred_contact_method:  prefContact || null,
-        language_preference:       language || 'en',
-        address:                   address.trim() || null,
-        address_city:              city.trim() || null,
-        address_state:             addrState.trim() || null,
-        address_zip:               zip.trim() || null,
-        emergency_contact:         emergName.trim() || null,
-        emergency_phone:           emergPhone.trim() || null,
-        onboarding_complete:       false,
-      }, { onConflict: 'id' })
+      .from('contacts')
+      .update({
+        first_name:               firstName.trim(),
+        last_name:                lastName.trim(),
+        email:                    user.email ?? null,
+        mobile:                   mobile.trim() || null,
+        title:                    title || null,
+        date_of_birth:            dob || null,
+        driver_license_number:    dlNum.trim() || null,
+        preferred_contact_method: prefContact || null,
+        language_preference:      language || 'en',
+        address:                  address.trim() || null,
+        address_city:             city.trim() || null,
+        address_state:            addrState.trim() || null,
+        address_zip:              zip.trim() || null,
+        emergency_contact:        emergName.trim() || null,
+        emergency_phone:          emergPhone.trim() || null,
+        setup_complete:           false,
+      })
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
       .select()
       .single()
 
@@ -511,7 +569,7 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
       Notification.requestPermission().catch(() => {})
     }
 
-    onComplete(data)
+    onComplete(contactToProfile(data))
   }
 
   return (
@@ -615,9 +673,10 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
     setBusy(true)
     const hash = await hashPin(p)
     const { error } = await supabase
-      .from('boater_profiles')
-      .update({ pin_hash: hash, onboarding_complete: true })
-      .eq('id', user.id)
+      .from('contacts')
+      .update({ pin_hash: hash, setup_complete: true })
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
     setBusy(false)
     if (error) { setErr(error.message); return }
     localStorage.setItem(`skipper_pin_${user.id}`, hash)
@@ -661,7 +720,7 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
     let match = localHash ? hash === localHash : false
     // Fallback: DB (only if we have a valid session)
     if (!match) {
-      const { data } = await supabase.from('boater_profiles').select('pin_hash').eq('id', user.id).single()
+      const { data } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).single()
       match = !!data?.pin_hash && data.pin_hash === hash
       if (match && data?.pin_hash) localStorage.setItem(`skipper_pin_${user.id}`, data.pin_hash)
     }
@@ -895,70 +954,63 @@ function TabVessel({ vessel, user, onVesselSaved }: {
     if (!form.air_draft_ft.trim()){ setErr('Air Draft is required'); return }
     setBusy(true); setErr('')
 
-    const payload = {
-      boater_id:            user.id,
-      name:                 form.name.trim(),
-      vessel_type:          form.vessel_type,
-      make:                 form.make.trim() || null,
-      model:                form.model.trim() || null,
-      year:                 intOrNull(form.year),
-      color:                form.color.trim() || null,
-      length_ft:            numOrNull(form.length_ft),
-      beam_ft:              numOrNull(form.beam_ft),
-      draft_ft:             numOrNull(form.draft_ft),
-      weight_lbs:           numOrNull(form.weight_lbs),
-      air_draft_ft:         numOrNull(form.air_draft_ft),
-      hin:                  form.hin.trim() || null,
-      registration_number:  form.registration_number.trim() || null,
-      registration_state:   form.registration_state.trim() || null,
-      registration_expiry:  form.registration_expiry || null,
-      documentation_number: form.documentation_number.trim() || null,
-      mmsi_number:          form.mmsi_number.trim() || null,
-      flag_state:           form.flag_state.trim() || null,
-      hull_material:        form.hull_material || null,
-      engine_count:         intOrNull(form.engine_count),
-      engine_type:          form.engine_type || null,
-      engine_make:          form.engine_make.trim() || null,
-      engine_model:         form.engine_model.trim() || null,
-      engine_year:          intOrNull(form.engine_year),
-      horsepower_per_engine:intOrNull(form.horsepower_per_engine),
-      fuel_type:            form.fuel_type || null,
-      fuel_tank_gallons:    intOrNull(form.fuel_tank_gallons),
-      shore_power:          form.shore_power || null,
-      insurance_provider:   form.insurance_provider.trim() || null,
-      insurance_policy:     form.insurance_policy.trim() || null,
-      insurance_expiry:     form.insurance_expiry || null,
-      insurance_agent_name: form.insurance_agent_name.trim() || null,
-      insurance_agent_phone:form.insurance_agent_phone.trim() || null,
-      last_survey_date:     form.last_survey_date || null,
-      photo_url:            form.photo_url.trim() || null,
-      notes:                form.notes.trim() || null,
-      doc_registration:     docRegistration,
-      doc_insurance_cert:   docInsuranceCert,
-      doc_signed_contract:  docSignedContract,
-      doc_photo_id:         docPhotoId,
-      liveaboard:           isLiveaboard,
-      pet_on_board:         petOnBoard,
-      parking_permit:       parkingPermit.trim() || null,
-      updated_at:           new Date().toISOString(),
-    }
-
-    let data: Vessel | null = null
-    let error: { message: string } | null = null
-
-    if (vessel) {
-      // Edit existing
-      const result = await supabase.from('boater_vessels').update(payload).eq('id', vessel.id).select().single()
-      data = result.data; error = result.error
-    } else {
-      // New vessel
-      const result = await supabase.from('boater_vessels').insert(payload).select().single()
-      data = result.data; error = result.error
-    }
+    // All vessel data stored inline on contacts row
+    const { data, error } = await supabase
+      .from('contacts')
+      .update({
+        boat_name:                  form.name.trim(),
+        boat_type:                  form.vessel_type,
+        boat_make:                  form.make.trim() || null,
+        boat_model:                 form.model.trim() || null,
+        boat_year:                  intOrNull(form.year),
+        boat_hull_color:            form.color.trim() || null,
+        boat_length_ft:             numOrNull(form.length_ft),
+        boat_beam_ft:               numOrNull(form.beam_ft),
+        boat_draft_ft:              numOrNull(form.draft_ft),
+        boat_weight_lbs:            numOrNull(form.weight_lbs),
+        boat_air_draft_ft:          numOrNull(form.air_draft_ft),
+        boat_hin:                   form.hin.trim() || null,
+        boat_reg_number:            form.registration_number.trim() || null,
+        boat_registration_state:    form.registration_state.trim() || null,
+        state_reg_expiry:           form.registration_expiry || null,
+        boat_uscg_number:           form.documentation_number.trim() || null,
+        boat_mmsi_number:           form.mmsi_number.trim() || null,
+        boat_flag_state:            form.flag_state.trim() || null,
+        boat_hull_material:         form.hull_material || null,
+        engine_count:               intOrNull(form.engine_count),
+        engine_type:                form.engine_type || null,
+        engine_make:                form.engine_make.trim() || null,
+        engine_model:               form.engine_model.trim() || null,
+        engine_year:                intOrNull(form.engine_year),
+        engine_hp:                  intOrNull(form.horsepower_per_engine),
+        fuel_type:                  form.fuel_type || null,
+        boat_fuel_tank_gallons:     intOrNull(form.fuel_tank_gallons),
+        boat_shore_power:           form.shore_power || null,
+        ins_carrier:                form.insurance_provider.trim() || null,
+        ins_policy_number:          form.insurance_policy.trim() || null,
+        ins_expiry:                 form.insurance_expiry || null,
+        boat_insurance_agent_name:  form.insurance_agent_name.trim() || null,
+        boat_insurance_agent_phone: form.insurance_agent_phone.trim() || null,
+        last_survey_date:           form.last_survey_date || null,
+        boat_photo_url:             form.photo_url.trim() || null,
+        boat_notes:                 form.notes.trim() || null,
+        doc_registration:           docRegistration,
+        doc_insurance_cert:         docInsuranceCert,
+        doc_signed_contract:        docSignedContract,
+        doc_photo_id:               docPhotoId,
+        liveaboard:                 isLiveaboard,
+        pet_on_board:               petOnBoard,
+        parking_permit:             parkingPermit.trim() || null,
+        updated_at:                 new Date().toISOString(),
+      })
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
+      .select()
+      .single()
 
     setBusy(false)
     if (error) { setErr(error.message); return }
-    onVesselSaved(data!)
+    onVesselSaved(contactToVessel(data)!)
     setShowForm(false)
   }
 
@@ -977,7 +1029,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
       <FieldGroup label="Type *">
         <SelectInput value={form.vessel_type} onChange={e => set('vessel_type', e.target.value)}>
           <option value="">Select type…</option>
-          {['Powerboat','Sailboat','Catamaran','Trawler','Center Console','Pontoon','PWC','Kayak','Trailer','Other'].map(t => <option key={t}>{t}</option>)}
+          {['powerboat','sailboat','catamaran','trawler','pwc','pontoon','yacht','tender','kayak','trailer','other'].map(t => <option key={t}>{t}</option>)}
         </SelectInput>
       </FieldGroup>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -1053,7 +1105,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
         <FieldGroup label="Engine Type">
           <SelectInput value={form.engine_type} onChange={e => set('engine_type', e.target.value)}>
             <option value="">Select…</option>
-            {['Outboard','Inboard','Sterndrive (I/O)','Jet Drive','Diesel Inboard','Electric','Sail'].map(v => <option key={v}>{v}</option>)}
+            {['Outboard','Inboard','Sterndrive (I/O)','Jet Drive','Diesel Inboard','Electric','None / Sail'].map(v => <option key={v}>{v}</option>)}
           </SelectInput>
         </FieldGroup>
         <FieldGroup label="Engine Make">
@@ -1523,7 +1575,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
       const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
       let match = localHash ? hash === localHash : false
       if (!match) {
-        const { data } = await supabase.from('boater_profiles').select('pin_hash').eq('id', user.id).single()
+        const { data } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).single()
         match = !!data?.pin_hash && data.pin_hash === hash
       }
       setPinBusy(false)
@@ -1535,7 +1587,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
       if (p !== pinFirst) { setPinErr("PINs don't match"); setPinStep('new'); setPinVal(''); setPinFirst(''); return }
       setPinBusy(true)
       const hash = await hashPin(p)
-      const { error } = await supabase.from('boater_profiles').update({ pin_hash: hash }).eq('id', user.id)
+      const { error } = await supabase.from('contacts').update({ pin_hash: hash }).eq('auth_user_id', user.id).is('marina_id', null)
       setPinBusy(false)
       if (error) { setPinErr(error.message); return }
       localStorage.setItem(`skipper_pin_${user.id}`, hash)
@@ -1557,13 +1609,11 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
     if (!form.first_name.trim()) { setErr('First name is required'); return }
     setBusy(true); setErr('')
     const { data, error } = await supabase
-      .from('boater_profiles')
+      .from('contacts')
       .update({
         first_name:               form.first_name.trim(),
         last_name:                form.last_name.trim() || null,
-        display_name:             `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
-        phone:                    form.phone.trim() || null,
-        mobile:                   form.mobile.trim() || null,
+        mobile:                   form.phone.trim() || null,
         address:                  form.address.trim() || null,
         address_city:             form.address_city.trim() || null,
         address_state:            form.address_state.trim() || null,
@@ -1576,12 +1626,13 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
         preferred_contact_method: form.preferred_contact_method || null,
         language_preference:      form.language_preference || 'en',
       })
-      .eq('id', user.id)
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
       .select()
       .single()
     setBusy(false)
     if (error) { setErr(error.message); return }
-    onProfileUpdated(data)
+    onProfileUpdated(contactToProfile(data))
     setEditing(false)
   }
 
