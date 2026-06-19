@@ -751,7 +751,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
   const blank = {
     name:'', vessel_type:'',
     make:'', model:'', year:'', color:'',
-    length_ft:'', beam_ft:'', draft_ft:'', weight_lbs:'', air_draft_ft:''
+    length_ft:'', beam_ft:'', draft_ft:'', weight_lbs:'', air_draft_ft:'',
     hin:'', registration_number:'', registration_state:'', registration_expiry:'',
     documentation_number:'', mmsi_number:'', flag_state:'',
     hull_material:'',
