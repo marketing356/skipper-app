@@ -4,7 +4,7 @@ import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import type { User } from '@supabase/supabase-js'
 
-// ─── Design tokens ───────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
   bg:         '#05111f',
   bgGrad:     'linear-gradient(160deg, #071e38 0%, #051524 50%, #030e19 100%)',
@@ -34,19 +34,81 @@ const GLOBAL_CSS = `
   @keyframes shake   { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
   * { box-sizing:border-box }
   body { margin:0; padding:0; background:#05111f; }
-  input::placeholder { color:rgba(255,255,255,0.3)!important }
-  input,select { -webkit-appearance:none; appearance:none; }
+  input::placeholder, textarea::placeholder { color:rgba(255,255,255,0.3)!important }
+  input,select,textarea { -webkit-appearance:none; appearance:none; }
+  textarea { resize:none; }
 `
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-type Screen = 'splash' | 'auth' | 'otp' | 'home'
+// ─── Types ────────────────────────────────────────────────────────────────────
+type Screen = 'splash' | 'auth' | 'otp' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
 type HomeTab = 'vessel' | 'marinas' | 'messages' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
-type Profile = { id:string; display_name:string|null; phone:string|null; pin_hash:string|null; onboarding_complete:boolean }
-type Vessel = { id:string; name:string; vessel_type:string; length_ft:number; beam_ft:number; draft_ft:number; shore_power:string; fuel_type:string }
+
+type Profile = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  display_name: string | null
+  phone: string | null
+  avatar_url: string | null
+  pin_hash: string | null
+  onboarding_complete: boolean
+  address: string | null
+  address_city: string | null
+  address_state: string | null
+  address_zip: string | null
+  billing_address: string | null
+  billing_city: string | null
+  billing_state: string | null
+  billing_zip: string | null
+  emergency_contact: string | null
+  emergency_phone: string | null
+}
+
+type Vessel = {
+  id: string
+  name: string
+  vessel_type: string
+  length_ft: number | null
+  beam_ft: number | null
+  draft_ft: number | null
+  shore_power: string | null
+  fuel_type: string | null
+  make: string | null
+  model: string | null
+  year: number | null
+  color: string | null
+  weight_lbs: number | null
+  height_ft: number | null
+  hin: string | null
+  registration_number: string | null
+  registration_state: string | null
+  registration_expiry: string | null
+  documentation_number: string | null
+  mmsi_number: string | null
+  flag_state: string | null
+  hull_material: string | null
+  engine_count: number | null
+  engine_type: string | null
+  engine_make: string | null
+  engine_model: string | null
+  engine_year: number | null
+  horsepower_per_engine: number | null
+  fuel_tank_gallons: number | null
+  insurance_provider: string | null
+  insurance_policy: string | null
+  insurance_expiry: string | null
+  insurance_agent_name: string | null
+  insurance_agent_phone: string | null
+  last_survey_date: string | null
+  photo_url: string | null
+  notes: string | null
+}
+
 type MsgRow = { id:string; body:string; direction:string; inserted_at:string; marina_id:string }
 
-// ─── PIN helpers (SHA-256 in browser) ────────────────────────────────────────
+// ─── PIN helpers (SHA-256 in browser) ─────────────────────────────────────────
 async function hashPin(pin: string): Promise<string> {
   const enc = new TextEncoder()
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(pin))
@@ -55,15 +117,14 @@ async function hashPin(pin: string): Promise<string> {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function SkipperApp() {
-  const [screen,  setScreen]  = useState<Screen>('splash')
-  const [user,    setUser]    = useState<User | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [vessel,  setVessel]  = useState<Vessel | null>(null)
-  const [homeTab, setHomeTab] = useState<HomeTab>('vessel')
-  const [savedEmail, setSavedEmail] = useState('')
+  const [screen,    setScreen]    = useState<Screen>('splash')
+  const [user,      setUser]      = useState<User | null>(null)
+  const [profile,   setProfile]   = useState<Profile | null>(null)
+  const [vessel,    setVessel]    = useState<Vessel | null>(null)
+  const [homeTab,   setHomeTab]   = useState<HomeTab>('vessel')
+  const [savedEmail,setSavedEmail]= useState('')
 
   useEffect(() => {
-    // Restore last-used email for PIN login convenience
     const storedEmail = localStorage.getItem('skipper_email') ?? ''
     setSavedEmail(storedEmail)
 
@@ -81,24 +142,26 @@ export default function SkipperApp() {
   }, [])
 
   async function routeAfterAuth(u: User) {
-    // Ensure boater_profiles row exists — silent, no form required
+    // Load profile
     let { data: prof } = await supabase
       .from('boater_profiles')
       .select('*')
       .eq('id', u.id)
       .maybeSingle()
 
+    // New user — create bare row
     if (!prof) {
       const { data: newProf } = await supabase
         .from('boater_profiles')
-        .insert({ id: u.id, onboarding_complete: true })
+        .insert({ id: u.id, email: u.email ?? null, onboarding_complete: false })
         .select()
         .single()
       prof = newProf
     }
+
     setProfile(prof)
 
-    // Fetch vessel (optional — home works with or without one)
+    // Load vessel
     const { data: vessels } = await supabase
       .from('boater_vessels')
       .select('*')
@@ -106,7 +169,28 @@ export default function SkipperApp() {
       .limit(1)
     setVessel(vessels?.[0] ?? null)
 
-    setScreen('home')
+    // ── Routing logic ──
+    // 1. No first name = contact form not filled out yet
+    if (!prof?.first_name) {
+      setScreen('contact_setup')
+      return
+    }
+
+    // 2. No PIN = must set one before using app
+    if (!prof?.pin_hash) {
+      setScreen('pin_setup')
+      return
+    }
+
+    // 3. Session already unlocked (just did OTP or was unlocked this session)
+    const unlocked = sessionStorage.getItem('skipper_unlocked')
+    if (unlocked) {
+      setScreen('home')
+      return
+    }
+
+    // 4. Returning user with PIN set — show PIN login
+    setScreen('pin_login')
   }
 
   function handleSignOut() {
@@ -126,11 +210,47 @@ export default function SkipperApp() {
       savedEmail={savedEmail}
       onOtpSent={(email) => { setSavedEmail(email); setScreen('otp') }}
       onAuthed={async (u, email) => {
-        setUser(u)
         localStorage.setItem('skipper_email', email)
+        sessionStorage.setItem('skipper_unlocked', '1')
+        setUser(u)
         await routeAfterAuth(u)
       }}
       onBackToEmail={() => setScreen('auth')}
+    />
+  )
+
+  // ── Contact Setup (new user) ──
+  if (screen === 'contact_setup') return (
+    <ContactSetupScreen
+      user={user!}
+      onComplete={(p) => {
+        setProfile(p)
+        setScreen('pin_setup')
+      }}
+    />
+  )
+
+  // ── PIN Setup ──
+  if (screen === 'pin_setup') return (
+    <PinSetupScreen
+      user={user!}
+      onComplete={() => {
+        sessionStorage.setItem('skipper_unlocked', '1')
+        setScreen('home')
+      }}
+    />
+  )
+
+  // ── PIN Login (returning user) ──
+  if (screen === 'pin_login') return (
+    <PinLoginScreen
+      user={user!}
+      email={savedEmail || user?.email || ''}
+      onUnlock={() => {
+        sessionStorage.setItem('skipper_unlocked', '1')
+        setScreen('home')
+      }}
+      onForgotPin={() => setScreen('auth')}
     />
   )
 
@@ -143,27 +263,22 @@ export default function SkipperApp() {
       activeTab={homeTab}
       onTabChange={setHomeTab}
       onSignOut={handleSignOut}
-      onVesselAdded={(v) => setVessel(v)}
+      onVesselSaved={(v) => setVessel(v)}
       onProfileUpdated={(p) => setProfile(p)}
     />
   )
 }
 
-// ─── Splash ──────────────────────────────────────────────────────────────────
+// ─── Splash ───────────────────────────────────────────────────────────────────
 function SplashScreen() {
   return (
-    <div style={{ minHeight:'100vh', background:C.bgGrad, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', fontFamily:FONT }}>
+    <div style={{ minHeight:'100vh', background:C.bgGrad, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16, fontFamily:FONT }}>
       <style>{GLOBAL_CSS}</style>
-      <div style={{ textAlign:'center', animation:'scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both' }}>
-        <div style={{ width:96, height:96, borderRadius:'50%', overflow:'hidden', margin:'0 auto 20px', border:`3px solid ${C.teal}`, boxShadow:`0 0 0 8px rgba(77,214,200,0.1)`, animation:'glow 3s ease-in-out infinite' }}>
-          <Image src="/skipper-avatar.jpg" alt="Skipper" width={96} height={96} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} priority />
-        </div>
-        <div style={{ fontSize:30, fontWeight:800, color:C.white, letterSpacing:-0.5, marginBottom:4 }}>Skipper</div>
-        <div style={{ fontSize:11, color:C.teal, fontWeight:700, letterSpacing:3, textTransform:'uppercase' }}>AyeAyeSkipper</div>
-        <div style={{ display:'flex', gap:6, justifyContent:'center', marginTop:28 }}>
-          {[0,0.2,0.4].map((d,i) => <div key={i} style={{ width:7, height:7, borderRadius:'50%', background:C.teal, animation:`dot${i+1} 1.2s ease-in-out ${d}s infinite` }} />)}
-        </div>
+      <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, animation:'glow 4s ease-in-out infinite' }}>
+        <Image src="/skipper-avatar.jpg" alt="Skipper" width={80} height={80} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
       </div>
+      <div style={{ fontSize:22, fontWeight:800, color:C.white, letterSpacing:-0.4 }}>Skipper</div>
+      <div style={{ fontSize:13, color:C.muted }}>We run on Skipper.</div>
     </div>
   )
 }
@@ -176,14 +291,13 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
   onAuthed: (u: User, email: string) => void
   onBackToEmail: () => void
 }) {
-  const [email, setEmail] = useState(savedEmail)
-  const [otp,   setOtp]   = useState('')
-  const [busy,  setBusy]  = useState(false)
-  const [err,   setErr]   = useState('')
-  const [resent,setResent]= useState(false)
-  const otpRef = useRef<HTMLInputElement>(null)
+  const [email,  setEmail]  = useState(savedEmail)
+  const [otp,    setOtp]    = useState('')
+  const [busy,   setBusy]   = useState(false)
+  const [err,    setErr]    = useState('')
+  const [resent, setResent] = useState(false)
 
-  async function sendCode() {
+  async function sendOtp() {
     if (!email.trim()) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.auth.signInWithOtp({
@@ -193,15 +307,14 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
     setBusy(false)
     if (error) { setErr(error.message); return }
     onOtpSent(email.trim().toLowerCase())
-    setTimeout(() => otpRef.current?.focus(), 300)
   }
 
-  async function verifyCode() {
+  async function verifyOtp() {
     if (otp.length < 6) { setErr('Enter the 6-digit code'); return }
     setBusy(true); setErr('')
     const { data, error } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(),
-      token: otp,
+      token: otp.trim(),
       type: 'email'
     })
     setBusy(false)
@@ -212,244 +325,222 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
   return (
     <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
       <style>{GLOBAL_CSS}</style>
-      <div style={{ maxWidth:420, margin:'0 auto', width:'100%', flex:1, display:'flex', flexDirection:'column', padding:'0 24px' }}>
-        <div style={{ paddingTop:64, paddingBottom:32, textAlign:'center', animation:'fadeUp 0.5s ease both' }}>
-          <div style={{ width:90, height:90, borderRadius:'50%', overflow:'hidden', margin:'0 auto 20px', border:`3px solid ${C.teal}`, boxShadow:`0 0 0 8px rgba(77,214,200,0.1), 0 16px 48px rgba(0,0,0,0.4)`, animation:'glow 4s ease-in-out 0.5s infinite' }}>
-            <Image src="/skipper-avatar.jpg" alt="Skipper" width={90} height={90} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} priority />
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'0 28px', maxWidth:420, margin:'0 auto', width:'100%' }}>
+        <div style={{ marginBottom:40, animation:'scaleIn 0.5s ease both' }}>
+          <div style={{ width:64, height:64, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, marginBottom:20, animation:'glow 4s ease-in-out infinite' }}>
+            <Image src="/skipper-avatar.jpg" alt="Skipper" width={64} height={64} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
           </div>
-          <div style={{ fontSize:11, color:C.teal, fontWeight:700, letterSpacing:3.5, textTransform:'uppercase', marginBottom:8 }}>AyeAyeSkipper</div>
           <h1 style={{ fontSize:28, fontWeight:800, margin:'0 0 8px', letterSpacing:-0.5, lineHeight:1.15 }}>
             {screen === 'auth' ? 'Welcome aboard.' : 'Check your email.'}
           </h1>
           <p style={{ fontSize:14, color:C.muted, margin:0, lineHeight:1.6 }}>
             {screen === 'auth'
-              ? 'Your vessel. Your marina. Your call.'
+              ? 'Your marina, your slip, everything in one place.'
               : <>We sent a 6-digit code to<br/><strong style={{ color:C.white }}>{email}</strong></>}
           </p>
         </div>
 
-        <div style={{ flex:1 }}>
+        <div style={{ animation:'fadeUp 0.4s ease 0.1s both' }}>
           {screen === 'auth' ? (
-            <div style={{ animation:'fadeUp 0.4s ease 0.1s both' }}>
-              <Label>Email address</Label>
-              <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="captain@boat.com" onKeyDown={e => e.key==='Enter' && sendCode()} autoFocus />
+            <>
+              <FieldGroup label="Email address">
+                <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" onKeyDown={e => e.key==='Enter' && sendOtp()} autoFocus />
+              </FieldGroup>
               {err && <ErrMsg>{err}</ErrMsg>}
-              <PrimaryBtn onClick={sendCode} loading={busy} style={{ marginTop:20 }}>Get Sign-In Code</PrimaryBtn>
-              <p style={{ textAlign:'center', fontSize:12, color:C.muted2, marginTop:20, lineHeight:1.6 }}>
-                New here? Just enter your email — we'll set up your account.
+              <PrimaryBtn onClick={sendOtp} loading={busy} style={{ marginTop:8 }}>Continue →</PrimaryBtn>
+              <p style={{ fontSize:12, color:C.muted2, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
+                New here? Just enter your email — we&apos;ll set up your account.
               </p>
-            </div>
+            </>
           ) : (
-            <div style={{ animation:'fadeUp 0.4s ease both' }}>
-              <Label>6-digit code</Label>
-              <Input ref={otpRef} type="number" inputMode="numeric" value={otp}
-                onChange={e => setOtp(e.target.value.slice(0,6))} placeholder="123456"
-                onKeyDown={e => e.key==='Enter' && verifyCode()}
-                style={{ letterSpacing:8, fontSize:22, textAlign:'center' }} />
+            <>
+              <FieldGroup label="6-digit code">
+                <Input type="text" inputMode="numeric" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g,'').slice(0,6))}
+                  placeholder="000000" autoFocus onKeyDown={e => e.key==='Enter' && verifyOtp()} />
+              </FieldGroup>
               {err && <ErrMsg>{err}</ErrMsg>}
-              <PrimaryBtn onClick={verifyCode} loading={busy} style={{ marginTop:20 }}>Verify & Continue</PrimaryBtn>
-              <div style={{ textAlign:'center', marginTop:16 }}>
+              <PrimaryBtn onClick={verifyOtp} loading={busy} style={{ marginTop:8 }}>Sign In →</PrimaryBtn>
+              <div style={{ textAlign:'center', marginTop:20, display:'flex', flexDirection:'column', gap:12 }}>
                 {resent
                   ? <span style={{ fontSize:13, color:C.green }}>✓ Code resent</span>
                   : <button onClick={async () => { setResent(false); setBusy(true); await supabase.auth.signInWithOtp({ email, options:{shouldCreateUser:true} }); setBusy(false); setResent(true) }}
-                      style={{ background:'none', border:'none', color:C.muted, fontSize:13, cursor:'pointer', fontFamily:FONT }}>
-                      Didn't get it? Resend code
-                    </button>}
-              </div>
-              <div style={{ textAlign:'center', marginTop:8 }}>
-                <button onClick={onBackToEmail} style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT }}>
+                      style={{ background:'none', border:'none', color:C.muted2, fontSize:13, cursor:'pointer', fontFamily:FONT }}>
+                      Resend code
+                    </button>
+                }
+                <button onClick={onBackToEmail}
+                  style={{ background:'none', border:'none', color:C.muted2, fontSize:13, cursor:'pointer', fontFamily:FONT }}>
                   ← Use a different email
                 </button>
               </div>
-            </div>
+            </>
           )}
-        </div>
-        <div style={{ paddingBottom:40, textAlign:'center' }}>
-          <p style={{ fontSize:11, color:C.muted2 }}>We run on Skipper.™</p>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Step 1: Profile Setup ────────────────────────────────────────────────────
-function ProfileSetupScreen({ user, onComplete }: { user: User; onComplete: (p: Profile) => void }) {
-  const [displayName, setDisplayName] = useState('')
+// ─── Contact Setup (Step 1 — new user) ────────────────────────────────────────
+function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: Profile) => void }) {
+  const [firstName,   setFirstName]   = useState('')
+  const [lastName,    setLastName]    = useState('')
   const [phone,       setPhone]       = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err,  setErr]  = useState('')
+  const [address,     setAddress]     = useState('')
+  const [city,        setCity]        = useState('')
+  const [state,       setState]       = useState('')
+  const [zip,         setZip]         = useState('')
+  const [emergName,   setEmergName]   = useState('')
+  const [emergPhone,  setEmergPhone]  = useState('')
+  const [busy,        setBusy]        = useState(false)
+  const [err,         setErr]         = useState('')
 
   async function save() {
-    if (!displayName.trim()) { setErr('Enter your name'); return }
-    if (!phone.trim()) { setErr('Enter your phone number'); return }
+    if (!firstName.trim()) { setErr('First name is required'); return }
+    if (!lastName.trim())  { setErr('Last name is required'); return }
     setBusy(true); setErr('')
-    const { data, error } = await supabase.from('boater_profiles').upsert({
-      id:           user.id,
-      display_name: displayName.trim(),
-      phone:        phone.trim(),
-      onboarding_complete: false,
-    }, { onConflict: 'id' }).select().single()
+
+    const { data, error } = await supabase
+      .from('boater_profiles')
+      .update({
+        first_name:        firstName.trim(),
+        last_name:         lastName.trim(),
+        display_name:      `${firstName.trim()} ${lastName.trim()}`,
+        email:             user.email ?? null,
+        phone:             phone.trim() || null,
+        address:           address.trim() || null,
+        address_city:      city.trim() || null,
+        address_state:     state.trim() || null,
+        address_zip:       zip.trim() || null,
+        emergency_contact: emergName.trim() || null,
+        emergency_phone:   emergPhone.trim() || null,
+      })
+      .eq('id', user.id)
+      .select()
+      .single()
+
     setBusy(false)
     if (error) { setErr(error.message); return }
+
+    // Request notification permission — system prompt fires automatically
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      Notification.requestPermission().catch(() => {})
+    }
+
     onComplete(data)
   }
 
   return (
-    <OnboardingShell step={1} total={3} title="About you" subtitle="Quick intro — you'll only do this once.">
-      <FieldGroup label="Your name">
-        <Input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="e.g. Betty Johnson" autoFocus />
-      </FieldGroup>
-      <FieldGroup label="Mobile phone">
-        <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. (555) 867-5309" />
-      </FieldGroup>
-      {err && <ErrMsg>{err}</ErrMsg>}
-      <PrimaryBtn onClick={save} loading={busy} style={{ marginTop:8 }}>Continue →</PrimaryBtn>
-    </OnboardingShell>
-  )
-}
-
-// ─── Step 2: Vessel Setup ─────────────────────────────────────────────────────
-function VesselSetupScreen({ user, onComplete }: { user: User; onComplete: (v: Vessel) => void }) {
-  const [form, setForm] = useState({ name:'', vessel_type:'', length_ft:'', beam_ft:'', draft_ft:'', shore_power:'', fuel_type:'' })
-  const [busy, setBusy] = useState(false)
-  const [err,  setErr]  = useState('')
-  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
-
-  async function save() {
-    const missing = ['name','vessel_type','length_ft','beam_ft','draft_ft','shore_power','fuel_type'].filter(k => !(form as Record<string,string>)[k])
-    if (missing.length) { setErr('All fields required — marinas need this to assign you a slip.'); return }
-    setBusy(true); setErr('')
-    const { data, error } = await supabase.from('boater_vessels').insert({
-      boater_id:   user.id,
-      name:        form.name.trim(),
-      vessel_type: form.vessel_type,
-      length_ft:   parseFloat(form.length_ft),
-      beam_ft:     parseFloat(form.beam_ft),
-      draft_ft:    parseFloat(form.draft_ft),
-      shore_power: form.shore_power,
-      fuel_type:   form.fuel_type,
-    }).select().single()
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    onComplete(data)
-  }
-
-  return (
-    <OnboardingShell step={2} total={3} title="Your vessel" subtitle="Every marina needs this to fit you to a slip. Can't skip it.">
-      <FieldGroup label="Vessel name">
-        <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder='e.g. "Big Betty"' />
-      </FieldGroup>
-      <FieldGroup label="Vessel type">
-        <SelectInput value={form.vessel_type} onChange={e => set('vessel_type', e.target.value)}>
-          <option value="">Select type…</option>
-          {['Powerboat','Sailboat','Catamaran','Trawler','PWC','Center Console','Pontoon','Other'].map(t => <option key={t}>{t}</option>)}
-        </SelectInput>
-      </FieldGroup>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-        <FieldGroup label="LOA (ft)">
-          <Input type="number" value={form.length_ft} onChange={e => set('length_ft', e.target.value)} placeholder="34" />
+    <OnboardingShell step={1} total={2} title="About you" subtitle="Your marina needs this on file. You'll only do this once.">
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="First name">
+          <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Jane" autoFocus />
         </FieldGroup>
-        <FieldGroup label="Beam (ft)">
-          <Input type="number" value={form.beam_ft} onChange={e => set('beam_ft', e.target.value)} placeholder="11" />
-        </FieldGroup>
-        <FieldGroup label="Draft (ft)">
-          <Input type="number" value={form.draft_ft} onChange={e => set('draft_ft', e.target.value)} placeholder="3.5" />
+        <FieldGroup label="Last name">
+          <Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" />
         </FieldGroup>
       </div>
-      <FieldGroup label="Shore power">
-        <SelectInput value={form.shore_power} onChange={e => set('shore_power', e.target.value)}>
-          <option value="">Select…</option>
-          {['None','30A','50A','100A','Dual 30A','Dual 50A'].map(v => <option key={v}>{v}</option>)}
-        </SelectInput>
+
+      <FieldGroup label="Mobile phone">
+        <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 867-5309" />
       </FieldGroup>
-      <FieldGroup label="Fuel type">
-        <SelectInput value={form.fuel_type} onChange={e => set('fuel_type', e.target.value)}>
-          <option value="">Select…</option>
-          {['Gas','Diesel','Electric','Hybrid'].map(v => <option key={v}>{v}</option>)}
-        </SelectInput>
+
+      <FormSectionLabel>Home Address</FormSectionLabel>
+      <FieldGroup label="Street address">
+        <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Harbor Dr" />
       </FieldGroup>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 90px', gap:10 }}>
+        <FieldGroup label="City">
+          <Input value={city} onChange={e => setCity(e.target.value)} placeholder="Newport" />
+        </FieldGroup>
+        <FieldGroup label="State">
+          <Input value={state} onChange={e => setState(e.target.value)} placeholder="RI" maxLength={2} />
+        </FieldGroup>
+        <FieldGroup label="ZIP">
+          <Input value={zip} onChange={e => setZip(e.target.value)} placeholder="02840" />
+        </FieldGroup>
+      </div>
+
+      <FormSectionLabel>Emergency Contact</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="Name">
+          <Input value={emergName} onChange={e => setEmergName(e.target.value)} placeholder="John Smith" />
+        </FieldGroup>
+        <FieldGroup label="Phone">
+          <Input type="tel" value={emergPhone} onChange={e => setEmergPhone(e.target.value)} placeholder="(555) 000-0000" />
+        </FieldGroup>
+      </div>
+
       {err && <ErrMsg>{err}</ErrMsg>}
-      <PrimaryBtn onClick={save} loading={busy} style={{ marginTop:8 }}>Continue →</PrimaryBtn>
+      <PrimaryBtn onClick={save} loading={busy} style={{ marginTop:8 }}>Save & Continue →</PrimaryBtn>
     </OnboardingShell>
   )
 }
 
-// ─── Step 3: PIN Setup ────────────────────────────────────────────────────────
+// ─── PIN Setup (Step 2) ────────────────────────────────────────────────────────
 function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => void }) {
-  const [pin,     setPin]     = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err,  setErr]  = useState('')
-  const [step, setStep] = useState<'set'|'confirm'>('set')
+  const [pin,    setPin]    = useState('')
+  const [step,   setStep]   = useState<'set'|'confirm'>('set')
+  const [first,  setFirst]  = useState('')
+  const [err,    setErr]    = useState('')
+  const [busy,   setBusy]   = useState(false)
 
-  async function handleSet() {
-    if (pin.length < 4) { setErr('Enter a 4-digit PIN'); return }
-    setErr(''); setStep('confirm')
-  }
+  function onFirst(p: string) { setFirst(p); setErr(''); setStep('confirm') }
 
-  async function handleConfirm() {
-    if (confirm !== pin) { setErr('PINs don\'t match — try again'); setConfirm(''); return }
-    setBusy(true); setErr('')
-    const hash = await hashPin(pin)
-    // Store hash in DB
-    const { error } = await supabase.from('boater_profiles')
+  async function onConfirm(p: string) {
+    if (p !== first) {
+      setErr("PINs don't match — let's try again")
+      setStep('set'); setPin(''); setFirst('')
+      return
+    }
+    setBusy(true)
+    const hash = await hashPin(p)
+    const { error } = await supabase
+      .from('boater_profiles')
       .update({ pin_hash: hash, onboarding_complete: true })
       .eq('id', user.id)
     setBusy(false)
     if (error) { setErr(error.message); return }
-    // Also store locally so we don't need to round-trip DB on every unlock
     localStorage.setItem(`skipper_pin_${user.id}`, hash)
     onComplete()
   }
 
   return (
-    <OnboardingShell step={3} total={3} title="Set your PIN" subtitle="4 digits. Used to unlock Skipper on return visits. No OTP every time.">
-      {step === 'set' ? (
-        <>
-          <PinDots value={pin} />
-          <PinPad value={pin} onChange={setPin} max={4} />
-          {err && <ErrMsg>{err}</ErrMsg>}
-          <PrimaryBtn onClick={handleSet} loading={busy} style={{ marginTop:16 }} disabled={pin.length < 4}>
-            Continue →
-          </PrimaryBtn>
-        </>
-      ) : (
-        <>
-          <p style={{ fontSize:14, color:C.muted, textAlign:'center', margin:'0 0 20px' }}>Confirm your PIN</p>
-          <PinDots value={confirm} />
-          <PinPad value={confirm} onChange={setConfirm} max={4} onFull={handleConfirm} />
-          {err && <ErrMsg>{err}</ErrMsg>}
-          {busy && <div style={{ textAlign:'center', marginTop:12 }}><Spinner /></div>}
-        </>
-      )}
+    <OnboardingShell step={2} total={2} title="Set your PIN" subtitle="4 digits. Gets you back in without your email every time.">
+      <div style={{ textAlign:'center', marginTop:8 }}>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:24 }}>
+          {step === 'set' ? 'Choose a 4-digit PIN' : 'Enter it again to confirm'}
+        </div>
+        <PinDots value={pin} />
+        <PinPad value={pin} onChange={v => { setPin(v); setErr('') }} max={4} onFull={step==='set' ? (p) => { setPin(''); onFirst(p) } : (p) => { setPin(''); onConfirm(p) }} />
+        {err && <div style={{ fontSize:13, color:C.danger, marginTop:16 }}>{err}</div>}
+        {busy && <div style={{ marginTop:12 }}><Spinner /></div>}
+      </div>
     </OnboardingShell>
   )
 }
 
-// ─── PIN Login ────────────────────────────────────────────────────────────────
+// ─── PIN Login (returning user) ────────────────────────────────────────────────
 function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
   user: User; email: string; onUnlock: () => void; onForgotPin: () => void
 }) {
-  const [pin,    setPin]    = useState('')
-  const [shake,  setShake]  = useState(false)
-  const [err,    setErr]    = useState('')
-  const [busy,   setBusy]   = useState(false)
+  const [pin,   setPin]   = useState('')
+  const [shake, setShake] = useState(false)
+  const [err,   setErr]   = useState('')
+  const [busy,  setBusy]  = useState(false)
 
   async function verify(p: string) {
-    if (p.length < 4) return
     setBusy(true)
     const hash = await hashPin(p)
-    // Compare to locally stored hash first (fast path)
+    // Fast path: local cache
     const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
     let match = localHash ? hash === localHash : false
-    // Fallback: check DB
+    // Fallback: DB
     if (!match) {
       const { data } = await supabase.from('boater_profiles').select('pin_hash').eq('id', user.id).single()
       match = data?.pin_hash === hash
-      if (match && data?.pin_hash) {
-        localStorage.setItem(`skipper_pin_${user.id}`, data.pin_hash)
-      }
+      if (match && data?.pin_hash) localStorage.setItem(`skipper_pin_${user.id}`, data.pin_hash)
     }
     setBusy(false)
     if (match) { onUnlock(); return }
@@ -468,14 +559,14 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
         </div>
         <div style={{ fontSize:16, fontWeight:700, marginBottom:4 }}>Welcome back</div>
         <div style={{ fontSize:13, color:C.muted, marginBottom:32 }}>{email}</div>
-
         <div style={{ animation: shake ? 'shake 0.5s ease both' : 'none' }}>
           <PinDots value={pin} />
         </div>
         <PinPad value={pin} onChange={v => { setPin(v); setErr('') }} max={4} onFull={verify} />
         {err && <div style={{ fontSize:13, color:C.danger, marginTop:8 }}>{err}</div>}
         {busy && <div style={{ marginTop:12 }}><Spinner /></div>}
-        <button onClick={onForgotPin} style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
+        <button onClick={onForgotPin}
+          style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
           Forgot PIN? Sign in with email →
         </button>
       </div>
@@ -484,216 +575,440 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, activeTab, onTabChange, onSignOut, onVesselAdded, onProfileUpdated }: {
+function HomeScreen({ user, profile, vessel, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated }: {
   user: User; profile: Profile|null; vessel: Vessel|null; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
-  onVesselAdded: (v: Vessel) => void; onProfileUpdated: (p: Profile) => void
+  onVesselSaved: (v: Vessel) => void; onProfileUpdated: (p: Profile) => void
 }) {
   return (
-    <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased' }}>
+    <div style={{ minHeight:'100vh', maxHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
       <style>{GLOBAL_CSS}</style>
-      <header style={{ padding:'16px 20px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(4,10,20,0.92)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.08)', position:'sticky', top:0, zIndex:90 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:9 }}>
-          <div style={{ width:32, height:32, borderRadius:8, overflow:'hidden', border:`1px solid ${C.tealBorder}` }}>
-            <Image src="/skipper-logo.jpg" alt="Skipper" width={32} height={32} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+
+      {/* Top bar */}
+      <div style={{ padding:'env(safe-area-inset-top,16px) 20px 0', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 10px', borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:32, height:32, borderRadius:'50%', overflow:'hidden', border:`1.5px solid ${C.teal}` }}>
+              <Image src="/skipper-avatar.jpg" alt="Skipper" width={32} height={32} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+            </div>
+            <span style={{ fontSize:17, fontWeight:800, letterSpacing:-0.3 }}>Skipper</span>
           </div>
-          <span style={{ fontSize:18, fontWeight:800, letterSpacing:-0.4 }}>Skipper</span>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           {vessel && (
-            <div style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:8, padding:'4px 10px', fontSize:11, fontWeight:700, color:C.teal, maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            <div style={{ fontSize:12, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px' }}>
               ⛵ {vessel.name}
             </div>
           )}
-          <div style={{ width:30, height:30, borderRadius:'50%', background:C.teal, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:C.navy, flexShrink:0 }}>
-            {(profile?.display_name ?? user.email ?? 'U')[0].toUpperCase()}
-          </div>
         </div>
-      </header>
+      </div>
 
-      <div style={{ maxWidth:420, margin:'0 auto', paddingBottom:90 }}>
-        {activeTab === 'vessel'   && <TabVessel   vessel={vessel} profile={profile} user={user} onVesselAdded={onVesselAdded} />}
+      {/* Scrollable content */}
+      <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
+        {activeTab === 'vessel'   && <TabVessel   vessel={vessel}  user={user} onVesselSaved={onVesselSaved} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
-        {activeTab === 'messages' && <TabMessages user={user} vessel={vessel} />}
+        {activeTab === 'messages' && <TabMessages user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
       </div>
 
-      <nav style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)', width:'100%', maxWidth:420, background:'rgba(3,8,18,0.96)', backdropFilter:'blur(24px)', borderTop:'1px solid rgba(255,255,255,0.09)', display:'grid', gridTemplateColumns:'repeat(4,1fr)', padding:`10px 0 calc(10px + env(safe-area-inset-bottom))`, zIndex:100 }}>
+      {/* Bottom nav */}
+      <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
         <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="My Vessel"  active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
         <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"    active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
-        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'}/>} label="Messages"   active={activeTab==='messages'}onClick={() => onTabChange('messages')}/>
-        <NavBtn icon={<IcoAcct   active={activeTab==='account'} />} label="Account"    active={activeTab==='account'} onClick={() => onTabChange('account')} />
-      </nav>
+        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages"   active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
+        <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"    active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
+      </div>
     </div>
   )
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessel, profile, user, onVesselAdded }: {
-  vessel: Vessel|null; profile: Profile|null; user: User;
-  onVesselAdded: (v: Vessel) => void
+function TabVessel({ vessel, user, onVesselSaved }: {
+  vessel: Vessel|null; user: User; onVesselSaved: (v: Vessel) => void
 }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name:'', vessel_type:'', length_ft:'', beam_ft:'', draft_ft:'', shore_power:'', fuel_type:'' })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  function setF(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  // Form state — covers all columns
+  const blank = {
+    name:'', vessel_type:'',
+    make:'', model:'', year:'', color:'',
+    length_ft:'', beam_ft:'', draft_ft:'', weight_lbs:'', height_ft:'',
+    hin:'', registration_number:'', registration_state:'', registration_expiry:'',
+    documentation_number:'', mmsi_number:'', flag_state:'',
+    hull_material:'',
+    engine_count:'', engine_type:'', engine_make:'', engine_model:'', engine_year:'', horsepower_per_engine:'', fuel_type:'', fuel_tank_gallons:'', shore_power:'',
+    insurance_provider:'', insurance_policy:'', insurance_expiry:'', insurance_agent_name:'', insurance_agent_phone:'',
+    last_survey_date:'', photo_url:'', notes:''
+  }
+  const [form, setForm] = useState<Record<string,string>>(blank)
+  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  function openEdit() {
+    if (vessel) {
+      setForm({
+        name: vessel.name ?? '',
+        vessel_type: vessel.vessel_type ?? '',
+        make: vessel.make ?? '',
+        model: vessel.model ?? '',
+        year: vessel.year?.toString() ?? '',
+        color: vessel.color ?? '',
+        length_ft: vessel.length_ft?.toString() ?? '',
+        beam_ft: vessel.beam_ft?.toString() ?? '',
+        draft_ft: vessel.draft_ft?.toString() ?? '',
+        weight_lbs: vessel.weight_lbs?.toString() ?? '',
+        height_ft: vessel.height_ft?.toString() ?? '',
+        hin: vessel.hin ?? '',
+        registration_number: vessel.registration_number ?? '',
+        registration_state: vessel.registration_state ?? '',
+        registration_expiry: vessel.registration_expiry ?? '',
+        documentation_number: vessel.documentation_number ?? '',
+        mmsi_number: vessel.mmsi_number ?? '',
+        flag_state: vessel.flag_state ?? '',
+        hull_material: vessel.hull_material ?? '',
+        engine_count: vessel.engine_count?.toString() ?? '',
+        engine_type: vessel.engine_type ?? '',
+        engine_make: vessel.engine_make ?? '',
+        engine_model: vessel.engine_model ?? '',
+        engine_year: vessel.engine_year?.toString() ?? '',
+        horsepower_per_engine: vessel.horsepower_per_engine?.toString() ?? '',
+        fuel_type: vessel.fuel_type ?? '',
+        fuel_tank_gallons: vessel.fuel_tank_gallons?.toString() ?? '',
+        shore_power: vessel.shore_power ?? '',
+        insurance_provider: vessel.insurance_provider ?? '',
+        insurance_policy: vessel.insurance_policy ?? '',
+        insurance_expiry: vessel.insurance_expiry ?? '',
+        insurance_agent_name: vessel.insurance_agent_name ?? '',
+        insurance_agent_phone: vessel.insurance_agent_phone ?? '',
+        last_survey_date: vessel.last_survey_date ?? '',
+        photo_url: vessel.photo_url ?? '',
+        notes: vessel.notes ?? '',
+      })
+    } else {
+      setForm(blank)
+    }
+    setErr('')
+    setShowForm(true)
+  }
+
+  function numOrNull(v: string) { const n = parseFloat(v); return isNaN(n) ? null : n }
+  function intOrNull(v: string) { const n = parseInt(v); return isNaN(n) ? null : n }
 
   async function saveVessel() {
-    const missing = ['name','vessel_type','length_ft','beam_ft','draft_ft','shore_power','fuel_type']
-      .filter(k => !(form as Record<string,string>)[k])
-    if (missing.length) { setErr('All fields required — marinas need this to assign you a slip.'); return }
+    if (!form.name.trim())       { setErr('Vessel name is required'); return }
+    if (!form.vessel_type.trim()){ setErr('Vessel type is required'); return }
     setBusy(true); setErr('')
-    const { data, error } = await supabase.from('boater_vessels').insert({
-      boater_id:   user.id,
-      name:        form.name.trim(),
-      vessel_type: form.vessel_type,
-      length_ft:   parseFloat(form.length_ft),
-      beam_ft:     parseFloat(form.beam_ft),
-      draft_ft:    parseFloat(form.draft_ft),
-      shore_power: form.shore_power,
-      fuel_type:   form.fuel_type,
-    }).select().single()
+
+    const payload = {
+      boater_id:            user.id,
+      name:                 form.name.trim(),
+      vessel_type:          form.vessel_type,
+      make:                 form.make.trim() || null,
+      model:                form.model.trim() || null,
+      year:                 intOrNull(form.year),
+      color:                form.color.trim() || null,
+      length_ft:            numOrNull(form.length_ft),
+      beam_ft:              numOrNull(form.beam_ft),
+      draft_ft:             numOrNull(form.draft_ft),
+      weight_lbs:           numOrNull(form.weight_lbs),
+      height_ft:            numOrNull(form.height_ft),
+      hin:                  form.hin.trim() || null,
+      registration_number:  form.registration_number.trim() || null,
+      registration_state:   form.registration_state.trim() || null,
+      registration_expiry:  form.registration_expiry || null,
+      documentation_number: form.documentation_number.trim() || null,
+      mmsi_number:          form.mmsi_number.trim() || null,
+      flag_state:           form.flag_state.trim() || null,
+      hull_material:        form.hull_material || null,
+      engine_count:         intOrNull(form.engine_count),
+      engine_type:          form.engine_type || null,
+      engine_make:          form.engine_make.trim() || null,
+      engine_model:         form.engine_model.trim() || null,
+      engine_year:          intOrNull(form.engine_year),
+      horsepower_per_engine:intOrNull(form.horsepower_per_engine),
+      fuel_type:            form.fuel_type || null,
+      fuel_tank_gallons:    intOrNull(form.fuel_tank_gallons),
+      shore_power:          form.shore_power || null,
+      insurance_provider:   form.insurance_provider.trim() || null,
+      insurance_policy:     form.insurance_policy.trim() || null,
+      insurance_expiry:     form.insurance_expiry || null,
+      insurance_agent_name: form.insurance_agent_name.trim() || null,
+      insurance_agent_phone:form.insurance_agent_phone.trim() || null,
+      last_survey_date:     form.last_survey_date || null,
+      photo_url:            form.photo_url.trim() || null,
+      notes:                form.notes.trim() || null,
+      updated_at:           new Date().toISOString(),
+    }
+
+    let data: Vessel | null = null
+    let error: { message: string } | null = null
+
+    if (vessel) {
+      // Edit existing
+      const result = await supabase.from('boater_vessels').update(payload).eq('id', vessel.id).select().single()
+      data = result.data; error = result.error
+    } else {
+      // New vessel
+      const result = await supabase.from('boater_vessels').insert(payload).select().single()
+      data = result.data; error = result.error
+    }
+
     setBusy(false)
     if (error) { setErr(error.message); return }
-    onVesselAdded(data)
+    onVesselSaved(data!)
     setShowForm(false)
   }
+
+  if (showForm) return (
+    <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.3s ease both' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
+        <button onClick={() => setShowForm(false)}
+          style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20, padding:'0 4px 0 0', fontFamily:FONT }}>←</button>
+        <h2 style={{ margin:0, fontSize:20, fontWeight:800 }}>{vessel ? 'Edit Vessel' : 'Add Your Vessel'}</h2>
+      </div>
+
+      <FormSectionLabel>Identity</FormSectionLabel>
+      <FieldGroup label="Vessel name *">
+        <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder='e.g. "Happy Days"' autoFocus />
+      </FieldGroup>
+      <FieldGroup label="Type *">
+        <SelectInput value={form.vessel_type} onChange={e => set('vessel_type', e.target.value)}>
+          <option value="">Select type…</option>
+          {['Powerboat','Sailboat','Catamaran','Trawler','Center Console','Pontoon','PWC','Kayak','Other'].map(t => <option key={t}>{t}</option>)}
+        </SelectInput>
+      </FieldGroup>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="Make">
+          <Input value={form.make} onChange={e => set('make', e.target.value)} placeholder="Sea Ray" />
+        </FieldGroup>
+        <FieldGroup label="Model">
+          <Input value={form.model} onChange={e => set('model', e.target.value)} placeholder="240 SX" />
+        </FieldGroup>
+        <FieldGroup label="Year">
+          <Input type="number" value={form.year} onChange={e => set('year', e.target.value)} placeholder="2022" />
+        </FieldGroup>
+        <FieldGroup label="Color">
+          <Input value={form.color} onChange={e => set('color', e.target.value)} placeholder="White / Blue" />
+        </FieldGroup>
+      </div>
+
+      <FormSectionLabel>Dimensions</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+        <FieldGroup label="Length (ft)">
+          <Input type="number" value={form.length_ft} onChange={e => set('length_ft', e.target.value)} placeholder="34" />
+        </FieldGroup>
+        <FieldGroup label="Beam (ft)">
+          <Input type="number" value={form.beam_ft} onChange={e => set('beam_ft', e.target.value)} placeholder="11" />
+        </FieldGroup>
+        <FieldGroup label="Draft (ft)">
+          <Input type="number" value={form.draft_ft} onChange={e => set('draft_ft', e.target.value)} placeholder="3.5" />
+        </FieldGroup>
+        <FieldGroup label="Weight (lbs)">
+          <Input type="number" value={form.weight_lbs} onChange={e => set('weight_lbs', e.target.value)} placeholder="6200" />
+        </FieldGroup>
+        <FieldGroup label="Air Draft (ft)">
+          <Input type="number" value={form.height_ft} onChange={e => set('height_ft', e.target.value)} placeholder="12" />
+        </FieldGroup>
+      </div>
+
+      <FormSectionLabel>Registration</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="Hull ID (HIN)">
+          <Input value={form.hin} onChange={e => set('hin', e.target.value)} placeholder="ABC12345D678" />
+        </FieldGroup>
+        <FieldGroup label="Registration #">
+          <Input value={form.registration_number} onChange={e => set('registration_number', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Reg State">
+          <Input value={form.registration_state} onChange={e => set('registration_state', e.target.value)} placeholder="NY" maxLength={2} />
+        </FieldGroup>
+        <FieldGroup label="Reg Expiry">
+          <Input type="date" value={form.registration_expiry} onChange={e => set('registration_expiry', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="USCG Doc #">
+          <Input value={form.documentation_number} onChange={e => set('documentation_number', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="MMSI #">
+          <Input value={form.mmsi_number} onChange={e => set('mmsi_number', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Flag State">
+          <Input value={form.flag_state} onChange={e => set('flag_state', e.target.value)} placeholder="USA" />
+        </FieldGroup>
+        <FieldGroup label="Hull Material">
+          <SelectInput value={form.hull_material} onChange={e => set('hull_material', e.target.value)}>
+            <option value="">Select…</option>
+            {['Fiberglass','Aluminum','Steel','Wood','Carbon Fiber','Other'].map(v => <option key={v}>{v}</option>)}
+          </SelectInput>
+        </FieldGroup>
+      </div>
+
+      <FormSectionLabel>Engine & Fuel</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="# Engines">
+          <Input type="number" value={form.engine_count} onChange={e => set('engine_count', e.target.value)} placeholder="1" />
+        </FieldGroup>
+        <FieldGroup label="Engine Type">
+          <SelectInput value={form.engine_type} onChange={e => set('engine_type', e.target.value)}>
+            <option value="">Select…</option>
+            {['Outboard','Inboard','Sterndrive (I/O)','Jet Drive','Diesel Inboard','Electric','Sail'].map(v => <option key={v}>{v}</option>)}
+          </SelectInput>
+        </FieldGroup>
+        <FieldGroup label="Engine Make">
+          <Input value={form.engine_make} onChange={e => set('engine_make', e.target.value)} placeholder="Yamaha" />
+        </FieldGroup>
+        <FieldGroup label="Engine Model">
+          <Input value={form.engine_model} onChange={e => set('engine_model', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Engine Year">
+          <Input type="number" value={form.engine_year} onChange={e => set('engine_year', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="HP (per engine)">
+          <Input type="number" value={form.horsepower_per_engine} onChange={e => set('horsepower_per_engine', e.target.value)} placeholder="150" />
+        </FieldGroup>
+        <FieldGroup label="Fuel Type">
+          <SelectInput value={form.fuel_type} onChange={e => set('fuel_type', e.target.value)}>
+            <option value="">Select…</option>
+            {['Gas','Diesel','Electric','Hybrid'].map(v => <option key={v}>{v}</option>)}
+          </SelectInput>
+        </FieldGroup>
+        <FieldGroup label="Fuel Tank (gal)">
+          <Input type="number" value={form.fuel_tank_gallons} onChange={e => set('fuel_tank_gallons', e.target.value)} />
+        </FieldGroup>
+      </div>
+      <FieldGroup label="Shore Power">
+        <SelectInput value={form.shore_power} onChange={e => set('shore_power', e.target.value)}>
+          <option value="">Select…</option>
+          {['None','30A','50A','100A','Dual 30A','Dual 50A'].map(v => <option key={v}>{v}</option>)}
+        </SelectInput>
+      </FieldGroup>
+
+      <FormSectionLabel>Insurance</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="Provider">
+          <Input value={form.insurance_provider} onChange={e => set('insurance_provider', e.target.value)} placeholder="BoatUS" />
+        </FieldGroup>
+        <FieldGroup label="Policy #">
+          <Input value={form.insurance_policy} onChange={e => set('insurance_policy', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Expiry">
+          <Input type="date" value={form.insurance_expiry} onChange={e => set('insurance_expiry', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Agent Name">
+          <Input value={form.insurance_agent_name} onChange={e => set('insurance_agent_name', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Agent Phone">
+          <Input type="tel" value={form.insurance_agent_phone} onChange={e => set('insurance_agent_phone', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Last Survey">
+          <Input type="date" value={form.last_survey_date} onChange={e => set('last_survey_date', e.target.value)} />
+        </FieldGroup>
+      </div>
+
+      <FormSectionLabel>Notes</FormSectionLabel>
+      <FieldGroup label="Notes">
+        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
+          placeholder="Anything the marina should know…"
+          style={{ width:'100%', padding:'14px 15px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:14, color:C.white, fontSize:15, fontFamily:FONT, outline:'none' }} />
+      </FieldGroup>
+
+      {err && <ErrMsg>{err}</ErrMsg>}
+      <PrimaryBtn onClick={saveVessel} loading={busy} style={{ marginTop:8 }}>
+        {vessel ? 'Save Changes' : 'Add Vessel'}
+      </PrimaryBtn>
+    </div>
+  )
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
       <SectionTitle>My Vessel</SectionTitle>
       {vessel ? (
         <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-            <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>⛵</div>
-            <div>
-              <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{vessel.name}</div>
-              <div style={{ fontSize:13, color:C.muted }}>{vessel.vessel_type}</div>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>⛵</div>
+              <div>
+                <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{vessel.name}</div>
+                <div style={{ fontSize:13, color:C.muted }}>{vessel.vessel_type}{vessel.year ? ` · ${vessel.year}` : ''}</div>
+                {vessel.make && <div style={{ fontSize:13, color:C.muted }}>{vessel.make}{vessel.model ? ` ${vessel.model}` : ''}</div>}
+              </div>
             </div>
+            <button onClick={openEdit}
+              style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+              Edit
+            </button>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            {[['LOA',`${vessel.length_ft} ft`],['Beam',`${vessel.beam_ft} ft`],['Draft',`${vessel.draft_ft} ft`],['Shore Power',vessel.shore_power],['Fuel',vessel.fuel_type]].map(([l,v]) => (
-              <div key={l} style={{ background:'rgba(0,0,0,0.25)', borderRadius:12, padding:'12px 14px' }}>
-                <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>{l}</div>
-                <div style={{ fontSize:15, fontWeight:700 }}>{v}</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+            {[
+              vessel.length_ft && ['LOA', `${vessel.length_ft} ft`],
+              vessel.beam_ft && ['Beam', `${vessel.beam_ft} ft`],
+              vessel.draft_ft && ['Draft', `${vessel.draft_ft} ft`],
+              vessel.shore_power && ['Shore Power', vessel.shore_power],
+              vessel.fuel_type && ['Fuel', vessel.fuel_type],
+              vessel.registration_number && ['Reg #', vessel.registration_number],
+            ].filter(Boolean).map(([l, v]) => (
+              <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
+                <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{l}</div>
+                <div style={{ fontSize:14, fontWeight:700 }}>{v}</div>
               </div>
             ))}
           </div>
-          <div style={{ marginTop:14, background:'rgba(77,214,200,0.08)', border:`1px solid rgba(77,214,200,0.2)`, borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ width:8, height:8, borderRadius:'50%', background:C.green, boxShadow:`0 0 8px ${C.green}`, flexShrink:0 }} />
-            <span style={{ fontSize:12, color:C.muted }}>Identity visible to any marina you message</span>
+          <div style={{ marginTop:12, background:'rgba(77,214,200,0.08)', border:`1px solid rgba(77,214,200,0.2)`, borderRadius:10, padding:'8px 12px', display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ width:7, height:7, borderRadius:'50%', background:C.green, boxShadow:`0 0 8px ${C.green}`, flexShrink:0 }} />
+            <span style={{ fontSize:12, color:C.muted }}>Identity sent to every marina you message</span>
           </div>
-        </div>
-      ) : !showForm ? (
-        <div style={{ textAlign:'center', padding:'40px 20px' }}>
-          <div style={{ fontSize:48, marginBottom:12 }}>⛵</div>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:6 }}>No vessel added yet</div>
-          <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.6 }}>Add your vessel so marinas know who&apos;s coming and what slip to assign.</div>
-          <PrimaryBtn onClick={() => setShowForm(true)}>+ Add Your Vessel</PrimaryBtn>
         </div>
       ) : (
-        <div style={{ animation:'fadeUp 0.3s ease both' }}>
-          <FieldGroup label="Vessel name">
-            <Input value={form.name} onChange={e => setF('name', e.target.value)} placeholder='e.g. "Big Betty"' autoFocus />
-          </FieldGroup>
-          <FieldGroup label="Vessel type">
-            <SelectInput value={form.vessel_type} onChange={e => setF('vessel_type', e.target.value)}>
-              <option value="">Select type…</option>
-              {['Powerboat','Sailboat','Catamaran','Trawler','PWC','Center Console','Pontoon','Other'].map(t => <option key={t}>{t}</option>)}
-            </SelectInput>
-          </FieldGroup>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-            <FieldGroup label="LOA (ft)">
-              <Input type="number" value={form.length_ft} onChange={e => setF('length_ft', e.target.value)} placeholder="34" />
-            </FieldGroup>
-            <FieldGroup label="Beam (ft)">
-              <Input type="number" value={form.beam_ft} onChange={e => setF('beam_ft', e.target.value)} placeholder="11" />
-            </FieldGroup>
-            <FieldGroup label="Draft (ft)">
-              <Input type="number" value={form.draft_ft} onChange={e => setF('draft_ft', e.target.value)} placeholder="3.5" />
-            </FieldGroup>
+        <div style={{ textAlign:'center', padding:'48px 20px' }}>
+          <div style={{ fontSize:52, marginBottom:14 }}>⛵</div>
+          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>No vessel on file</div>
+          <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7, maxWidth:260, margin:'0 auto 24px' }}>
+            Add your vessel so marinas know who&apos;s coming and what slip fits you.
           </div>
-          <FieldGroup label="Shore power">
-            <SelectInput value={form.shore_power} onChange={e => setF('shore_power', e.target.value)}>
-              <option value="">Select…</option>
-              {['None','30A','50A','100A','Dual 30A','Dual 50A'].map(v => <option key={v}>{v}</option>)}
-            </SelectInput>
-          </FieldGroup>
-          <FieldGroup label="Fuel type">
-            <SelectInput value={form.fuel_type} onChange={e => setF('fuel_type', e.target.value)}>
-              <option value="">Select…</option>
-              {['Gas','Diesel','Electric','Hybrid'].map(v => <option key={v}>{v}</option>)}
-            </SelectInput>
-          </FieldGroup>
-          {err && <ErrMsg>{err}</ErrMsg>}
-          <PrimaryBtn onClick={saveVessel} loading={busy} style={{ marginTop:8 }}>Save Vessel</PrimaryBtn>
-          <button onClick={() => { setShowForm(false); setErr('') }}
-            style={{ width:'100%', marginTop:10, padding:'12px', background:'transparent', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:14, color:C.muted, fontFamily:FONT, fontSize:14, cursor:'pointer' }}>
-            Cancel
-          </button>
+          <PrimaryBtn onClick={openEdit} style={{ maxWidth:220, margin:'0 auto' }}>+ Add Your Vessel</PrimaryBtn>
         </div>
       )}
     </div>
   )
 }
 
-// ─── TAB 2: Marinas ───────────────────────────────────────────────────────────
+// ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
 function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
-  const [q,          setQ]          = useState('')
-  const [marinas,    setMarinas]    = useState<Marina[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [chatMarina, setChatMarina] = useState<Marina | null>(null)
-  const debounce = useRef<ReturnType<typeof setTimeout>|null>(null)
+  const [marinas,  setMarinas]  = useState<Marina[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [search,   setSearch]   = useState('')
+  const [selected, setSelected] = useState<Marina|null>(null)
 
   useEffect(() => {
-    setLoading(true)
-    if (debounce.current) clearTimeout(debounce.current)
-    debounce.current = setTimeout(() => {
-      fetch(`/api/marinas${q ? `?q=${encodeURIComponent(q)}` : ''}`)
-        .then(r => r.json())
-        .then(d => { setMarinas(d.marinas ?? []); setLoading(false) })
-        .catch(() => setLoading(false))
-    }, q ? 300 : 0)
-  }, [q])
+    supabase.from('marinas').select('id,name,city,state,total_slips').order('name').then(({ data }) => {
+      setMarinas(data ?? [])
+      setLoading(false)
+    })
+  }, [])
 
-  if (chatMarina) return (
-    <MarinaChat
-      marina={chatMarina}
-      user={user}
-      profile={profile}
-      vessel={vessel}
-      onBack={() => setChatMarina(null)}
-    />
+  const filtered = marinas.filter(m =>
+    !search.trim() ||
+    m.name.toLowerCase().includes(search.toLowerCase()) ||
+    m.city.toLowerCase().includes(search.toLowerCase())
   )
+
+  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} />
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
-      <SectionTitle>Find a Marina</SectionTitle>
-      <div style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:14, padding:'12px 16px', marginBottom:16, display:'flex', gap:12, alignItems:'flex-start' }}>
-        <Image src="/skipper-avatar.jpg" alt="Skipper" width={32} height={32} style={{ width:32, height:32, borderRadius:'50%', objectFit:'cover', objectPosition:'center top', border:`2px solid ${C.teal}`, flexShrink:0 }} />
-        <div>
-          <div style={{ fontSize:13, fontWeight:700, color:C.teal, marginBottom:2 }}>Message any marina. No enrollment required.</div>
-          <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>Transient, shopping for a slip, or just asking — tap and message.</div>
-        </div>
-      </div>
-      <div style={{ position:'relative', marginBottom:12 }}>
-        <svg style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', opacity:0.5 }} width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="white" strokeWidth="2"/><path d="M16.5 16.5L21 21" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
-        <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Search marina name or city…"
-          style={{ width:'100%', padding:'14px 14px 14px 42px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:14, color:C.white, fontSize:15, fontFamily:FONT, outline:'none' }}
-          onFocus={e => e.currentTarget.style.borderColor=C.teal} onBlur={e => e.currentTarget.style.borderColor=C.inputBorder} />
+      <SectionTitle>Marinas</SectionTitle>
+      <div style={{ marginBottom:14 }}>
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or city…" />
       </div>
       {loading && <div style={{ textAlign:'center', color:C.muted, padding:'32px 0' }}>Loading…</div>}
-      {!loading && marinas.length===0 && <div style={{ textAlign:'center', color:C.muted, padding:'32px 0' }}>{q ? `No results for "${q}"` : 'No marinas in network yet.'}</div>}
-      {!loading && marinas.map((m,i) => (
-        <button key={m.id} onClick={() => setChatMarina(m)}
-          style={{ width:'100%', display:'flex', alignItems:'center', gap:14, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:18, padding:'14px 16px', marginBottom:10, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.05}s both`, transition:'background 0.15s, transform 0.1s' }}
-          onMouseEnter={e => { e.currentTarget.style.background=C.tealDim; e.currentTarget.style.transform='translateY(-1px)' }}
-          onMouseLeave={e => { e.currentTarget.style.background=C.card; e.currentTarget.style.transform='translateY(0)' }}>
-          <div style={{ width:46, height:46, borderRadius:13, background:'rgba(77,214,200,0.15)', border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>⚓</div>
-          <div style={{ flex:1, minWidth:0 }}>
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign:'center', color:C.muted, padding:'32px 0', fontSize:14 }}>No marinas found</div>
+      )}
+      {filtered.map((m, i) => (
+        <button key={m.id} onClick={() => setSelected(m)}
+          style={{ width:'100%', display:'flex', alignItems:'center', gap:14, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:18, padding:'14px 16px', marginBottom:10, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.04}s both` }}>
+          <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
+          <div style={{ flex:1 }}>
             <div style={{ fontSize:15, fontWeight:700, marginBottom:3 }}>{m.name}</div>
-            <div style={{ fontSize:12, color:C.muted }}>{[m.city,m.state].filter(Boolean).join(', ')}{m.total_slips ? ` · ${m.total_slips} slips` : ''}</div>
+            <div style={{ fontSize:12, color:C.muted }}>{m.city}, {m.state} · {m.total_slips} slips</div>
           </div>
           <div style={{ fontSize:12, color:C.teal, fontWeight:700 }}>Message →</div>
         </button>
@@ -702,7 +1017,7 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
   )
 }
 
-// ─── Marina Chat ───────────────────────────────────────────────────────────────
+// ─── Marina Chat ──────────────────────────────────────────────────────────────
 function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; onBack:()=>void }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
     { role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }
@@ -711,35 +1026,63 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  const displayName = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.display_name || user.email
+    : user.email
+
   async function send() {
     if (!draft.trim() || sending) return
     const msg = draft.trim(); setDraft('')
     setMsgs(m => [...m, { role:'user', text:msg }])
     setSending(true)
 
-    // Save outbound message to DB
+    // Save outbound to DB
     await supabase.from('messages').insert({
       marina_id:   marina.id,
       tenant_id:   user.id,
       direction:   'inbound',
       body:        msg,
       channel:     'skipper',
-      sender_name: profile?.display_name ?? user.email ?? 'Boater',
+      sender_name: displayName ?? 'Boater',
     })
 
-    // Build full identity package per doctrine
+    // Full identity package — all fields
     const identityPackage = {
       auth_user_id:  user.id,
-      display_name:  profile?.display_name ?? null,
+      first_name:    profile?.first_name ?? null,
+      last_name:     profile?.last_name ?? null,
+      display_name:  displayName,
       phone:         profile?.phone ?? null,
+      email:         user.email ?? null,
       vessel: vessel ? {
-        name:        vessel.name,
-        type:        vessel.vessel_type,
-        loa:         vessel.length_ft,
-        beam:        vessel.beam_ft,
-        draft:       vessel.draft_ft,
-        shore_power: vessel.shore_power,
-        fuel_type:   vessel.fuel_type,
+        id:                   vessel.id,
+        name:                 vessel.name,
+        type:                 vessel.vessel_type,
+        make:                 vessel.make,
+        model:                vessel.model,
+        year:                 vessel.year,
+        color:                vessel.color,
+        loa:                  vessel.length_ft,
+        beam:                 vessel.beam_ft,
+        draft:                vessel.draft_ft,
+        weight_lbs:           vessel.weight_lbs,
+        height_ft:            vessel.height_ft,
+        hin:                  vessel.hin,
+        registration_number:  vessel.registration_number,
+        registration_state:   vessel.registration_state,
+        documentation_number: vessel.documentation_number,
+        mmsi:                 vessel.mmsi_number,
+        flag_state:           vessel.flag_state,
+        hull_material:        vessel.hull_material,
+        engine_count:         vessel.engine_count,
+        engine_type:          vessel.engine_type,
+        engine_make:          vessel.engine_make,
+        engine_hp:            vessel.horsepower_per_engine,
+        fuel_type:            vessel.fuel_type,
+        fuel_tank_gallons:    vessel.fuel_tank_gallons,
+        shore_power:          vessel.shore_power,
+        insurance_provider:   vessel.insurance_provider,
+        insurance_expiry:     vessel.insurance_expiry,
       } : null,
     }
 
@@ -751,13 +1094,12 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
       const d = await r.json()
       const reply = d.reply || 'Let me check on that.'
       setMsgs(m => [...m, { role:'skipper', text:reply }])
-      // Save Skipper reply to DB
       await supabase.from('messages').insert({
-        marina_id: marina.id,
-        tenant_id: user.id,
-        direction: 'outbound',
-        body:      reply,
-        channel:   'skipper',
+        marina_id:   marina.id,
+        tenant_id:   user.id,
+        direction:   'outbound',
+        body:        reply,
+        channel:     'skipper',
         sender_name: 'Skipper',
       })
     } catch {
@@ -771,7 +1113,7 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
     <div style={{ padding:'0 20px', animation:'fadeUp 0.3s ease both' }}>
       <div style={{ padding:'14px 0 10px', display:'flex', alignItems:'center', gap:10, borderBottom:`1px solid rgba(255,255,255,0.08)`, marginBottom:14 }}>
         <button onClick={onBack} style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20, padding:'0 4px 0 0', fontFamily:FONT }}>←</button>
-        <div style={{ width:36, height:36, borderRadius:10, background:'rgba(77,214,200,0.15)', border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
+        <div style={{ width:36, height:36, borderRadius:10, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
         <div>
           <div style={{ fontSize:15, fontWeight:700 }}>{marina.name}</div>
           <div style={{ fontSize:11, color:C.teal, fontWeight:600 }}>Skipper-powered™</div>
@@ -803,7 +1145,7 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
         <div ref={bottomRef} />
       </div>
       <div style={{ display:'flex', gap:8, paddingBottom:8 }}>
-        <input type="text" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send() } }}
+        <input type="text" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send() } }}
           placeholder={`Message ${marina.name}…`}
           style={{ flex:1, padding:'13px 14px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:C.white, fontSize:14, fontFamily:FONT, outline:'none' }}
           onFocus={e => e.currentTarget.style.borderColor=C.teal} onBlur={e => e.currentTarget.style.borderColor=C.inputBorder} />
@@ -816,8 +1158,8 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
   )
 }
 
-// ─── TAB 3: Messages ─────────────────────────────────────────────────────────
-function TabMessages({ user, vessel }: { user: User; vessel: Vessel|null }) {
+// ─── TAB 3: Messages ───────────────────────────────────────────────────────────
+function TabMessages({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [threads,  setThreads]  = useState<{marina: Marina; last: MsgRow}[]>([])
   const [loading,  setLoading]  = useState(true)
   const [selected, setSelected] = useState<Marina|null>(null)
@@ -833,14 +1175,12 @@ function TabMessages({ user, vessel }: { user: User; vessel: Vessel|null }) {
 
       if (!rows || rows.length === 0) { setLoading(false); return }
 
-      // Group by marina_id, keep latest per marina
       const seen = new Set<string>()
       const grouped: {marina_id:string; last:MsgRow}[] = []
       for (const row of rows) {
         if (!seen.has(row.marina_id)) { seen.add(row.marina_id); grouped.push({ marina_id: row.marina_id, last: row }) }
       }
 
-      // Fetch marina details
       const ids = grouped.map(g => g.marina_id)
       const { data: marinas } = await supabase.from('marinas').select('id,name,city,state,total_slips').in('id', ids)
       const marinaMap: Record<string,Marina> = {}
@@ -852,7 +1192,7 @@ function TabMessages({ user, vessel }: { user: User; vessel: Vessel|null }) {
     load()
   }, [user.id])
 
-  if (selected) return <MarinaChat marina={selected} user={user} profile={null} vessel={vessel} onBack={() => setSelected(null)} />
+  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} />
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
@@ -865,14 +1205,14 @@ function TabMessages({ user, vessel }: { user: User; vessel: Vessel|null }) {
           </div>
           <div style={{ fontSize:16, fontWeight:700, marginBottom:6 }}>No messages yet</div>
           <div style={{ fontSize:13, color:C.muted, lineHeight:1.6, maxWidth:260, margin:'0 auto' }}>
-            Message any marina from the Marinas tab — your threads will appear here.
+            Message any marina from the Marinas tab — your threads show up here.
           </div>
         </div>
       )}
       {!loading && threads.map(({ marina, last }, i) => (
         <button key={marina.id} onClick={() => setSelected(marina)}
           style={{ width:'100%', display:'flex', alignItems:'center', gap:14, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:18, padding:'14px 16px', marginBottom:10, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.05}s both` }}>
-          <div style={{ width:46, height:46, borderRadius:13, background:'rgba(77,214,200,0.15)', border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
+          <div style={{ width:46, height:46, borderRadius:13, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:15, fontWeight:700, marginBottom:3 }}>{marina.name}</div>
             <div style={{ fontSize:12, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last.body}</div>
@@ -884,22 +1224,45 @@ function TabMessages({ user, vessel }: { user: User; vessel: Vessel|null }) {
   )
 }
 
-// ─── TAB 4: Account ───────────────────────────────────────────────────────────
+// ─── TAB 4: Account ────────────────────────────────────────────────────────────
 function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   user:User; profile:Profile|null; vessel:Vessel|null; onSignOut:()=>void;
-  onProfileUpdated: (p: Profile) => void
+  onProfileUpdated:(p:Profile)=>void
 }) {
   const [editing, setEditing] = useState(false)
-  const [displayName, setDisplayName] = useState(profile?.display_name ?? '')
-  const [phone, setPhone] = useState(profile?.phone ?? '')
+  const [form, setForm] = useState({
+    first_name:        profile?.first_name ?? '',
+    last_name:         profile?.last_name ?? '',
+    phone:             profile?.phone ?? '',
+    address:           profile?.address ?? '',
+    address_city:      profile?.address_city ?? '',
+    address_state:     profile?.address_state ?? '',
+    address_zip:       profile?.address_zip ?? '',
+    emergency_contact: profile?.emergency_contact ?? '',
+    emergency_phone:   profile?.emergency_phone ?? '',
+  })
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
+  const [err,  setErr]  = useState('')
+
+  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
   async function saveProfile() {
+    if (!form.first_name.trim()) { setErr('First name is required'); return }
     setBusy(true); setErr('')
     const { data, error } = await supabase
       .from('boater_profiles')
-      .update({ display_name: displayName.trim() || null, phone: phone.trim() || null })
+      .update({
+        first_name:        form.first_name.trim(),
+        last_name:         form.last_name.trim() || null,
+        display_name:      `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
+        phone:             form.phone.trim() || null,
+        address:           form.address.trim() || null,
+        address_city:      form.address_city.trim() || null,
+        address_state:     form.address_state.trim() || null,
+        address_zip:       form.address_zip.trim() || null,
+        emergency_contact: form.emergency_contact.trim() || null,
+        emergency_phone:   form.emergency_phone.trim() || null,
+      })
       .eq('id', user.id)
       .select()
       .single()
@@ -909,23 +1272,28 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
     setEditing(false)
   }
 
+  const displayName = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Set your name' : 'Set your name'
+  const initials = displayName[0]?.toUpperCase() ?? 'U'
+
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
       <SectionTitle>Account</SectionTitle>
+
+      {/* Profile card */}
       <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:20, padding:20, marginBottom:14 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: editing ? 16 : 0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <div style={{ width:52, height:52, borderRadius:'50%', background:C.teal, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:800, color:C.navy, flexShrink:0 }}>
-              {(profile?.display_name ?? user.email ?? 'U')[0].toUpperCase()}
+              {initials}
             </div>
             <div>
-              <div style={{ fontSize:16, fontWeight:700, marginBottom:2 }}>{profile?.display_name ?? 'Set your name'}</div>
+              <div style={{ fontSize:16, fontWeight:700, marginBottom:2 }}>{displayName}</div>
               <div style={{ fontSize:13, color:C.muted }}>{user.email}</div>
               {profile?.phone && <div style={{ fontSize:12, color:C.muted2, marginTop:2 }}>{profile.phone}</div>}
             </div>
           </div>
           {!editing && (
-            <button onClick={() => setEditing(true)}
+            <button onClick={() => { setEditing(true); setForm({ first_name:profile?.first_name??'', last_name:profile?.last_name??'', phone:profile?.phone??'', address:profile?.address??'', address_city:profile?.address_city??'', address_state:profile?.address_state??'', address_zip:profile?.address_zip??'', emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'' }) }}
               style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
               Edit
             </button>
@@ -933,39 +1301,75 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
         </div>
 
         {editing && (
-          <div style={{ borderTop:`1px solid rgba(255,255,255,0.08)`, paddingTop:16, marginBottom:16 }}>
-            <FieldGroup label="Your name">
-              <Input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="e.g. Betty Johnson" autoFocus />
-            </FieldGroup>
+          <div style={{ borderTop:`1px solid rgba(255,255,255,0.08)`, paddingTop:16 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="First name">
+                <Input value={form.first_name} onChange={e => set('first_name', e.target.value)} autoFocus />
+              </FieldGroup>
+              <FieldGroup label="Last name">
+                <Input value={form.last_name} onChange={e => set('last_name', e.target.value)} />
+              </FieldGroup>
+            </div>
             <FieldGroup label="Mobile phone">
-              <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. (555) 867-5309" />
+              <Input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(555) 867-5309" />
             </FieldGroup>
+            <FormSectionLabel>Home Address</FormSectionLabel>
+            <FieldGroup label="Street">
+              <Input value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Harbor Dr" />
+            </FieldGroup>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 80px', gap:10 }}>
+              <FieldGroup label="City">
+                <Input value={form.address_city} onChange={e => set('address_city', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="State">
+                <Input value={form.address_state} onChange={e => set('address_state', e.target.value)} maxLength={2} />
+              </FieldGroup>
+              <FieldGroup label="ZIP">
+                <Input value={form.address_zip} onChange={e => set('address_zip', e.target.value)} />
+              </FieldGroup>
+            </div>
+            <FormSectionLabel>Emergency Contact</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Name">
+                <Input value={form.emergency_contact} onChange={e => set('emergency_contact', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Phone">
+                <Input type="tel" value={form.emergency_phone} onChange={e => set('emergency_phone', e.target.value)} />
+              </FieldGroup>
+            </div>
             {err && <ErrMsg>{err}</ErrMsg>}
             <div style={{ display:'flex', gap:8 }}>
               <PrimaryBtn onClick={saveProfile} loading={busy} style={{ flex:1 }}>Save</PrimaryBtn>
-              <button onClick={() => { setEditing(false); setErr(''); setDisplayName(profile?.display_name??''); setPhone(profile?.phone??'') }}
+              <button onClick={() => { setEditing(false); setErr('') }}
                 style={{ flex:1, padding:'15px', background:'transparent', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:14, color:C.muted, fontFamily:FONT, fontSize:14, cursor:'pointer' }}>
                 Cancel
               </button>
             </div>
           </div>
         )}
+      </div>
 
-        {vessel && (
-          <div style={{ background:'rgba(0,0,0,0.2)', borderRadius:12, padding:'12px 14px', marginBottom:14 }}>
-            <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Vessel</div>
-            <div style={{ fontSize:14, fontWeight:700 }}>{vessel.name} · {vessel.vessel_type}</div>
-            <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{vessel.length_ft}ft LOA · {vessel.shore_power} · {vessel.fuel_type}</div>
-          </div>
-        )}
-        <div style={{ background:'rgba(77,214,200,0.08)', border:`1px solid rgba(77,214,200,0.2)`, borderRadius:12, padding:'10px 14px' }}>
-          <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>Identity package</div>
-          <div style={{ fontSize:12, color:C.muted, lineHeight:1.6 }}>
-            Your vessel specs are sent to every marina you message — so they know who&apos;s coming and what slip to assign. You own your data.
+      {/* Vessel summary */}
+      {vessel && (
+        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'14px 16px', marginBottom:14 }}>
+          <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Vessel on file</div>
+          <div style={{ fontSize:14, fontWeight:700 }}>{vessel.name} · {vessel.vessel_type}</div>
+          <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
+            {[vessel.length_ft && `${vessel.length_ft}ft`, vessel.shore_power, vessel.fuel_type].filter(Boolean).join(' · ')}
           </div>
         </div>
+      )}
+
+      {/* Identity note */}
+      <div style={{ background:'rgba(77,214,200,0.06)', border:`1px solid rgba(77,214,200,0.15)`, borderRadius:14, padding:'12px 16px', marginBottom:20 }}>
+        <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Your identity package</div>
+        <div style={{ fontSize:12, color:C.muted, lineHeight:1.7 }}>
+          Your contact info and vessel specs are sent to every marina you message — so they know who&apos;s coming and what slip to assign. You own your data.
+        </div>
       </div>
-      <button onClick={onSignOut} style={{ width:'100%', padding:'14px', background:'transparent', border:`1px solid rgba(248,113,113,0.3)`, borderRadius:14, color:C.danger, fontFamily:FONT, fontSize:14, fontWeight:600, cursor:'pointer' }}>
+
+      <button onClick={onSignOut}
+        style={{ width:'100%', padding:'14px', background:'transparent', border:`1px solid rgba(248,113,113,0.3)`, borderRadius:14, color:C.danger, fontFamily:FONT, fontSize:14, fontWeight:600, cursor:'pointer' }}>
         Sign Out
       </button>
     </div>
@@ -991,13 +1395,12 @@ function PinPad({ value, onChange, max = 4, onFull }: { value:string; onChange:(
     if (next.length === max && onFull) onFull(next)
   }
   function del() { onChange(value.slice(0,-1)) }
-
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫']
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, maxWidth:280, margin:'0 auto' }}>
       {keys.map((k,i) => k === '' ? <div key={i} /> : (
         <button key={i} onClick={() => k==='⌫' ? del() : press(k)}
-          style={{ padding:'18px 0', background:k==='⌫'?'rgba(255,255,255,0.05)':C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, color:C.white, fontFamily:FONT, fontSize:k==='⌫'?22:20, fontWeight:700, cursor:'pointer', transition:'background 0.1s, transform 0.1s' }}
+          style={{ padding:'18px 0', background:k==='⌫'?'rgba(255,255,255,0.05)':C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, color:C.white, fontFamily:FONT, fontSize:k==='⌫'?22:20, fontWeight:700, cursor:'pointer' }}
           onMouseEnter={e => { e.currentTarget.style.background = C.tealDim }}
           onMouseLeave={e => { e.currentTarget.style.background = k==='⌫'?'rgba(255,255,255,0.05)':C.card }}>
           {k}
@@ -1007,14 +1410,13 @@ function PinPad({ value, onChange, max = 4, onFull }: { value:string; onChange:(
   )
 }
 
-// ─── Onboarding Shell ─────────────────────────────────────────────────────────
+// ─── Onboarding Shell ──────────────────────────────────────────────────────────
 function OnboardingShell({ step, total, title, subtitle, children }: { step:number; total:number; title:string; subtitle:string; children:React.ReactNode }) {
   return (
     <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased' }}>
       <style>{GLOBAL_CSS}</style>
       <div style={{ maxWidth:420, margin:'0 auto', padding:'0 20px 100px' }}>
         <div style={{ padding:'48px 0 24px', animation:'fadeUp 0.4s ease both' }}>
-          {/* Step indicator */}
           <div style={{ display:'flex', gap:6, marginBottom:20 }}>
             {Array.from({length:total},(_,i) => (
               <div key={i} style={{ height:3, flex:1, borderRadius:99, background: i < step ? C.teal : 'rgba(255,255,255,0.15)', transition:'background 0.3s' }} />
@@ -1026,6 +1428,15 @@ function OnboardingShell({ step, total, title, subtitle, children }: { step:numb
         </div>
         {children}
       </div>
+    </div>
+  )
+}
+
+// ─── Form Section Label ────────────────────────────────────────────────────────
+function FormSectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize:11, fontWeight:700, color:C.teal, textTransform:'uppercase', letterSpacing:1.5, marginTop:24, marginBottom:12, paddingBottom:8, borderBottom:`1px solid rgba(77,214,200,0.2)` }}>
+      {children}
     </div>
   )
 }
@@ -1048,8 +1459,8 @@ function IcoAcct({ active }: { active: boolean }) {
   return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8" fill={active?'rgba(77,214,200,0.1)':'none'}/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
 }
 
-// ─── Shared UI Primitives ─────────────────────────────────────────────────────
-const Input = ({ style, ...p }: React.InputHTMLAttributes<HTMLInputElement> & { ref?: React.Ref<HTMLInputElement> }) => (
+// ─── Shared UI Primitives ──────────────────────────────────────────────────────
+const Input = ({ style, ...p }: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input style={{ width:'100%', padding:'14px 15px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:14, color:C.white, fontSize:15, fontFamily:FONT, outline:'none', ...style }} {...p} />
 )
 const SelectInput = ({ style, ...p }: React.SelectHTMLAttributes<HTMLSelectElement>) => (
