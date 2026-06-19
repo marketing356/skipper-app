@@ -40,7 +40,7 @@ const GLOBAL_CSS = `
 `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Screen = 'splash' | 'auth' | 'magic_link_sent' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
+type Screen = 'splash' | 'auth' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
 type HomeTab = 'vessel' | 'marinas' | 'messages' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
@@ -226,57 +226,20 @@ export default function SkipperApp() {
     const storedUserId = localStorage.getItem('skipper_user_id') ?? ''
     setSavedEmail(storedEmail)
 
-    async function init() {
-      const { data } = await supabase.auth.getSession()
-      let u = data.session?.user ?? null
-
-      if (!u) {
-        // Try explicit refresh before giving up — covers most token-expired cases
-        const { data: refreshed } = await supabase.auth.refreshSession()
-        u = refreshed.session?.user ?? null
-      }
-
-      if (!u) {
-        // Find userId: prefer explicit key, fall back to scanning for any skipper_pin_* entry
-        // (old-code users never had skipper_user_id set, but do have skipper_pin_${id})
-        let resolvedUid = storedUserId
-        if (!resolvedUid) {
-          for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i)
-            if (k?.startsWith('skipper_pin_')) {
-              resolvedUid = k.slice('skipper_pin_'.length)
-              localStorage.setItem('skipper_user_id', resolvedUid) // backfill for next time
-              break
-            }
-          }
-        }
-        if (resolvedUid && localStorage.getItem(`skipper_pin_${resolvedUid}`)) {
-          setUser({ id: resolvedUid, email: storedEmail } as User)
-          setScreen('pin_login')
-          return
-        }
-        setScreen('auth')
-        return
-      }
-
-      setUser(u)
-      await routeAfterAuth(u)
+    if (!storedUserId) {
+      setScreen('auth')
+      return
     }
-    init()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user)
-      } else {
-        // Don't force to auth if the user has a local PIN — let them re-verify with PIN
-        const uid = localStorage.getItem('skipper_user_id') ?? ''
-        if (!uid || !localStorage.getItem(`skipper_pin_${uid}`)) {
-          setScreen('auth')
-          setUser(null)
-        }
-      }
-    })
-    return () => subscription.unsubscribe()
+    const fakeUser = { id: storedUserId, email: storedEmail } as User
+    setUser(fakeUser)
+
+    if (localStorage.getItem(`skipper_pin_${storedUserId}`)) {
+      setScreen('pin_login')
+    } else {
+      routeAfterAuth(fakeUser)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function routeAfterAuth(u: User) {
@@ -316,12 +279,12 @@ export default function SkipperApp() {
 
   function handleSignOut() {
     const uid = user?.id ?? localStorage.getItem('skipper_user_id') ?? ''
-    supabase.auth.signOut()
     if (uid) {
       localStorage.removeItem(`skipper_unlocked_${uid}`)
       localStorage.removeItem(`skipper_pin_${uid}`)
     }
     localStorage.removeItem('skipper_user_id')
+    localStorage.removeItem('skipper_email')
     setUser(null); setProfile(null); setVessel(null)
     setScreen('auth')
   }
@@ -329,20 +292,16 @@ export default function SkipperApp() {
   // ── Splash ──
   if (screen === 'splash') return <SplashScreen />
 
-  // ── Auth / Magic Link ──
-  if (screen === 'auth' || screen === 'magic_link_sent') return (
+  // ── Auth ──
+  if (screen === 'auth') return (
     <AuthScreen
-      screen={screen}
       savedEmail={savedEmail}
-      onLinkSent={(email) => { setSavedEmail(email); setScreen('magic_link_sent') }}
       onAuthed={async (u, email) => {
         localStorage.setItem('skipper_email', email)
         localStorage.setItem('skipper_user_id', u.id)
-        localStorage.setItem(`skipper_unlocked_${u.id}`, '1')
         setUser(u)
         await routeAfterAuth(u)
       }}
-      onBackToEmail={() => setScreen('auth')}
     />
   )
 
@@ -373,13 +332,9 @@ export default function SkipperApp() {
     <PinLoginScreen
       user={user!}
       email={savedEmail || user?.email || ''}
-      onUnlock={async (authedUser?: User) => {
-        const uid = authedUser?.id ?? user!.id
-        localStorage.setItem(`skipper_unlocked_${uid}`, '1')
-        // If PIN was verified while session was expired, restore profile + route properly
-        if (authedUser && authedUser.id !== user?.id) setUser(authedUser)
-        if (authedUser) await routeAfterAuth(authedUser)
-        else setScreen('home')
+      onUnlock={() => {
+        localStorage.setItem(`skipper_unlocked_${user!.id}`, '1')
+        setScreen('home')
       }}
       onForgotPin={() => setScreen('auth')}
     />
@@ -414,43 +369,47 @@ function SplashScreen() {
   )
 }
 
-// ─── Auth (email → magic link, no OTP code entry) ────────────────────────────
-function AuthScreen({ screen, savedEmail, onLinkSent, onAuthed, onBackToEmail }: {
-  screen: 'auth' | 'magic_link_sent'
+// ─── Auth (email only — no OTP, no magic link) ────────────────────────────────
+function AuthScreen({ savedEmail, onAuthed }: {
   savedEmail: string
-  onLinkSent: (email: string) => void
   onAuthed: (u: User, email: string) => void
-  onBackToEmail: () => void
 }) {
   const [email, setEmail] = useState(savedEmail)
   const [busy,  setBusy]  = useState(false)
   const [err,   setErr]   = useState('')
-  const [resent, setResent] = useState(false)
 
-  // Auto-detect when Supabase processes the magic link
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user && screen === 'magic_link_sent') {
-        onAuthed(session.user, session.user.email ?? savedEmail)
-      }
-    })
-    return () => subscription.unsubscribe()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen])
-
-  async function sendLink() {
-    if (!email.trim()) { setErr('Enter your email'); return }
+  async function submit() {
+    const clean = email.trim().toLowerCase()
+    if (!clean || !clean.includes('@')) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: 'https://app.ayeayeskipper.com',
-      }
-    })
+
+    // Look up existing national-pool contact
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id, auth_user_id')
+      .eq('email', clean)
+      .is('marina_id', null)
+      .maybeSingle()
+
+    let authUserId = contact?.auth_user_id as string | null
+
+    if (!contact) {
+      // Brand-new boater — create national-pool row
+      const newId = crypto.randomUUID()
+      const { error } = await supabase
+        .from('contacts')
+        .insert({ auth_user_id: newId, email: clean })
+      if (error) { setBusy(false); setErr(error.message); return }
+      authUserId = newId
+    } else if (!authUserId) {
+      // Marina-added contact without auth — link a new UUID
+      const newId = crypto.randomUUID()
+      await supabase.from('contacts').update({ auth_user_id: newId }).eq('id', contact.id)
+      authUserId = newId
+    }
+
     setBusy(false)
-    if (error) { setErr(error.message); return }
-    onLinkSent(email.trim().toLowerCase())
+    onAuthed({ id: authUserId!, email: clean } as User, clean)
   }
 
   return (
@@ -461,52 +420,21 @@ function AuthScreen({ screen, savedEmail, onLinkSent, onAuthed, onBackToEmail }:
           <div style={{ width:64, height:64, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, marginBottom:20, animation:'glow 4s ease-in-out infinite' }}>
             <Image src="/skipper-avatar.jpg" alt="Skipper" width={64} height={64} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
           </div>
-          <h1 style={{ fontSize:28, fontWeight:800, margin:'0 0 8px', letterSpacing:-0.5, lineHeight:1.15 }}>
-            {screen === 'auth' ? 'Welcome aboard.' : 'Check your email.'}
-          </h1>
+          <h1 style={{ fontSize:28, fontWeight:800, margin:'0 0 8px', letterSpacing:-0.5, lineHeight:1.15 }}>Welcome aboard.</h1>
           <p style={{ fontSize:14, color:C.muted, margin:0, lineHeight:1.6 }}>
-            {screen === 'auth'
-              ? 'Your marina, your slip, everything in one place.'
-              : <><span>We sent a sign-in link to</span><br/><strong style={{ color:C.white }}>{email || savedEmail}</strong><br/><span style={{fontSize:12}}>Tap the link to sign in — no code needed.</span></>}
+            Your marina, your slip, everything in one place.
           </p>
         </div>
-
         <div style={{ animation:'fadeUp 0.4s ease 0.1s both' }}>
-          {screen === 'auth' ? (
-            <>
-              <FieldGroup label="Email address">
-                <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com" onKeyDown={e => e.key==='Enter' && sendLink()} autoFocus />
-              </FieldGroup>
-              {err && <ErrMsg>{err}</ErrMsg>}
-              <PrimaryBtn onClick={sendLink} loading={busy} style={{ marginTop:8 }}>Send Sign-In Link →</PrimaryBtn>
-              <p style={{ fontSize:12, color:C.muted2, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
-                New here? Just enter your email — we&apos;ll set up your account.
-              </p>
-            </>
-          ) : (
-            <>
-              <div style={{ textAlign:'center', padding:'20px 0' }}>
-                <div style={{ fontSize:48, marginBottom:16 }}>✉️</div>
-                <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7 }}>
-                  Open your email and tap the sign-in link.<br/>This page will update automatically.
-                </div>
-              </div>
-              <div style={{ textAlign:'center', display:'flex', flexDirection:'column', gap:12, marginTop:8 }}>
-                {resent
-                  ? <span style={{ fontSize:13, color:C.green }}>✓ New link sent</span>
-                  : <button onClick={async () => { setResent(false); setBusy(true); await supabase.auth.signInWithOtp({ email: email||savedEmail, options:{ shouldCreateUser:true, emailRedirectTo:'https://app.ayeayeskipper.com' } }); setBusy(false); setResent(true) }}
-                      style={{ background:'none', border:'none', color:C.muted2, fontSize:13, cursor:'pointer', fontFamily:FONT }}>
-                      {busy ? 'Sending…' : 'Resend link'}
-                    </button>
-                }
-                <button onClick={onBackToEmail}
-                  style={{ background:'none', border:'none', color:C.muted2, fontSize:13, cursor:'pointer', fontFamily:FONT }}>
-                  ← Use a different email
-                </button>
-              </div>
-            </>
-          )}
+          <FieldGroup label="Email address">
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="you@example.com" onKeyDown={e => e.key==='Enter' && submit()} autoFocus />
+          </FieldGroup>
+          {err && <ErrMsg>{err}</ErrMsg>}
+          <PrimaryBtn onClick={submit} loading={busy} style={{ marginTop:8 }}>Continue →</PrimaryBtn>
+          <p style={{ fontSize:12, color:C.muted2, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
+            New here? Just enter your email — we&apos;ll set up your account.
+          </p>
         </div>
       </div>
     </div>
@@ -701,87 +629,32 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
 // ─── PIN Login (returning user) ────────────────────────────────────────────────
 function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
   user: User; email: string
-  onUnlock: (authedUser?: User) => void
+  onUnlock: () => void
   onForgotPin: () => void
 }) {
-  const [pin,        setPin]        = useState('')
-  const [shake,      setShake]      = useState(false)
-  const [err,        setErr]        = useState('')
-  const [busy,       setBusy]       = useState(false)
-  const [reauthing,  setReauthing]  = useState(false)
-  const [reauthOtp,  setReauthOtp]  = useState('')
-  const [reauthErr,  setReauthErr]  = useState('')
+  const [pin,   setPin]   = useState('')
+  const [shake, setShake] = useState(false)
+  const [err,   setErr]   = useState('')
+  const [busy,  setBusy]  = useState(false)
 
   async function verify(p: string) {
     setBusy(true)
     const hash = await hashPin(p)
-    // Fast path: local cache
     const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
     let match = localHash ? hash === localHash : false
-    // Fallback: DB (only if we have a valid session)
     if (!match) {
       const { data } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).single()
       match = !!data?.pin_hash && data.pin_hash === hash
       if (match && data?.pin_hash) localStorage.setItem(`skipper_pin_${user.id}`, data.pin_hash)
     }
+    setBusy(false)
     if (!match) {
-      setBusy(false)
-      setPin('')
-      setErr('Wrong PIN')
-      setShake(true)
+      setPin(''); setErr('Wrong PIN'); setShake(true)
       setTimeout(() => setShake(false), 600)
       return
     }
-    // PIN correct — check if session is alive
-    const { data: sessionData } = await supabase.auth.getSession()
-    if (sessionData.session?.user) {
-      setBusy(false)
-      onUnlock(sessionData.session.user)
-      return
-    }
-    // No session — try silent refresh
-    const { data: refreshed } = await supabase.auth.refreshSession()
-    if (refreshed.session?.user) {
-      setBusy(false)
-      onUnlock(refreshed.session.user)
-      return
-    }
-    // Session fully expired — send OTP silently, ask user to enter code once
-    await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
-    setBusy(false)
-    setReauthing(true)
+    onUnlock()
   }
-
-  async function completeReauth() {
-    if (reauthOtp.length < 6) { setReauthErr('Enter the 6-digit code'); return }
-    setBusy(true); setReauthErr('')
-    const { data, error } = await supabase.auth.verifyOtp({
-      email, token: reauthOtp.trim(), type: 'email'
-    })
-    setBusy(false)
-    if (error || !data.user) { setReauthErr('Invalid code — check your email'); return }
-    onUnlock(data.user)
-  }
-
-  if (reauthing) return (
-    <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
-      <style>{GLOBAL_CSS}</style>
-      <div style={{ width:'100%', maxWidth:360 }}>
-        <div style={{ textAlign:'center', marginBottom:32 }}>
-          <div style={{ fontSize:18, fontWeight:800, marginBottom:8 }}>One quick re-verify</div>
-          <div style={{ fontSize:13, color:C.muted, lineHeight:1.6 }}>It’s been a while. We sent a code to<br/><strong style={{ color:C.white }}>{email}</strong></div>
-        </div>
-        <div style={{ marginBottom:16 }}>
-          <Label>6-digit code</Label>
-          <Input type="text" inputMode="numeric" value={reauthOtp} onChange={e => setReauthOtp(e.target.value.replace(/\D/g,'').slice(0,6))}
-            placeholder="000000" autoFocus onKeyDown={e => e.key==='Enter' && completeReauth()} />
-        </div>
-        {reauthErr && <ErrMsg>{reauthErr}</ErrMsg>}
-        <PrimaryBtn onClick={completeReauth} loading={busy} style={{ marginTop:8 }}>Verify →</PrimaryBtn>
-        <button onClick={() => setReauthing(false)} style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:16, display:'block', width:'100%', textAlign:'center' }}>Back</button>
-      </div>
-    </div>
-  )
 
   return (
     <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
@@ -800,7 +673,7 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
         {busy && <div style={{ marginTop:12 }}><Spinner /></div>}
         <button onClick={onForgotPin}
           style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
-          Forgot PIN? Sign in with email →
+          Not you? Use a different email →
         </button>
       </div>
     </div>
