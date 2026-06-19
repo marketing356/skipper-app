@@ -51,6 +51,7 @@ type Profile = {
   email: string | null
   display_name: string | null
   phone: string | null
+  mobile: string | null
   avatar_url: string | null
   pin_hash: string | null
   onboarding_complete: boolean
@@ -109,6 +110,13 @@ type Vessel = {
   last_survey_date: string | null
   photo_url: string | null
   notes: string | null
+  doc_registration: boolean | null
+  doc_insurance_cert: boolean | null
+  doc_signed_contract: boolean | null
+  doc_photo_id: boolean | null
+  liveaboard: boolean | null
+  pet_on_board: boolean | null
+  parking_permit: string | null
 }
 
 type MsgRow = { id:string; body:string; direction:string; inserted_at:string; marina_id:string }
@@ -198,13 +206,14 @@ export default function SkipperApp() {
       .eq('id', u.id)
       .maybeSingle()
 
-    // New user — create bare row
+    // New user — upsert bare row (guarantees FK always satisfied)
     if (!prof) {
-      const { data: newProf } = await supabase
+      const { data: newProf, error: upsertErr } = await supabase
         .from('boater_profiles')
-        .insert({ id: u.id, email: u.email ?? null, onboarding_complete: false })
+        .upsert({ id: u.id, email: u.email ?? null, onboarding_complete: false }, { onConflict: 'id' })
         .select()
         .single()
+      if (upsertErr) console.error('[Skipper] profile upsert:', upsertErr.message)
       prof = newProf
     }
 
@@ -449,10 +458,15 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
 function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: Profile) => void }) {
   const [firstName,   setFirstName]   = useState('')
   const [lastName,    setLastName]    = useState('')
-  const [phone,       setPhone]       = useState('')
+  const [mobile,      setMobile]      = useState('')
+  const [title,       setTitle]       = useState('')
+  const [dob,         setDob]         = useState('')
+  const [dlNum,       setDlNum]       = useState('')
+  const [prefContact, setPrefContact] = useState('')
+  const [language,    setLanguage]    = useState('en')
   const [address,     setAddress]     = useState('')
   const [city,        setCity]        = useState('')
-  const [state,       setState]       = useState('')
+  const [addrState,   setAddrState]   = useState('')
   const [zip,         setZip]         = useState('')
   const [emergName,   setEmergName]   = useState('')
   const [emergPhone,  setEmergPhone]  = useState('')
@@ -466,27 +480,33 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
 
     const { data, error } = await supabase
       .from('boater_profiles')
-      .update({
-        first_name:        firstName.trim(),
-        last_name:         lastName.trim(),
-        display_name:      `${firstName.trim()} ${lastName.trim()}`,
-        email:             user.email ?? null,
-        phone:             phone.trim() || null,
-        address:           address.trim() || null,
-        address_city:      city.trim() || null,
-        address_state:     state.trim() || null,
-        address_zip:       zip.trim() || null,
-        emergency_contact: emergName.trim() || null,
-        emergency_phone:   emergPhone.trim() || null,
-      })
-      .eq('id', user.id)
+      .upsert({
+        id:                        user.id,
+        email:                     user.email ?? null,
+        first_name:                firstName.trim(),
+        last_name:                 lastName.trim(),
+        display_name:              `${firstName.trim()} ${lastName.trim()}`,
+        phone:                     mobile.trim() || null,
+        mobile:                    mobile.trim() || null,
+        title:                     title || null,
+        date_of_birth:             dob || null,
+        driver_license_number:     dlNum.trim() || null,
+        preferred_contact_method:  prefContact || null,
+        language_preference:       language || 'en',
+        address:                   address.trim() || null,
+        address_city:              city.trim() || null,
+        address_state:             addrState.trim() || null,
+        address_zip:               zip.trim() || null,
+        emergency_contact:         emergName.trim() || null,
+        emergency_phone:           emergPhone.trim() || null,
+        onboarding_complete:       false,
+      }, { onConflict: 'id' })
       .select()
       .single()
 
     setBusy(false)
     if (error) { setErr(error.message); return }
 
-    // Request notification permission — system prompt fires automatically
     if (typeof window !== 'undefined' && 'Notification' in window) {
       Notification.requestPermission().catch(() => {})
     }
@@ -497,16 +517,51 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
   return (
     <OnboardingShell step={1} total={2} title="About you" subtitle="Your marina needs this on file. You'll only do this once.">
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="First name">
+        <FieldGroup label="First name *">
           <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Jane" autoFocus />
         </FieldGroup>
-        <FieldGroup label="Last name">
+        <FieldGroup label="Last name *">
           <Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" />
         </FieldGroup>
       </div>
 
+      <FieldGroup label="Email">
+        <Input type="email" value={user.email ?? ''} readOnly style={{ opacity:0.6, cursor:'default' }} />
+      </FieldGroup>
       <FieldGroup label="Mobile phone">
-        <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 867-5309" />
+        <Input type="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="(555) 867-5309" />
+      </FieldGroup>
+
+      <FormSectionLabel>ID &amp; Preferences</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="Title">
+          <SelectInput value={title} onChange={e => setTitle(e.target.value)}>
+            <option value="">Select…</option>
+            {['Mr.','Mrs.','Ms.','Dr.','Capt.','Other'].map(v => <option key={v}>{v}</option>)}
+          </SelectInput>
+        </FieldGroup>
+        <FieldGroup label="Date of Birth">
+          <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Driver License #">
+          <Input value={dlNum} onChange={e => setDlNum(e.target.value)} placeholder="DL12345678" />
+        </FieldGroup>
+        <FieldGroup label="Preferred Contact">
+          <SelectInput value={prefContact} onChange={e => setPrefContact(e.target.value)}>
+            <option value="">Select…</option>
+            {['email','sms','phone','app'].map(v => <option key={v} value={v}>{v.toUpperCase()}</option>)}
+          </SelectInput>
+        </FieldGroup>
+      </div>
+      <FieldGroup label="Language">
+        <SelectInput value={language} onChange={e => setLanguage(e.target.value)}>
+          <option value="en">English</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="pt">Português</option>
+          <option value="zh">中文</option>
+          <option value="other">Other</option>
+        </SelectInput>
       </FieldGroup>
 
       <FormSectionLabel>Home Address</FormSectionLabel>
@@ -518,7 +573,7 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
           <Input value={city} onChange={e => setCity(e.target.value)} placeholder="Newport" />
         </FieldGroup>
         <FieldGroup label="State">
-          <Input value={state} onChange={e => setState(e.target.value)} placeholder="RI" maxLength={2} />
+          <Input value={addrState} onChange={e => setAddrState(e.target.value)} placeholder="RI" maxLength={2} />
         </FieldGroup>
         <FieldGroup label="ZIP">
           <Input value={zip} onChange={e => setZip(e.target.value)} placeholder="02840" />
@@ -762,6 +817,15 @@ function TabVessel({ vessel, user, onVesselSaved }: {
   const [form, setForm] = useState<Record<string,string>>(blank)
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
+  // Doc / flag fields (match Helm boat tab)
+  const [docRegistration,   setDocRegistration]   = useState(false)
+  const [docInsuranceCert,  setDocInsuranceCert]  = useState(false)
+  const [docSignedContract, setDocSignedContract] = useState(false)
+  const [docPhotoId,        setDocPhotoId]        = useState(false)
+  const [isLiveaboard,      setIsLiveaboard]      = useState(false)
+  const [petOnBoard,        setPetOnBoard]        = useState(false)
+  const [parkingPermit,     setParkingPermit]     = useState('')
+
   function openEdit() {
     if (vessel) {
       setForm({
@@ -802,8 +866,18 @@ function TabVessel({ vessel, user, onVesselSaved }: {
         photo_url: vessel.photo_url ?? '',
         notes: vessel.notes ?? '',
       })
+      setDocRegistration(vessel.doc_registration ?? false)
+      setDocInsuranceCert(vessel.doc_insurance_cert ?? false)
+      setDocSignedContract(vessel.doc_signed_contract ?? false)
+      setDocPhotoId(vessel.doc_photo_id ?? false)
+      setIsLiveaboard(vessel.liveaboard ?? false)
+      setPetOnBoard(vessel.pet_on_board ?? false)
+      setParkingPermit(vessel.parking_permit ?? '')
     } else {
       setForm(blank)
+      setDocRegistration(false); setDocInsuranceCert(false)
+      setDocSignedContract(false); setDocPhotoId(false)
+      setIsLiveaboard(false); setPetOnBoard(false); setParkingPermit('')
     }
     setErr('')
     setShowForm(true)
@@ -859,6 +933,13 @@ function TabVessel({ vessel, user, onVesselSaved }: {
       last_survey_date:     form.last_survey_date || null,
       photo_url:            form.photo_url.trim() || null,
       notes:                form.notes.trim() || null,
+      doc_registration:     docRegistration,
+      doc_insurance_cert:   docInsuranceCert,
+      doc_signed_contract:  docSignedContract,
+      doc_photo_id:         docPhotoId,
+      liveaboard:           isLiveaboard,
+      pet_on_board:         petOnBoard,
+      parking_permit:       parkingPermit.trim() || null,
       updated_at:           new Date().toISOString(),
     }
 
@@ -1031,6 +1112,39 @@ function TabVessel({ vessel, user, onVesselSaved }: {
         <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
           placeholder="Anything the marina should know…"
           style={{ width:'100%', padding:'14px 15px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:14, color:C.white, fontSize:15, fontFamily:FONT, outline:'none' }} />
+      </FieldGroup>
+
+      <FormSectionLabel>Documents on File</FormSectionLabel>
+      <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:8 }}>
+        {([
+          ['Boat Registration',  docRegistration,   setDocRegistration],
+          ['Insurance Cert',     docInsuranceCert,  setDocInsuranceCert],
+          ['Signed Contract',    docSignedContract, setDocSignedContract],
+          ['Photo ID',           docPhotoId,        setDocPhotoId],
+        ] as [string, boolean, (v:boolean)=>void][]).map(([label, val, setter]) => (
+          <label key={label} style={{ display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+            <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)}
+              style={{ width:18, height:18, accentColor:C.teal, cursor:'pointer' }} />
+            <span style={{ fontSize:14, color:C.white }}>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      <FormSectionLabel>On Board</FormSectionLabel>
+      <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:8 }}>
+        {([
+          ['Liveaboard',   isLiveaboard, setIsLiveaboard],
+          ['Pet on Board', petOnBoard,   setPetOnBoard],
+        ] as [string, boolean, (v:boolean)=>void][]).map(([label, val, setter]) => (
+          <label key={label} style={{ display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+            <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)}
+              style={{ width:18, height:18, accentColor:C.teal, cursor:'pointer' }} />
+            <span style={{ fontSize:14, color:C.white }}>{label}</span>
+          </label>
+        ))}
+      </div>
+      <FieldGroup label="Parking Permit #">
+        <Input value={parkingPermit} onChange={e => setParkingPermit(e.target.value)} placeholder="Optional" />
       </FieldGroup>
 
       {err && <ErrMsg>{err}</ErrMsg>}
@@ -1384,6 +1498,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
     first_name:               profile?.first_name ?? '',
     last_name:                profile?.last_name ?? '',
     phone:                    profile?.phone ?? '',
+    mobile:                   profile?.mobile ?? '',
     address:                  profile?.address ?? '',
     address_city:             profile?.address_city ?? '',
     address_state:            profile?.address_state ?? '',
@@ -1448,6 +1563,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
         last_name:                form.last_name.trim() || null,
         display_name:             `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
         phone:                    form.phone.trim() || null,
+        mobile:                   form.mobile.trim() || null,
         address:                  form.address.trim() || null,
         address_city:             form.address_city.trim() || null,
         address_state:            form.address_state.trim() || null,
@@ -1490,7 +1606,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
             </div>
           </div>
           {!editing && (
-            <button onClick={() => { setEditing(true); setForm({ first_name:profile?.first_name??'', last_name:profile?.last_name??'', phone:profile?.phone??'', address:profile?.address??'', address_city:profile?.address_city??'', address_state:profile?.address_state??'', address_zip:profile?.address_zip??'', emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'', title:profile?.title??'', date_of_birth:profile?.date_of_birth??'', driver_license_number:profile?.driver_license_number??'', preferred_contact_method:profile?.preferred_contact_method??'', language_preference:profile?.language_preference??'en' }); setErr('') }}
+            <button onClick={() => { setEditing(true); setForm({ first_name:profile?.first_name??'', last_name:profile?.last_name??'', phone:profile?.phone??'', mobile:profile?.mobile??'', address:profile?.address??'', address_city:profile?.address_city??'', address_state:profile?.address_state??'', address_zip:profile?.address_zip??'', emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'', title:profile?.title??'', date_of_birth:profile?.date_of_birth??'', driver_license_number:profile?.driver_license_number??'', preferred_contact_method:profile?.preferred_contact_method??'', language_preference:profile?.language_preference??'en' }); setErr('') }}
               style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
               Edit
             </button>
@@ -1509,6 +1625,9 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
             </div>
             <FieldGroup label="Mobile phone">
               <Input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(555) 867-5309" />
+            </FieldGroup>
+            <FieldGroup label="Mobile (alt)">
+              <Input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="(555) 000-0000" />
             </FieldGroup>
             <FormSectionLabel>Home Address</FormSectionLabel>
             <FieldGroup label="Street">
