@@ -130,7 +130,19 @@ export default function SkipperApp() {
 
     supabase.auth.getSession().then(async ({ data }) => {
       const u = data.session?.user ?? null
-      if (!u) { setScreen('auth'); return }
+      if (!u) {
+        // Session expired — if we have a saved email, auto-send OTP and skip to code entry
+        if (storedEmail) {
+          supabase.auth.signInWithOtp({
+            email: storedEmail,
+            options: { shouldCreateUser: true },
+          })
+          setScreen('otp')  // jump straight to code entry — skip email input step
+        } else {
+          setScreen('auth')
+        }
+        return
+      }
       setUser(u)
       await routeAfterAuth(u)
     })
@@ -336,7 +348,11 @@ function AuthScreen({ screen, savedEmail, onOtpSent, onAuthed, onBackToEmail }: 
           <p style={{ fontSize:14, color:C.muted, margin:0, lineHeight:1.6 }}>
             {screen === 'auth'
               ? 'Your marina, your slip, everything in one place.'
-              : <>We sent a 6-digit code to<br/><strong style={{ color:C.white }}>{email}</strong></>}
+              : <>
+                  {savedEmail
+                    ? <>Session expired — we sent a new code to<br/><strong style={{ color:C.white }}>{email || savedEmail}</strong></>
+                    : <>We sent a 6-digit code to<br/><strong style={{ color:C.white }}>{email}</strong></>}
+                </>}
           </p>
         </div>
 
