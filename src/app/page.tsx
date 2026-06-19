@@ -1369,7 +1369,11 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   user:User; profile:Profile|null; vessel:Vessel|null; onSignOut:()=>void;
   onProfileUpdated:(p:Profile)=>void
 }) {
-  const [editing, setEditing] = useState(false)
+  const [editing,      setEditing]      = useState(false)
+  const [changingEmail,setChangingEmail] = useState(false)
+  const [newEmail,     setNewEmail]      = useState('')
+  const [emailMsg,     setEmailMsg]      = useState('')
+  const [emailBusy,    setEmailBusy]     = useState(false)
   const [form, setForm] = useState({
     first_name:               profile?.first_name ?? '',
     last_name:                profile?.last_name ?? '',
@@ -1390,6 +1394,16 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   const [err,  setErr]  = useState('')
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function requestEmailChange() {
+    if (!newEmail.trim() || !newEmail.includes('@')) { setEmailMsg('Enter a valid email'); return }
+    setEmailBusy(true); setEmailMsg('')
+    const { error } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() })
+    setEmailBusy(false)
+    if (error) { setEmailMsg(error.message); return }
+    setEmailMsg('✓ Confirmation sent to both emails. Click the link to confirm the change.')
+    setNewEmail('')
+  }
 
   async function saveProfile() {
     if (!form.first_name.trim()) { setErr('First name is required'); return }
@@ -1516,6 +1530,36 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
                 <option value="pt">Português</option>
               </SelectInput>
             </FieldGroup>
+
+            {/* Email change section */}
+            <FormSectionLabel>Login Email</FormSectionLabel>
+            <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Current email</div>
+              <div style={{ fontSize:14, fontWeight:600, color:C.white, marginBottom:10 }}>{user.email}</div>
+              {!changingEmail ? (
+                <button onClick={() => { setChangingEmail(true); setEmailMsg('') }}
+                  style={{ background:'none', border:`1px solid rgba(255,255,255,0.15)`, borderRadius:8, padding:'6px 12px', color:C.muted, fontFamily:FONT, fontSize:12, cursor:'pointer' }}>
+                  Change email
+                </button>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  <Input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                    placeholder="New email address" autoFocus />
+                  {emailMsg && <div style={{ fontSize:12, color: emailMsg.startsWith('✓') ? C.green : C.danger, lineHeight:1.5 }}>{emailMsg}</div>}
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={requestEmailChange} disabled={emailBusy}
+                      style={{ flex:1, padding:'10px', background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontFamily:FONT, fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                      {emailBusy ? 'Sending…' : 'Send confirmation'}
+                    </button>
+                    <button onClick={() => { setChangingEmail(false); setEmailMsg(''); setNewEmail('') }}
+                      style={{ padding:'10px 14px', background:'none', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:10, color:C.muted, fontFamily:FONT, fontSize:13, cursor:'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {err && <ErrMsg>{err}</ErrMsg>}
             <div style={{ display:'flex', gap:8 }}>
               <PrimaryBtn onClick={saveProfile} loading={busy} style={{ flex:1 }}>Save</PrimaryBtn>
