@@ -1374,6 +1374,12 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   const [newEmail,     setNewEmail]      = useState('')
   const [emailMsg,     setEmailMsg]      = useState('')
   const [emailBusy,    setEmailBusy]     = useState(false)
+  const [changingPin,  setChangingPin]   = useState(false)
+  const [pinStep,      setPinStep]       = useState<'verify'|'new'|'confirm'>('verify')
+  const [pinVal,       setPinVal]        = useState('')
+  const [pinFirst,     setPinFirst]      = useState('')
+  const [pinErr,       setPinErr]        = useState('')
+  const [pinBusy,      setPinBusy]       = useState(false)
   const [form, setForm] = useState({
     first_name:               profile?.first_name ?? '',
     last_name:                profile?.last_name ?? '',
@@ -1394,6 +1400,33 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   const [err,  setErr]  = useState('')
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  async function handlePinChange(p: string) {
+    if (pinStep === 'verify') {
+      setPinBusy(true)
+      const hash = await hashPin(p)
+      const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
+      let match = localHash ? hash === localHash : false
+      if (!match) {
+        const { data } = await supabase.from('boater_profiles').select('pin_hash').eq('id', user.id).single()
+        match = !!data?.pin_hash && data.pin_hash === hash
+      }
+      setPinBusy(false)
+      if (!match) { setPinErr('Wrong PIN — try again'); setPinVal(''); return }
+      setPinErr(''); setPinStep('new'); setPinVal('')
+    } else if (pinStep === 'new') {
+      setPinFirst(p); setPinStep('confirm'); setPinVal('')
+    } else {
+      if (p !== pinFirst) { setPinErr("PINs don't match"); setPinStep('new'); setPinVal(''); setPinFirst(''); return }
+      setPinBusy(true)
+      const hash = await hashPin(p)
+      const { error } = await supabase.from('boater_profiles').update({ pin_hash: hash }).eq('id', user.id)
+      setPinBusy(false)
+      if (error) { setPinErr(error.message); return }
+      localStorage.setItem(`skipper_pin_${user.id}`, hash)
+      setChangingPin(false); setPinStep('verify'); setPinVal(''); setPinFirst(''); setPinErr('')
+    }
+  }
 
   async function requestEmailChange() {
     if (!newEmail.trim() || !newEmail.includes('@')) { setEmailMsg('Enter a valid email'); return }
@@ -1590,6 +1623,31 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
           Your contact info and vessel specs are sent to every marina you message — so they know who&apos;s coming and what slip to assign. You own your data.
         </div>
       </div>
+
+      {/* Change PIN */}
+      {!changingPin ? (
+        <button onClick={() => { setChangingPin(true); setPinStep('verify'); setPinVal(''); setPinErr('') }}
+          style={{ width:'100%', padding:'14px', background:'transparent', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:14, color:C.muted, fontFamily:FONT, fontSize:14, fontWeight:600, cursor:'pointer', marginBottom:10 }}>
+          🔒 Change PIN
+        </button>
+      ) : (
+        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'20px 16px', marginBottom:10, textAlign:'center' }}>
+          <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>
+            {pinStep==='verify' ? 'Enter current PIN' : pinStep==='new' ? 'Enter new PIN' : 'Confirm new PIN'}
+          </div>
+          <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
+            {pinStep==='verify' ? 'Verify your identity first' : pinStep==='new' ? 'Choose a new 4-digit PIN' : 'Enter it again to confirm'}
+          </div>
+          <PinDots value={pinVal} />
+          <PinPad value={pinVal} onChange={v => { setPinVal(v); setPinErr('') }} max={4} onFull={p => { setPinVal(''); handlePinChange(p) }} />
+          {pinErr && <div style={{ fontSize:12, color:C.danger, marginTop:8 }}>{pinErr}</div>}
+          {pinBusy && <div style={{ marginTop:8 }}><Spinner /></div>}
+          <button onClick={() => { setChangingPin(false); setPinStep('verify'); setPinVal(''); setPinErr('') }}
+            style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:12 }}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       <button onClick={onSignOut}
         style={{ width:'100%', padding:'14px', background:'transparent', border:`1px solid rgba(248,113,113,0.3)`, borderRadius:14, color:C.danger, fontFamily:FONT, fontSize:14, fontWeight:600, cursor:'pointer' }}>
