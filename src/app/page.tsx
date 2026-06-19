@@ -85,7 +85,7 @@ type Vessel = {
   year: number | null
   color: string | null
   weight_lbs: number | null
-  height_ft: number | null
+  air_draft_ft: number | null
   hin: string | null
   registration_number: string | null
   registration_state: string | null
@@ -145,10 +145,21 @@ export default function SkipperApp() {
       }
 
       if (!u) {
-        // Still no session — if we have stored userId + local PIN hash, show PIN screen
-        // This avoids an OTP email blast every time the app cold-starts after a long gap
-        if (storedUserId && localStorage.getItem(`skipper_pin_${storedUserId}`)) {
-          setUser({ id: storedUserId, email: storedEmail } as User)
+        // Find userId: prefer explicit key, fall back to scanning for any skipper_pin_* entry
+        // (old-code users never had skipper_user_id set, but do have skipper_pin_${id})
+        let resolvedUid = storedUserId
+        if (!resolvedUid) {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i)
+            if (k?.startsWith('skipper_pin_')) {
+              resolvedUid = k.slice('skipper_pin_'.length)
+              localStorage.setItem('skipper_user_id', resolvedUid) // backfill for next time
+              break
+            }
+          }
+        }
+        if (resolvedUid && localStorage.getItem(`skipper_pin_${resolvedUid}`)) {
+          setUser({ id: resolvedUid, email: storedEmail } as User)
           setScreen('pin_login')
           return
         }
@@ -740,7 +751,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
   const blank = {
     name:'', vessel_type:'',
     make:'', model:'', year:'', color:'',
-    length_ft:'', beam_ft:'', draft_ft:'', weight_lbs:'', height_ft:'',
+    length_ft:'', beam_ft:'', draft_ft:'', weight_lbs:'', air_draft_ft:''
     hin:'', registration_number:'', registration_state:'', registration_expiry:'',
     documentation_number:'', mmsi_number:'', flag_state:'',
     hull_material:'',
@@ -764,7 +775,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
         beam_ft: vessel.beam_ft?.toString() ?? '',
         draft_ft: vessel.draft_ft?.toString() ?? '',
         weight_lbs: vessel.weight_lbs?.toString() ?? '',
-        height_ft: vessel.height_ft?.toString() ?? '',
+        air_draft_ft: vessel.air_draft_ft?.toString() ?? '',
         hin: vessel.hin ?? '',
         registration_number: vessel.registration_number ?? '',
         registration_state: vessel.registration_state ?? '',
@@ -802,8 +813,12 @@ function TabVessel({ vessel, user, onVesselSaved }: {
   function intOrNull(v: string) { const n = parseInt(v); return isNaN(n) ? null : n }
 
   async function saveVessel() {
-    if (!form.name.trim())       { setErr('Vessel name is required'); return }
-    if (!form.vessel_type.trim()){ setErr('Vessel type is required'); return }
+    if (!form.name.trim())        { setErr('Vessel name is required'); return }
+    if (!form.vessel_type.trim()) { setErr('Vessel type is required'); return }
+    if (!form.length_ft.trim())   { setErr('Length (LOA) is required'); return }
+    if (!form.beam_ft.trim())     { setErr('Beam is required'); return }
+    if (!form.draft_ft.trim())    { setErr('Draft is required'); return }
+    if (!form.air_draft_ft.trim()){ setErr('Air Draft is required'); return }
     setBusy(true); setErr('')
 
     const payload = {
@@ -818,7 +833,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
       beam_ft:              numOrNull(form.beam_ft),
       draft_ft:             numOrNull(form.draft_ft),
       weight_lbs:           numOrNull(form.weight_lbs),
-      height_ft:            numOrNull(form.height_ft),
+      air_draft_ft:         numOrNull(form.air_draft_ft),
       hin:                  form.hin.trim() || null,
       registration_number:  form.registration_number.trim() || null,
       registration_state:   form.registration_state.trim() || null,
@@ -899,22 +914,22 @@ function TabVessel({ vessel, user, onVesselSaved }: {
         </FieldGroup>
       </div>
 
-      <FormSectionLabel>Dimensions</FormSectionLabel>
+      <FormSectionLabel>Dimensions <span style={{fontSize:11,color:C.teal,fontWeight:600}}>* required for slip matching</span></FormSectionLabel>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-        <FieldGroup label="Length (ft)">
+        <FieldGroup label="Length (ft) *">
           <Input type="number" value={form.length_ft} onChange={e => set('length_ft', e.target.value)} placeholder="34" />
         </FieldGroup>
-        <FieldGroup label="Beam (ft)">
+        <FieldGroup label="Beam (ft) *">
           <Input type="number" value={form.beam_ft} onChange={e => set('beam_ft', e.target.value)} placeholder="11" />
         </FieldGroup>
-        <FieldGroup label="Draft (ft)">
+        <FieldGroup label="Draft (ft) *">
           <Input type="number" value={form.draft_ft} onChange={e => set('draft_ft', e.target.value)} placeholder="3.5" />
         </FieldGroup>
         <FieldGroup label="Weight (lbs)">
           <Input type="number" value={form.weight_lbs} onChange={e => set('weight_lbs', e.target.value)} placeholder="6200" />
         </FieldGroup>
-        <FieldGroup label="Air Draft (ft)">
-          <Input type="number" value={form.height_ft} onChange={e => set('height_ft', e.target.value)} placeholder="12" />
+        <FieldGroup label="Air Draft (ft) *">
+          <Input type="number" value={form.air_draft_ft} onChange={e => set('air_draft_ft', e.target.value)} placeholder="12" />
         </FieldGroup>
       </div>
 
@@ -1098,11 +1113,17 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
     m.city.toLowerCase().includes(search.toLowerCase())
   )
 
-  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} />
+  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} onAddVessel={() => { setSelected(null) }} />
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
       <SectionTitle>Marinas</SectionTitle>
+      {!vessel && (
+        <div style={{ marginBottom:14, background:'rgba(77,214,200,0.07)', border:`1px solid rgba(77,214,200,0.2)`, borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:16 }}>⛵</span>
+          <span style={{ fontSize:12, color:C.teal, lineHeight:1.5 }}>Add your vessel under <strong>My Vessel</strong> so Skipper can match you to available slips.</span>
+        </div>
+      )}
       <div style={{ marginBottom:14 }}>
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or city…" />
       </div>
@@ -1174,7 +1195,7 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
         beam:                 vessel.beam_ft,
         draft:                vessel.draft_ft,
         weight_lbs:           vessel.weight_lbs,
-        height_ft:            vessel.height_ft,
+        air_draft_ft:         vessel.air_draft_ft,
         hin:                  vessel.hin,
         registration_number:  vessel.registration_number,
         registration_state:   vessel.registration_state,
@@ -1252,16 +1273,18 @@ function MarinaChat({ marina, user, profile, vessel, onBack }: { marina:Marina; 
         )}
         <div ref={bottomRef} />
       </div>
-      <div style={{ display:'flex', gap:8, paddingBottom:8 }}>
-        <input type="text" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send() } }}
-          placeholder={`Message ${marina.name}…`}
-          style={{ flex:1, padding:'13px 14px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:C.white, fontSize:14, fontFamily:FONT, outline:'none' }}
-          onFocus={e => e.currentTarget.style.borderColor=C.teal} onBlur={e => e.currentTarget.style.borderColor=C.inputBorder} />
-        <button onClick={send} disabled={sending||!draft.trim()}
-          style={{ padding:'0 18px', background:(!draft.trim()||sending)?'rgba(77,214,200,0.3)':`linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:13, color:C.navy, cursor:(!draft.trim()||sending)?'default':'pointer', flexShrink:0 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-      </div>
+      {!(isTransient && !vesselComplete) && (
+        <div style={{ display:'flex', gap:8, paddingBottom:8 }}>
+          <input type="text" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send() } }}
+            placeholder={`Message ${marina.name}…`}
+            style={{ flex:1, padding:'13px 14px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:C.white, fontSize:14, fontFamily:FONT, outline:'none' }}
+            onFocus={e => e.currentTarget.style.borderColor=C.teal} onBlur={e => e.currentTarget.style.borderColor=C.inputBorder} />
+          <button onClick={send} disabled={sending||!draft.trim()}
+            style={{ padding:'0 18px', background:(!draft.trim()||sending)?'rgba(77,214,200,0.3)':`linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:13, color:C.navy, cursor:(!draft.trim()||sending)?'default':'pointer', flexShrink:0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1300,7 +1323,7 @@ function TabMessages({ user, profile, vessel }: { user: User; profile: Profile|n
     load()
   }, [user.id])
 
-  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} />
+  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} onAddVessel={() => setSelected(null)} />
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
