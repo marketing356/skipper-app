@@ -896,7 +896,7 @@ function TabVessel({ vessel, user, onVesselSaved }: {
       <FieldGroup label="Type *">
         <SelectInput value={form.vessel_type} onChange={e => set('vessel_type', e.target.value)}>
           <option value="">Select type…</option>
-          {['Powerboat','Sailboat','Catamaran','Trawler','Center Console','Pontoon','PWC','Kayak','Other'].map(t => <option key={t}>{t}</option>)}
+          {['Powerboat','Sailboat','Catamaran','Trawler','Center Console','Pontoon','PWC','Kayak','Trailer','Other'].map(t => <option key={t}>{t}</option>)}
         </SelectInput>
       </FieldGroup>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
