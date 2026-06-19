@@ -64,6 +64,11 @@ type Profile = {
   billing_zip: string | null
   emergency_contact: string | null
   emergency_phone: string | null
+  title: string | null
+  date_of_birth: string | null
+  driver_license_number: string | null
+  preferred_contact_method: string | null
+  language_preference: string | null
 }
 
 type Vessel = {
@@ -126,34 +131,55 @@ export default function SkipperApp() {
 
   useEffect(() => {
     const storedEmail = localStorage.getItem('skipper_email') ?? ''
+    const storedUserId = localStorage.getItem('skipper_user_id') ?? ''
     setSavedEmail(storedEmail)
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const u = data.session?.user ?? null
+    async function init() {
+      const { data } = await supabase.auth.getSession()
+      let u = data.session?.user ?? null
+
       if (!u) {
-        // Session expired — if we have a saved email, auto-send OTP and skip to code entry
-        if (storedEmail) {
-          supabase.auth.signInWithOtp({
-            email: storedEmail,
-            options: { shouldCreateUser: true },
-          })
-          setScreen('otp')  // jump straight to code entry — skip email input step
-        } else {
-          setScreen('auth')
+        // Try explicit refresh before giving up — covers most token-expired cases
+        const { data: refreshed } = await supabase.auth.refreshSession()
+        u = refreshed.session?.user ?? null
+      }
+
+      if (!u) {
+        // Still no session — if we have stored userId + local PIN hash, show PIN screen
+        // This avoids an OTP email blast every time the app cold-starts after a long gap
+        if (storedUserId && localStorage.getItem(`skipper_pin_${storedUserId}`)) {
+          setUser({ id: storedUserId, email: storedEmail } as User)
+          setScreen('pin_login')
+          return
         }
+        setScreen('auth')
         return
       }
+
       setUser(u)
       await routeAfterAuth(u)
-    })
+    }
+    init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session?.user) { setScreen('auth'); setUser(null) }
+      if (session?.user) {
+        setUser(session.user)
+      } else {
+        // Don't force to auth if the user has a local PIN — let them re-verify with PIN
+        const uid = localStorage.getItem('skipper_user_id') ?? ''
+        if (!uid || !localStorage.getItem(`skipper_pin_${uid}`)) {
+          setScreen('auth')
+          setUser(null)
+        }
+      }
     })
     return () => subscription.unsubscribe()
   }, [])
 
   async function routeAfterAuth(u: User) {
+    // Persist user ID so PIN screen works after session expiry
+    localStorage.setItem('skipper_user_id', u.id)
+
     // Load profile
     let { data: prof } = await supabase
       .from('boater_profiles')
@@ -194,8 +220,8 @@ export default function SkipperApp() {
       return
     }
 
-    // 3. Session already unlocked (just did OTP or was unlocked this session)
-    const unlocked = sessionStorage.getItem('skipper_unlocked')
+    // 3. Already unlocked this device session
+    const unlocked = localStorage.getItem(`skipper_unlocked_${u.id}`)
     if (unlocked) {
       setScreen('home')
       return
@@ -206,8 +232,13 @@ export default function SkipperApp() {
   }
 
   function handleSignOut() {
+    const uid = user?.id ?? localStorage.getItem('skipper_user_id') ?? ''
     supabase.auth.signOut()
-    sessionStorage.removeItem('skipper_unlocked')
+    if (uid) {
+      localStorage.removeItem(`skipper_unlocked_${uid}`)
+      localStorage.removeItem(`skipper_pin_${uid}`)
+    }
+    localStorage.removeItem('skipper_user_id')
     setUser(null); setProfile(null); setVessel(null)
     setScreen('auth')
   }
@@ -223,7 +254,8 @@ export default function SkipperApp() {
       onOtpSent={(email) => { setSavedEmail(email); setScreen('otp') }}
       onAuthed={async (u, email) => {
         localStorage.setItem('skipper_email', email)
-        sessionStorage.setItem('skipper_unlocked', '1')
+        localStorage.setItem('skipper_user_id', u.id)
+        localStorage.setItem(`skipper_unlocked_${u.id}`, '1')
         setUser(u)
         await routeAfterAuth(u)
       }}
@@ -247,7 +279,7 @@ export default function SkipperApp() {
     <PinSetupScreen
       user={user!}
       onComplete={() => {
-        sessionStorage.setItem('skipper_unlocked', '1')
+        localStorage.setItem(`skipper_unlocked_${user!.id}`, '1')
         setScreen('home')
       }}
     />
@@ -258,9 +290,13 @@ export default function SkipperApp() {
     <PinLoginScreen
       user={user!}
       email={savedEmail || user?.email || ''}
-      onUnlock={() => {
-        sessionStorage.setItem('skipper_unlocked', '1')
-        setScreen('home')
+      onUnlock={async (authedUser?: User) => {
+        const uid = authedUser?.id ?? user!.id
+        localStorage.setItem(`skipper_unlocked_${uid}`, '1')
+        // If PIN was verified while session was expired, restore profile + route properly
+        if (authedUser && authedUser.id !== user?.id) setUser(authedUser)
+        if (authedUser) await routeAfterAuth(authedUser)
+        else setScreen('home')
       }}
       onForgotPin={() => setScreen('auth')}
     />
@@ -539,12 +575,17 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
 
 // ─── PIN Login (returning user) ────────────────────────────────────────────────
 function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
-  user: User; email: string; onUnlock: () => void; onForgotPin: () => void
+  user: User; email: string
+  onUnlock: (authedUser?: User) => void
+  onForgotPin: () => void
 }) {
-  const [pin,   setPin]   = useState('')
-  const [shake, setShake] = useState(false)
-  const [err,   setErr]   = useState('')
-  const [busy,  setBusy]  = useState(false)
+  const [pin,        setPin]        = useState('')
+  const [shake,      setShake]      = useState(false)
+  const [err,        setErr]        = useState('')
+  const [busy,       setBusy]       = useState(false)
+  const [reauthing,  setReauthing]  = useState(false)
+  const [reauthOtp,  setReauthOtp]  = useState('')
+  const [reauthErr,  setReauthErr]  = useState('')
 
   async function verify(p: string) {
     setBusy(true)
@@ -552,19 +593,70 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
     // Fast path: local cache
     const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
     let match = localHash ? hash === localHash : false
-    // Fallback: DB
+    // Fallback: DB (only if we have a valid session)
     if (!match) {
       const { data } = await supabase.from('boater_profiles').select('pin_hash').eq('id', user.id).single()
-      match = data?.pin_hash === hash
+      match = !!data?.pin_hash && data.pin_hash === hash
       if (match && data?.pin_hash) localStorage.setItem(`skipper_pin_${user.id}`, data.pin_hash)
     }
+    if (!match) {
+      setBusy(false)
+      setPin('')
+      setErr('Wrong PIN')
+      setShake(true)
+      setTimeout(() => setShake(false), 600)
+      return
+    }
+    // PIN correct — check if session is alive
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (sessionData.session?.user) {
+      setBusy(false)
+      onUnlock(sessionData.session.user)
+      return
+    }
+    // No session — try silent refresh
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    if (refreshed.session?.user) {
+      setBusy(false)
+      onUnlock(refreshed.session.user)
+      return
+    }
+    // Session fully expired — send OTP silently, ask user to enter code once
+    await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
     setBusy(false)
-    if (match) { onUnlock(); return }
-    setPin('')
-    setErr('Wrong PIN')
-    setShake(true)
-    setTimeout(() => setShake(false), 600)
+    setReauthing(true)
   }
+
+  async function completeReauth() {
+    if (reauthOtp.length < 6) { setReauthErr('Enter the 6-digit code'); return }
+    setBusy(true); setReauthErr('')
+    const { data, error } = await supabase.auth.verifyOtp({
+      email, token: reauthOtp.trim(), type: 'email'
+    })
+    setBusy(false)
+    if (error || !data.user) { setReauthErr('Invalid code — check your email'); return }
+    onUnlock(data.user)
+  }
+
+  if (reauthing) return (
+    <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{ width:'100%', maxWidth:360 }}>
+        <div style={{ textAlign:'center', marginBottom:32 }}>
+          <div style={{ fontSize:18, fontWeight:800, marginBottom:8 }}>One quick re-verify</div>
+          <div style={{ fontSize:13, color:C.muted, lineHeight:1.6 }}>It’s been a while. We sent a code to<br/><strong style={{ color:C.white }}>{email}</strong></div>
+        </div>
+        <div style={{ marginBottom:16 }}>
+          <Label>6-digit code</Label>
+          <Input type="text" inputMode="numeric" value={reauthOtp} onChange={e => setReauthOtp(e.target.value.replace(/\D/g,'').slice(0,6))}
+            placeholder="000000" autoFocus onKeyDown={e => e.key==='Enter' && completeReauth()} />
+        </div>
+        {reauthErr && <ErrMsg>{reauthErr}</ErrMsg>}
+        <PrimaryBtn onClick={completeReauth} loading={busy} style={{ marginTop:8 }}>Verify →</PrimaryBtn>
+        <button onClick={() => setReauthing(false)} style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:16, display:'block', width:'100%', textAlign:'center' }}>Back</button>
+      </div>
+    </div>
+  )
 
   return (
     <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
@@ -1247,15 +1339,20 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
 }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({
-    first_name:        profile?.first_name ?? '',
-    last_name:         profile?.last_name ?? '',
-    phone:             profile?.phone ?? '',
-    address:           profile?.address ?? '',
-    address_city:      profile?.address_city ?? '',
-    address_state:     profile?.address_state ?? '',
-    address_zip:       profile?.address_zip ?? '',
-    emergency_contact: profile?.emergency_contact ?? '',
-    emergency_phone:   profile?.emergency_phone ?? '',
+    first_name:               profile?.first_name ?? '',
+    last_name:                profile?.last_name ?? '',
+    phone:                    profile?.phone ?? '',
+    address:                  profile?.address ?? '',
+    address_city:             profile?.address_city ?? '',
+    address_state:            profile?.address_state ?? '',
+    address_zip:              profile?.address_zip ?? '',
+    emergency_contact:        profile?.emergency_contact ?? '',
+    emergency_phone:          profile?.emergency_phone ?? '',
+    title:                    profile?.title ?? '',
+    date_of_birth:            profile?.date_of_birth ?? '',
+    driver_license_number:    profile?.driver_license_number ?? '',
+    preferred_contact_method: profile?.preferred_contact_method ?? '',
+    language_preference:      profile?.language_preference ?? 'en',
   })
   const [busy, setBusy] = useState(false)
   const [err,  setErr]  = useState('')
@@ -1268,16 +1365,21 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
     const { data, error } = await supabase
       .from('boater_profiles')
       .update({
-        first_name:        form.first_name.trim(),
-        last_name:         form.last_name.trim() || null,
-        display_name:      `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
-        phone:             form.phone.trim() || null,
-        address:           form.address.trim() || null,
-        address_city:      form.address_city.trim() || null,
-        address_state:     form.address_state.trim() || null,
-        address_zip:       form.address_zip.trim() || null,
-        emergency_contact: form.emergency_contact.trim() || null,
-        emergency_phone:   form.emergency_phone.trim() || null,
+        first_name:               form.first_name.trim(),
+        last_name:                form.last_name.trim() || null,
+        display_name:             `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
+        phone:                    form.phone.trim() || null,
+        address:                  form.address.trim() || null,
+        address_city:             form.address_city.trim() || null,
+        address_state:            form.address_state.trim() || null,
+        address_zip:              form.address_zip.trim() || null,
+        emergency_contact:        form.emergency_contact.trim() || null,
+        emergency_phone:          form.emergency_phone.trim() || null,
+        title:                    form.title.trim() || null,
+        date_of_birth:            form.date_of_birth || null,
+        driver_license_number:    form.driver_license_number.trim() || null,
+        preferred_contact_method: form.preferred_contact_method || null,
+        language_preference:      form.language_preference || 'en',
       })
       .eq('id', user.id)
       .select()
@@ -1309,7 +1411,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
             </div>
           </div>
           {!editing && (
-            <button onClick={() => { setEditing(true); setForm({ first_name:profile?.first_name??'', last_name:profile?.last_name??'', phone:profile?.phone??'', address:profile?.address??'', address_city:profile?.address_city??'', address_state:profile?.address_state??'', address_zip:profile?.address_zip??'', emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'', title:profile?.title??'', date_of_birth:profile?.date_of_birth??'', driver_license_number:profile?.driver_license_number??'', preferred_contact_method:profile?.preferred_contact_method??'', language_preference:profile?.language_preference??'en' }) }}
+            <button onClick={() => { setEditing(true); setForm({ first_name:profile?.first_name??'', last_name:profile?.last_name??'', phone:profile?.phone??'', address:profile?.address??'', address_city:profile?.address_city??'', address_state:profile?.address_state??'', address_zip:profile?.address_zip??'', emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'', title:profile?.title??'', date_of_birth:profile?.date_of_birth??'', driver_license_number:profile?.driver_license_number??'', preferred_contact_method:profile?.preferred_contact_method??'', language_preference:profile?.language_preference??'en' }); setErr('') }}
               style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
               Edit
             </button>
@@ -1353,6 +1455,35 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
                 <Input type="tel" value={form.emergency_phone} onChange={e => set('emergency_phone', e.target.value)} />
               </FieldGroup>
             </div>
+            <FormSectionLabel>ID &amp; Preferences</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Title">
+                <SelectInput value={form.title} onChange={e => set('title', e.target.value)}>
+                  <option value="">Select…</option>
+                  {['Mr.','Mrs.','Ms.','Dr.','Capt.','Other'].map(v => <option key={v}>{v}</option>)}
+                </SelectInput>
+              </FieldGroup>
+              <FieldGroup label="Date of Birth">
+                <Input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Driver License #">
+                <Input value={form.driver_license_number} onChange={e => set('driver_license_number', e.target.value)} placeholder="DL12345678" />
+              </FieldGroup>
+              <FieldGroup label="Preferred Contact">
+                <SelectInput value={form.preferred_contact_method} onChange={e => set('preferred_contact_method', e.target.value)}>
+                  <option value="">Select…</option>
+                  {['email','sms','phone','app'].map(v => <option key={v} value={v}>{v.toUpperCase()}</option>)}
+                </SelectInput>
+              </FieldGroup>
+            </div>
+            <FieldGroup label="Language">
+              <SelectInput value={form.language_preference} onChange={e => set('language_preference', e.target.value)}>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="pt">Português</option>
+              </SelectInput>
+            </FieldGroup>
             {err && <ErrMsg>{err}</ErrMsg>}
             <div style={{ display:'flex', gap:8 }}>
               <PrimaryBtn onClick={saveProfile} loading={busy} style={{ flex:1 }}>Save</PrimaryBtn>
