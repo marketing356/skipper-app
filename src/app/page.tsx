@@ -129,7 +129,7 @@ async function hashPin(pin: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-// ─── Contacts → Profile / Vessel mappers ─────────────────────────────────────
+// ─── Contacts → Profile mapper ─────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function contactToProfile(c: Record<string, any>): Profile {
   return {
@@ -162,53 +162,53 @@ function contactToProfile(c: Record<string, any>): Profile {
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function contactToVessel(c: Record<string, any>): Vessel | null {
-  if (!c.boat_name) return null
+function assetRowToVessel(a: Record<string, any>, contact?: Record<string, any> | null): Vessel {
   return {
-    id: c.id as string,
-    name: c.boat_name,
-    vessel_type: c.boat_type ?? '',
-    length_ft: c.boat_length_ft ?? null,
-    beam_ft: c.boat_beam_ft ?? null,
-    draft_ft: c.boat_draft_ft ?? null,
-    shore_power: c.boat_shore_power ?? null,
-    fuel_type: c.fuel_type ?? null,
-    make: c.boat_make ?? null,
-    model: c.boat_model ?? null,
-    year: c.boat_year ?? null,
-    color: c.boat_hull_color ?? null,
-    weight_lbs: c.boat_weight_lbs ?? null,
-    air_draft_ft: c.boat_air_draft_ft ?? null,
-    hin: c.boat_hin ?? null,
-    registration_number: c.boat_reg_number ?? null,
-    registration_state: c.boat_registration_state ?? null,
-    registration_expiry: c.state_reg_expiry ?? null,
-    documentation_number: c.boat_uscg_number ?? null,
-    mmsi_number: c.boat_mmsi_number ?? null,
-    flag_state: c.boat_flag_state ?? null,
-    hull_material: c.boat_hull_material ?? null,
-    engine_count: c.engine_count ?? null,
-    engine_type: c.engine_type ?? null,
-    engine_make: c.engine_make ?? null,
-    engine_model: c.engine_model ?? null,
-    engine_year: c.engine_year ?? null,
-    horsepower_per_engine: c.engine_hp ?? null,
-    fuel_tank_gallons: c.boat_fuel_tank_gallons ?? null,
-    insurance_provider: c.ins_carrier ?? null,
-    insurance_policy: c.ins_policy_number ?? null,
-    insurance_expiry: c.ins_expiry ?? null,
-    insurance_agent_name: c.boat_insurance_agent_name ?? null,
-    insurance_agent_phone: c.boat_insurance_agent_phone ?? null,
-    last_survey_date: c.last_survey_date ?? null,
-    photo_url: c.boat_photo_url ?? null,
-    notes: c.boat_notes ?? null,
-    doc_registration: c.doc_registration ?? false,
-    doc_insurance_cert: c.doc_insurance_cert ?? false,
-    doc_signed_contract: c.doc_signed_contract ?? false,
-    doc_photo_id: c.doc_photo_id ?? false,
-    liveaboard: c.liveaboard ?? false,
-    pet_on_board: c.pet_on_board ?? false,
-    parking_permit: c.parking_permit ?? null,
+    id: a.id as string,
+    name: a.name ?? '',
+    vessel_type: a.asset_type ?? '',
+    length_ft: a.length_ft ?? null,
+    beam_ft: a.beam_ft ?? null,
+    draft_ft: a.draft_ft ?? null,
+    shore_power: a.shore_power ?? null,
+    fuel_type: a.fuel_type ?? null,
+    make: a.make ?? null,
+    model: a.model ?? null,
+    year: a.year ?? null,
+    color: a.color ?? null,
+    weight_lbs: a.weight_lbs ?? null,
+    air_draft_ft: a.air_draft_ft ?? null,
+    hin: a.hin ?? null,
+    registration_number: a.registration_number ?? null,
+    registration_state: a.registration_state ?? null,
+    registration_expiry: a.state_reg_expiry ?? null,
+    documentation_number: a.documentation_number ?? null,
+    mmsi_number: a.mmsi_number ?? null,
+    flag_state: a.flag_state ?? null,
+    hull_material: a.hull_material ?? null,
+    engine_count: a.engine_count ?? null,
+    engine_type: a.engine_type ?? null,
+    engine_make: a.engine_make ?? null,
+    engine_model: a.engine_model ?? null,
+    engine_year: a.engine_year ?? null,
+    horsepower_per_engine: a.engine_hp ?? null,
+    fuel_tank_gallons: a.fuel_tank_gallons ?? null,
+    insurance_provider: a.insurance_provider ?? null,
+    insurance_policy: a.insurance_policy ?? null,
+    insurance_expiry: a.insurance_expiry ?? null,
+    insurance_agent_name: a.insurance_agent_name ?? null,
+    insurance_agent_phone: a.insurance_agent_phone ?? null,
+    last_survey_date: a.last_survey_date ?? null,
+    photo_url: a.photo_url ?? null,
+    notes: a.notes ?? null,
+    // doc/flag fields remain on contacts
+    doc_registration: contact?.doc_registration ?? false,
+    doc_insurance_cert: contact?.doc_insurance_cert ?? false,
+    doc_signed_contract: contact?.doc_signed_contract ?? false,
+    doc_photo_id: contact?.doc_photo_id ?? false,
+    liveaboard: contact?.liveaboard ?? false,
+    pet_on_board: contact?.pet_on_board ?? false,
+    parking_permit: contact?.parking_permit ?? null,
   }
 }
 
@@ -264,9 +264,25 @@ export default function SkipperApp() {
     }
 
     const prof = contact ? contactToProfile(contact) : null
-    const v    = contact ? contactToVessel(contact) : null
     setProfile(prof)
-    setVessel(v)
+
+    // Load vessel from marina_assets (boat_* columns were dropped from contacts in migration 008)
+    const { data: assetRow } = await supabase
+      .from('marina_assets')
+      .select('*')
+      .eq('tenant_id', u.id)
+      .is('marina_id', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (assetRow) {
+      setVesselId(assetRow.id)
+      setVessel(assetRowToVessel(assetRow, contact))
+    } else {
+      setVesselId(null)
+      setVessel(null)
+    }
 
     // — Auto-coupling: on every login, scan all marina contacts rows with matching email
     // and no auth link yet. This silently couples existing slip holders + handles re-installs.
@@ -303,7 +319,7 @@ export default function SkipperApp() {
     }
     localStorage.removeItem('skipper_user_id')
     localStorage.removeItem('skipper_email')
-    setUser(null); setProfile(null); setVessel(null)
+    setUser(null); setProfile(null); setVessel(null); setVesselId(null)
     setScreen('auth')
   }
 
@@ -364,10 +380,11 @@ export default function SkipperApp() {
       user={user!}
       profile={profile}
       vessel={vessel}
+      vesselId={vesselId}
       activeTab={homeTab}
       onTabChange={setHomeTab}
       onSignOut={handleSignOut}
-      onVesselSaved={(v) => setVessel(v)}
+      onVesselSaved={(v, id) => { setVessel(v); setVesselId(id) }}
       onProfileUpdated={(p) => setProfile(p)}
     />
   )
@@ -699,10 +716,10 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated }: {
-  user: User; profile: Profile|null; vessel: Vessel|null; activeTab: HomeTab
+function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated }: {
+  user: User; profile: Profile|null; vessel: Vessel|null; vesselId: string|null; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
-  onVesselSaved: (v: Vessel) => void; onProfileUpdated: (p: Profile) => void
+  onVesselSaved: (v: Vessel, id: string) => void; onProfileUpdated: (p: Profile) => void
 }) {
   return (
     <div style={{ minHeight:'100vh', maxHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
@@ -727,7 +744,7 @@ function HomeScreen({ user, profile, vessel, activeTab, onTabChange, onSignOut, 
 
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-        {activeTab === 'vessel'   && <TabVessel   vessel={vessel}  user={user} onVesselSaved={onVesselSaved} />}
+        {activeTab === 'vessel'   && <TabVessel   vessel={vessel} vesselId={vesselId} user={user} onVesselSaved={onVesselSaved} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'messages' && <TabMessages user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -745,8 +762,8 @@ function HomeScreen({ user, profile, vessel, activeTab, onTabChange, onSignOut, 
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessel, user, onVesselSaved }: {
-  vessel: Vessel|null; user: User; onVesselSaved: (v: Vessel) => void
+function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
+  vessel: Vessel|null; vesselId: string|null; user: User; onVesselSaved: (v: Vessel, id: string) => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -845,63 +862,93 @@ function TabVessel({ vessel, user, onVesselSaved }: {
     if (!form.air_draft_ft.trim()){ setErr('Air Draft is required'); return }
     setBusy(true); setErr('')
 
-    // All vessel data stored inline on contacts row
-    const { data, error } = await supabase
+    // Write vessel data to marina_assets (boat_* columns were dropped from contacts in migration 008)
+    const assetPayload = {
+      tenant_id:            user.id,
+      marina_id:            null,
+      asset_type:           form.vessel_type,
+      name:                 form.name.trim(),
+      make:                 form.make || null,
+      model:                form.model || null,
+      year:                 intOrNull(form.year),
+      color:                form.color || null,
+      length_ft:            numOrNull(form.length_ft),
+      beam_ft:              numOrNull(form.beam_ft),
+      draft_ft:             numOrNull(form.draft_ft),
+      air_draft_ft:         numOrNull(form.air_draft_ft),
+      weight_lbs:           numOrNull(form.weight_lbs),
+      hin:                  form.hin || null,
+      registration_number:  form.registration_number || null,
+      registration_state:   form.registration_state || null,
+      state_reg_expiry:     form.registration_expiry || null,
+      documentation_number: form.documentation_number || null,
+      mmsi_number:          form.mmsi_number || null,
+      flag_state:           form.flag_state || null,
+      hull_material:        form.hull_material || null,
+      engine_count:         intOrNull(form.engine_count),
+      engine_type:          form.engine_type || null,
+      engine_make:          form.engine_make || null,
+      engine_model:         form.engine_model || null,
+      engine_year:          intOrNull(form.engine_year),
+      engine_hp:            intOrNull(form.horsepower_per_engine),
+      fuel_type:            form.fuel_type || null,
+      fuel_tank_gallons:    intOrNull(form.fuel_tank_gallons),
+      shore_power:          form.shore_power || null,
+      insurance_provider:   form.insurance_provider || null,
+      insurance_policy:     form.insurance_policy || null,
+      insurance_expiry:     form.insurance_expiry || null,
+      insurance_agent_name: form.insurance_agent_name || null,
+      insurance_agent_phone:form.insurance_agent_phone || null,
+      last_survey_date:     form.last_survey_date || null,
+      photo_url:            form.photo_url || null,
+      notes:                form.notes || null,
+      updated_at:           new Date().toISOString(),
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let assetData: Record<string, any> | null = null
+    let assetError: { message: string } | null = null
+
+    if (vesselId) {
+      const { data, error } = await supabase.from('marina_assets').update(assetPayload).eq('id', vesselId).select().single()
+      assetData = data; assetError = error
+    } else {
+      const { data, error } = await supabase.from('marina_assets').insert(assetPayload).select().single()
+      assetData = data; assetError = error
+    }
+
+    if (assetError) { setBusy(false); setErr(assetError.message); return }
+
+    // Update doc/flag fields on contacts row — those columns still live there
+    const { error: contactError } = await supabase
       .from('contacts')
       .update({
-        boat_name:                  form.name.trim(),
-        boat_type:                  form.vessel_type,
-        boat_make:                  form.make.trim() || null,
-        boat_model:                 form.model.trim() || null,
-        boat_year:                  intOrNull(form.year),
-        boat_hull_color:            form.color.trim() || null,
-        boat_length_ft:             numOrNull(form.length_ft),
-        boat_beam_ft:               numOrNull(form.beam_ft),
-        boat_draft_ft:              numOrNull(form.draft_ft),
-        boat_weight_lbs:            numOrNull(form.weight_lbs),
-        boat_air_draft_ft:          numOrNull(form.air_draft_ft),
-        boat_hin:                   form.hin.trim() || null,
-        boat_reg_number:            form.registration_number.trim() || null,
-        boat_registration_state:    form.registration_state.trim() || null,
-        state_reg_expiry:           form.registration_expiry || null,
-        boat_uscg_number:           form.documentation_number.trim() || null,
-        boat_mmsi_number:           form.mmsi_number.trim() || null,
-        boat_flag_state:            form.flag_state.trim() || null,
-        boat_hull_material:         form.hull_material || null,
-        engine_count:               intOrNull(form.engine_count),
-        engine_type:                form.engine_type || null,
-        engine_make:                form.engine_make.trim() || null,
-        engine_model:               form.engine_model.trim() || null,
-        engine_year:                intOrNull(form.engine_year),
-        engine_hp:                  intOrNull(form.horsepower_per_engine),
-        fuel_type:                  form.fuel_type || null,
-        boat_fuel_tank_gallons:     intOrNull(form.fuel_tank_gallons),
-        boat_shore_power:           form.shore_power || null,
-        ins_carrier:                form.insurance_provider.trim() || null,
-        ins_policy_number:          form.insurance_policy.trim() || null,
-        ins_expiry:                 form.insurance_expiry || null,
-        boat_insurance_agent_name:  form.insurance_agent_name.trim() || null,
-        boat_insurance_agent_phone: form.insurance_agent_phone.trim() || null,
-        last_survey_date:           form.last_survey_date || null,
-        boat_photo_url:             form.photo_url.trim() || null,
-        boat_notes:                 form.notes.trim() || null,
-        doc_registration:           docRegistration,
-        doc_insurance_cert:         docInsuranceCert,
-        doc_signed_contract:        docSignedContract,
-        doc_photo_id:               docPhotoId,
-        liveaboard:                 isLiveaboard,
-        pet_on_board:               petOnBoard,
-        parking_permit:             parkingPermit.trim() || null,
-        updated_at:                 new Date().toISOString(),
+        doc_registration:    docRegistration,
+        doc_insurance_cert:  docInsuranceCert,
+        doc_signed_contract: docSignedContract,
+        doc_photo_id:        docPhotoId,
+        liveaboard:          isLiveaboard,
+        pet_on_board:        petOnBoard,
+        parking_permit:      parkingPermit.trim() || null,
+        updated_at:          new Date().toISOString(),
       })
       .eq('auth_user_id', user.id)
       .is('marina_id', null)
-      .select()
-      .single()
 
     setBusy(false)
-    if (error) { setErr(error.message); return }
-    onVesselSaved(contactToVessel(data)!)
+    if (contactError) { setErr(contactError.message); return }
+
+    const contactFlags = {
+      doc_registration: docRegistration,
+      doc_insurance_cert: docInsuranceCert,
+      doc_signed_contract: docSignedContract,
+      doc_photo_id: docPhotoId,
+      liveaboard: isLiveaboard,
+      pet_on_board: petOnBoard,
+      parking_permit: parkingPermit.trim() || null,
+    }
+    const newVesselId = assetData!.id as string
+    onVesselSaved(assetRowToVessel(assetData!, contactFlags), newVesselId)
     setShowForm(false)
   }
 
