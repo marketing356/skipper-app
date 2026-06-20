@@ -41,7 +41,7 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
-type HomeTab = 'vessel' | 'marinas' | 'messages' | 'account'
+type HomeTab = 'vessel' | 'marinas' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
 type Profile = {
@@ -220,6 +220,7 @@ export default function SkipperApp() {
   const [vessel,    setVessel]    = useState<Vessel | null>(null)
   const [homeTab,   setHomeTab]   = useState<HomeTab>('vessel')
   const [savedEmail,setSavedEmail]= useState('')
+  const [vesselId,  setVesselId]  = useState<string|null>(null)
 
   useEffect(() => {
     const storedEmail = localStorage.getItem('skipper_email') ?? ''
@@ -746,7 +747,6 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
         {activeTab === 'vessel'   && <TabVessel   vessel={vessel} vesselId={vesselId} user={user} onVesselSaved={onVesselSaved} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
-        {activeTab === 'messages' && <TabMessages user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
       </div>
 
@@ -754,7 +754,6 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
       <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
         <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="My Vessel"  active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
         <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"    active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
-        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages"   active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
         <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"    active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
       </div>
     </div>
@@ -1200,24 +1199,40 @@ function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
 
 // ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
 function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
-  const [marinas,    setMarinas]    = useState<Marina[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [search,     setSearch]     = useState('')
-  const [selected,   setSelected]   = useState<Marina|null>(null)
-  const [coupledIds, setCoupledIds] = useState<Set<string>>(new Set())
-  const [coupling,   setCoupling]   = useState<string|null>(null) // marina id being actioned
-  const [toast,      setToast]      = useState<string|null>(null)
+  const [marinas,       setMarinas]       = useState<Marina[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [search,        setSearch]        = useState('')
+  const [selected,      setSelected]      = useState<Marina|null>(null)
+  const [coupledIds,    setCoupledIds]    = useState<Set<string>>(new Set())
+  const [coupling,      setCoupling]      = useState<string|null>(null)
+  const [toast,         setToast]         = useState<string|null>(null)
+  const [recentThreads, setRecentThreads] = useState<MsgRow[]>([])
+  const [marinaMap,     setMarinaMap]     = useState<Record<string, Marina>>({})
 
   useEffect(() => {
-    // Load marinas + coupling status in parallel
-    Promise.all([
-      supabase.from('marinas').select('id,name,city,state,total_slips').order('name'),
-      supabase.from('contacts').select('marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null),
-    ]).then(([{ data: marinaRows }, { data: couplingRows }]) => {
-      setMarinas(marinaRows ?? [])
+    async function load() {
+      const [{ data: marinaRows }, { data: couplingRows }, { data: msgRows }] = await Promise.all([
+        supabase.from('marinas').select('id,name,city,state,total_slips').order('name'),
+        supabase.from('contacts').select('marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null),
+        supabase.from('messages').select('id,body,direction,inserted_at,marina_id').eq('tenant_id', user.id).eq('channel', 'skipper').order('inserted_at', { ascending: false }),
+      ])
+      const rows = marinaRows ?? []
+      setMarinas(rows)
+      const mMap: Record<string, Marina> = {}
+      for (const m of rows) mMap[m.id] = m
+      setMarinaMap(mMap)
       setCoupledIds(new Set<string>((couplingRows ?? []).map((c: { marina_id: string }) => c.marina_id as string)))
+      if (msgRows && msgRows.length > 0) {
+        const seen = new Set<string>()
+        const grouped: MsgRow[] = []
+        for (const row of msgRows) {
+          if (!seen.has(row.marina_id)) { seen.add(row.marina_id); grouped.push(row) }
+        }
+        setRecentThreads(grouped)
+      }
       setLoading(false)
-    })
+    }
+    load()
   }, [user.id])
 
   function showToast(msg: string) {
@@ -1292,6 +1307,28 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
         </div>
       )}
       <SectionTitle>Marinas</SectionTitle>
+      {/* Recent conversations — folded in from removed Messages tab */}
+      {recentThreads.length > 0 && (
+        <>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>Recent Conversations</div>
+          {recentThreads.map((thread, i) => {
+            const m = marinaMap[thread.marina_id]
+            if (!m) return null
+            return (
+              <button key={thread.marina_id} onClick={() => setSelected(m)}
+                style={{ width:'100%', display:'flex', alignItems:'center', gap:12, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, padding:'12px 14px', marginBottom:8, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.05}s both` }}>
+                <div style={{ width:38, height:38, borderRadius:10, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:700 }}>{m.name}</div>
+                  <div style={{ fontSize:12, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{thread.body}</div>
+                </div>
+                <div style={{ fontSize:11, color:C.muted2, flexShrink:0 }}>{new Date(thread.inserted_at).toLocaleDateString()}</div>
+              </button>
+            )
+          })}
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10, marginTop:20, paddingTop:12, borderTop:`1px solid rgba(255,255,255,0.06)` }}>All Marinas</div>
+        </>
+      )}
       {!vessel && (
         <div style={{ marginBottom:14, background:'rgba(77,214,200,0.07)', border:'1px solid rgba(77,214,200,0.2)', borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:16 }}>⛵</span>
