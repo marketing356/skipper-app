@@ -245,71 +245,75 @@ export default function SkipperApp() {
 
   async function routeAfterAuth(u: User) {
     localStorage.setItem('skipper_user_id', u.id)
-
-    // Look up national-pool contacts row (marina_id IS NULL)
-    let { data: contact } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('auth_user_id', u.id)
-      .is('marina_id', null)
-      .maybeSingle()
-
-    if (!contact) {
-      const { data: newContact, error: insertErr } = await supabase
+    try {
+      // Look up national-pool contacts row (marina_id IS NULL)
+      let { data: contact } = await supabase
         .from('contacts')
-        .insert({ auth_user_id: u.id, email: u.email ?? null })
-        .select()
-        .single()
-      if (insertErr) console.error('[Skipper] contact insert:', insertErr.message)
-      contact = newContact
-    }
+        .select('*')
+        .eq('auth_user_id', u.id)
+        .is('marina_id', null)
+        .maybeSingle()
 
-    const prof = contact ? contactToProfile(contact) : null
-    setProfile(prof)
-
-    // Load vessel from marina_assets (boat_* columns were dropped from contacts in migration 008)
-    const { data: assetRow } = await supabase
-      .from('marina_assets')
-      .select('*')
-      .eq('tenant_id', u.id)
-      .is('marina_id', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (assetRow) {
-      setVesselId(assetRow.id)
-      setVessel(assetRowToVessel(assetRow, contact))
-    } else {
-      setVesselId(null)
-      setVessel(null)
-    }
-
-    // — Auto-coupling: on every login, scan all marina contacts rows with matching email
-    // and no auth link yet. This silently couples existing slip holders + handles re-installs.
-    if (u.email) {
-      const { data: pendingLinks } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('email', u.email)
-        .not('marina_id', 'is', null)
-        .is('auth_user_id', null)
-      if (pendingLinks && pendingLinks.length > 0) {
-        await supabase
+      if (!contact) {
+        const { data: newContact, error: insertErr } = await supabase
           .from('contacts')
-          .update({ auth_user_id: u.id })
-          .in('id', pendingLinks.map((c: { id: string }) => c.id))
-        console.log(`[Skipper] Auto-coupled ${pendingLinks.length} marina(s) for ${u.email}`)
+          .insert({ auth_user_id: u.id, email: u.email ?? null })
+          .select()
+          .single()
+        if (insertErr) console.error('[Skipper] contact insert:', insertErr.message)
+        contact = newContact
       }
+
+      const prof = contact ? contactToProfile(contact) : null
+      setProfile(prof)
+
+      // Load vessel from marina_assets
+      const { data: assetRow } = await supabase
+        .from('marina_assets')
+        .select('*')
+        .eq('tenant_id', u.id)
+        .is('marina_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (assetRow) {
+        setVesselId(assetRow.id)
+        setVessel(assetRowToVessel(assetRow, contact))
+      } else {
+        setVesselId(null)
+        setVessel(null)
+      }
+
+      // Auto-coupling: scan all marina contacts rows with matching email and no auth link
+      if (u.email) {
+        const { data: pendingLinks } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('email', u.email)
+          .not('marina_id', 'is', null)
+          .is('auth_user_id', null)
+        if (pendingLinks && pendingLinks.length > 0) {
+          await supabase
+            .from('contacts')
+            .update({ auth_user_id: u.id })
+            .in('id', pendingLinks.map((c: { id: string }) => c.id))
+          console.log(`[Skipper] Auto-coupled ${pendingLinks.length} marina(s) for ${u.email}`)
+        }
+      }
+
+      if (!prof?.first_name)  { setScreen('contact_setup'); return }
+      if (!contact?.pin_hash) { setScreen('pin_setup'); return }
+
+      const unlocked = localStorage.getItem(`skipper_unlocked_${u.id}`)
+      if (unlocked) { setScreen('home'); return }
+
+      setScreen('pin_login')
+    } catch(err) {
+      console.error('[Skipper] routeAfterAuth failed:', err)
+      // Fallback — always navigate somewhere, never leave user stuck on auth screen
+      setScreen('contact_setup')
     }
-
-    if (!prof?.first_name)  { setScreen('contact_setup'); return }
-    if (!contact?.pin_hash) { setScreen('pin_setup'); return }
-
-    const unlocked = localStorage.getItem(`skipper_unlocked_${u.id}`)
-    if (unlocked) { setScreen('home'); return }
-
-    setScreen('pin_login')
   }
 
   function handleSignOut() {
