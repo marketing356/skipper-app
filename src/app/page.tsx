@@ -268,6 +268,24 @@ export default function SkipperApp() {
     setProfile(prof)
     setVessel(v)
 
+    // — Auto-coupling: on every login, scan all marina contacts rows with matching email
+    // and no auth link yet. This silently couples existing slip holders + handles re-installs.
+    if (u.email) {
+      const { data: pendingLinks } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('email', u.email)
+        .not('marina_id', 'is', null)
+        .is('auth_user_id', null)
+      if (pendingLinks && pendingLinks.length > 0) {
+        await supabase
+          .from('contacts')
+          .update({ auth_user_id: u.id })
+          .in('id', pendingLinks.map((c: { id: string }) => c.id))
+        console.log(`[Skipper] Auto-coupled ${pendingLinks.length} marina(s) for ${u.email}`)
+      }
+    }
+
     if (!prof?.first_name)  { setScreen('contact_setup'); return }
     if (!contact?.pin_hash) { setScreen('pin_setup'); return }
 
@@ -1135,17 +1153,74 @@ function TabVessel({ vessel, user, onVesselSaved }: {
 
 // ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
 function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
-  const [marinas,  setMarinas]  = useState<Marina[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [search,   setSearch]   = useState('')
-  const [selected, setSelected] = useState<Marina|null>(null)
+  const [marinas,    setMarinas]    = useState<Marina[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [search,     setSearch]     = useState('')
+  const [selected,   setSelected]   = useState<Marina|null>(null)
+  const [coupledIds, setCoupledIds] = useState<Set<string>>(new Set())
+  const [coupling,   setCoupling]   = useState<string|null>(null) // marina id being actioned
+  const [toast,      setToast]      = useState<string|null>(null)
 
   useEffect(() => {
-    supabase.from('marinas').select('id,name,city,state,total_slips').order('name').then(({ data }) => {
-      setMarinas(data ?? [])
+    // Load marinas + coupling status in parallel
+    Promise.all([
+      supabase.from('marinas').select('id,name,city,state,total_slips').order('name'),
+      supabase.from('contacts').select('marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null),
+    ]).then(([{ data: marinaRows }, { data: couplingRows }]) => {
+      setMarinas(marinaRows ?? [])
+      setCoupledIds(new Set<string>((couplingRows ?? []).map((c: { marina_id: string }) => c.marina_id as string)))
       setLoading(false)
     })
-  }, [])
+  }, [user.id])
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3200)
+  }
+
+  async function handleRecouple(marinaId: string, marinaName: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setCoupling(marinaId)
+    const email = user.email
+    if (!email) { setCoupling(null); return }
+    // Find existing contacts row at this marina by email — re-link auth_user_id
+    const { data: row } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('marina_id', marinaId)
+      .eq('email', email)
+      .maybeSingle()
+    if (row) {
+      await supabase.from('contacts').update({ auth_user_id: user.id }).eq('id', row.id)
+      setCoupledIds(prev => { const s = new Set<string>(prev); s.add(marinaId); return s })
+      showToast(`✅ Reconnected to ${marinaName}`)
+    } else {
+      showToast(`No existing record at ${marinaName} — use "Request to Connect"`)
+    }
+    setCoupling(null)
+  }
+
+  async function handleRequestConnect(marinaId: string, marinaName: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setCoupling(marinaId)
+    const displayName = profile
+      ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
+      : user.email
+    const vesselLine = vessel
+      ? ` | Vessel: ${vessel.name} (${vessel.length_ft}ft LOA, ${vessel.beam_ft}ft beam)`
+      : ''
+    // Send connection request as a special message — shows in marina Helm inbox
+    await supabase.from('messages').insert({
+      marina_id:   marinaId,
+      tenant_id:   user.id,
+      direction:   'inbound',
+      body:        `🔗 CONNECTION REQUEST: ${displayName} wants to connect their Skipper account.${vesselLine} Email: ${user.email}`,
+      channel:     'coupling_request',
+      sender_name: displayName ?? 'Boater',
+    })
+    showToast(`Request sent to ${marinaName}`)
+    setCoupling(null)
+  }
 
   const filtered = marinas.filter(m =>
     !search.trim() ||
@@ -1153,41 +1228,86 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
     m.city.toLowerCase().includes(search.toLowerCase())
   )
 
-  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} onAddVessel={() => { setSelected(null) }} />
+  if (selected) return (
+    <MarinaChat
+      marina={selected} user={user} profile={profile} vessel={vessel}
+      coupled={coupledIds.has(selected.id)}
+      onBack={() => setSelected(null)}
+      onAddVessel={() => { setSelected(null) }}
+    />
+  )
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
+      {toast && (
+        <div style={{ position:'fixed', top:24, left:'50%', transform:'translateX(-50%)', background:'rgba(10,30,50,0.96)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, padding:'10px 18px', fontSize:13, color:'#ffffff', zIndex:999, whiteSpace:'nowrap', boxShadow:'0 4px 24px rgba(0,0,0,0.5)' }}>
+          {toast}
+        </div>
+      )}
       <SectionTitle>Marinas</SectionTitle>
       {!vessel && (
-        <div style={{ marginBottom:14, background:'rgba(77,214,200,0.07)', border:`1px solid rgba(77,214,200,0.2)`, borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ marginBottom:14, background:'rgba(77,214,200,0.07)', border:'1px solid rgba(77,214,200,0.2)', borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:16 }}>⛵</span>
-          <span style={{ fontSize:12, color:C.teal, lineHeight:1.5 }}>Add your vessel under <strong>My Vessel</strong> so Skipper can match you to available slips.</span>
+          <span style={{ fontSize:12, color:'#4dd6c8', lineHeight:1.5 }}>Add your vessel under <strong>My Vessel</strong> so Skipper can match you to available slips.</span>
         </div>
       )}
       <div style={{ marginBottom:14 }}>
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or city…" />
       </div>
-      {loading && <div style={{ textAlign:'center', color:C.muted, padding:'32px 0' }}>Loading…</div>}
+      {loading && <div style={{ textAlign:'center', color:'rgba(255,255,255,0.55)', padding:'32px 0' }}>Loading…</div>}
       {!loading && filtered.length === 0 && (
-        <div style={{ textAlign:'center', color:C.muted, padding:'32px 0', fontSize:14 }}>No marinas found</div>
+        <div style={{ textAlign:'center', color:'rgba(255,255,255,0.55)', padding:'32px 0', fontSize:14 }}>No marinas found</div>
       )}
-      {filtered.map((m, i) => (
-        <button key={m.id} onClick={() => setSelected(m)}
-          style={{ width:'100%', display:'flex', alignItems:'center', gap:14, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:18, padding:'14px 16px', marginBottom:10, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.04}s both` }}>
-          <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:15, fontWeight:700, marginBottom:3 }}>{m.name}</div>
-            <div style={{ fontSize:12, color:C.muted }}>{m.city}, {m.state} · {m.total_slips} slips</div>
+      {filtered.map((m, i) => {
+        const coupled = coupledIds.has(m.id)
+        const acting  = coupling === m.id
+        return (
+          <div key={m.id}
+            style={{ background:'rgba(255,255,255,0.07)', border:`1px solid ${coupled ? 'rgba(77,214,200,0.3)' : 'rgba(255,255,255,0.11)'}`, borderRadius:18, marginBottom:10, overflow:'hidden', animation:`fadeUp 0.3s ease ${i*0.04}s both` }}>
+            {/* Main row — tap to open Skipper chat */}
+            <button onClick={() => setSelected(m)}
+              style={{ width:'100%', display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:'transparent', border:'none', color:'#ffffff', fontFamily:'inherit', cursor:'pointer', textAlign:'left' }}>
+              <div style={{ width:44, height:44, borderRadius:12, background: coupled ? 'rgba(74,222,128,0.12)' : 'rgba(77,214,200,0.15)', border:`1px solid ${coupled ? 'rgba(74,222,128,0.35)' : 'rgba(77,214,200,0.3)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
+                ⚓
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:15, fontWeight:700 }}>{m.name}</span>
+                  {coupled && (
+                    <span style={{ fontSize:10, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.12)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:6, padding:'2px 6px', letterSpacing:0.3 }}>
+                      CONNECTED
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginTop:3 }}>{m.city}, {m.state} · {m.total_slips} slips</div>
+              </div>
+              <div style={{ fontSize:12, color:'#4dd6c8', fontWeight:700, flexShrink:0 }}>Message →</div>
+            </button>
+            {/* Coupling action row — only when NOT connected */}
+            {!coupled && (
+              <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
+                <button
+                  onClick={e => handleRecouple(m.id, m.name, e)}
+                  disabled={acting}
+                  style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
+                  {acting ? '…' : '🔄 Recouple'}
+                </button>
+                <button
+                  onClick={e => handleRequestConnect(m.id, m.name, e)}
+                  disabled={acting}
+                  style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.55)', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
+                  {acting ? '…' : 'Request to Connect'}
+                </button>
+              </div>
+            )}
           </div>
-          <div style={{ fontSize:12, color:C.teal, fontWeight:700 }}>Message →</div>
-        </button>
-      ))}
+        )
+      })}
     </div>
   )
 }
-
 // ─── Marina Chat ──────────────────────────────────────────────────────────────
-function MarinaChat({ marina, user, profile, vessel, onBack, onAddVessel }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; onBack:()=>void; onAddVessel:()=>void }) {
+function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVessel }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; coupled?:boolean; onBack:()=>void; onAddVessel:()=>void }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
     { role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }
   ])
