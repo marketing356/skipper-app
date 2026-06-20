@@ -41,7 +41,7 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
-type HomeTab = 'vessel' | 'marinas' | 'account'
+type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
 type Profile = {
@@ -750,6 +750,7 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
         {activeTab === 'vessel'   && <TabVessel   vessel={vessel} vesselId={vesselId} user={user} onVesselSaved={onVesselSaved} />}
+        {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
       </div>
@@ -757,6 +758,7 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
       {/* Bottom nav */}
       <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
         <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="My Vessel"  active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
+        <NavBtn icon={<IcoSkipper active={activeTab==='skipper'} />} label="Skipper"    active={activeTab==='skipper'} onClick={() => onTabChange('skipper')} />
         <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"    active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
         <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"    active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
       </div>
@@ -1545,7 +1547,165 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
   )
 }
 
-// ─── TAB 3: Messages ───────────────────────────────────────────────────────────
+// ─── TAB: Skipper AI (Global) ────────────────────────────────────────────────
+function TabSkipper({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+  const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
+    { role:'skipper', text:`Aye aye! I'm Skipper — your personal marine intelligence. I know your boat, I know the marinas, I know transient availability, the marketplace, everything. What do you need?` }
+  ])
+  const [draft,   setDraft]   = useState('')
+  const [sending, setSending] = useState(false)
+  const [coupledMarinas, setCoupledMarinas] = useState<Marina[]>([])
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  const displayName = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
+    : user.email
+
+  // Load coupled marinas for context
+  useEffect(() => {
+    async function load() {
+      const { data: links } = await supabase
+        .from('contacts')
+        .select('marina_id')
+        .eq('auth_user_id', user.id)
+        .not('marina_id', 'is', null)
+      if (!links || links.length === 0) return
+      const ids = links.map((l: {marina_id:string}) => l.marina_id)
+      const { data: marinas } = await supabase
+        .from('marinas')
+        .select('id,name,city,state,total_slips')
+        .in('id', ids)
+      setCoupledMarinas(marinas ?? [])
+    }
+    load()
+  }, [user.id])
+
+  async function send() {
+    if (!draft.trim() || sending) return
+    const msg = draft.trim(); setDraft('')
+    setMsgs(m => [...m, { role:'user', text:msg }])
+    setSending(true)
+
+    const identityPackage = {
+      auth_user_id:  user.id,
+      first_name:    profile?.first_name ?? null,
+      last_name:     profile?.last_name ?? null,
+      display_name:  displayName,
+      email:         user.email ?? null,
+      coupled_marinas: coupledMarinas.map(m => ({ id: m.id, name: m.name, city: m.city, state: m.state })),
+      vessel: vessel ? {
+        name:        vessel.name,
+        type:        vessel.vessel_type,
+        make:        vessel.make,
+        model:       vessel.model,
+        year:        vessel.year,
+        loa:         vessel.length_ft,
+        beam:        vessel.beam_ft,
+        draft:       vessel.draft_ft,
+        air_draft:   vessel.air_draft_ft,
+        shore_power: vessel.shore_power,
+        fuel_type:   vessel.fuel_type,
+      } : null,
+    }
+
+    try {
+      const r = await fetch('https://skipper-engine-production.up.railway.app/chat', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          message: msg,
+          marina_id: null,
+          identity: identityPackage,
+          session: { boater_id: user.id, access_type: 'boater', context: 'global' },
+        })
+      })
+      const d = await r.json()
+      setMsgs(m => [...m, { role:'skipper', text: d.reply || 'Let me look into that.' }])
+    } catch {
+      setMsgs(m => [...m, { role:'skipper', text:'Rough seas on my end — try again in a moment.' }])
+    }
+    setSending(false)
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:'smooth' }), 100)
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', padding:'0 20px' }}>
+      {/* Header */}
+      <div style={{ padding:'14px 0 10px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid rgba(255,255,255,0.08)`, marginBottom:14, flexShrink:0 }}>
+        <div style={{ width:42, height:42, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, animation:'glow 4s ease-in-out infinite', flexShrink:0 }}>
+          <Image src="/skipper-avatar.jpg" alt="Skipper" width={42} height={42} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+        </div>
+        <div>
+          <div style={{ fontSize:17, fontWeight:800, letterSpacing:-0.3 }}>Skipper</div>
+          <div style={{ fontSize:11, color:C.teal, fontWeight:600 }}>Marine Intelligence · Always On</div>
+        </div>
+        {vessel && (
+          <div style={{ marginLeft:'auto', fontSize:11, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px', flexShrink:0 }}>
+            ⛵ {vessel.name}
+          </div>
+        )}
+      </div>
+
+      {/* Context pills */}
+      {coupledMarinas.length > 0 && (
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12, flexShrink:0 }}>
+          {coupledMarinas.map(m => (
+            <div key={m.id} style={{ fontSize:10, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.1)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:20, padding:'3px 9px' }}>
+              ⚓ {m.name}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', display:'flex', flexDirection:'column', gap:12, paddingBottom:12 }}>
+        {msgs.map((m,i) => (
+          <div key={i} style={{ display:'flex', justifyContent:m.role==='user'?'flex-end':'flex-start', gap:8, alignItems:'flex-end' }}>
+            {m.role==='skipper' && (
+              <div style={{ width:30, height:30, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, flexShrink:0 }}>
+                <Image src="/skipper-avatar.jpg" alt="Skipper" width={30} height={30} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+              </div>
+            )}
+            <div style={{ maxWidth:'78%', padding:'11px 14px', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, border:m.role==='skipper'?`1px solid ${C.cardBorder}`:'none', fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+        {sending && (
+          <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+            <div style={{ width:30, height:30, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, flexShrink:0 }}>
+              <Image src="/skipper-avatar.jpg" alt="Skipper" width={30} height={30} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+            </div>
+            <div style={{ padding:'12px 16px', background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:'16px 16px 16px 4px', display:'flex', gap:5, alignItems:'center' }}>
+              {[0,0.2,0.4].map((d,i) => <div key={i} style={{ width:6, height:6, borderRadius:'50%', background:C.teal, animation:`dot${i+1} 1.2s ease-in-out ${d}s infinite` }} />)}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ flexShrink:0, paddingBottom:8, paddingTop:4 }}>
+        <div style={{ display:'flex', gap:8 }}>
+          <input
+            type="text" value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send() } }}
+            placeholder="Ask Skipper anything…"
+            style={{ flex:1, padding:'13px 14px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:C.white, fontSize:14, fontFamily:FONT, outline:'none' }}
+            onFocus={e => e.currentTarget.style.borderColor=C.teal}
+            onBlur={e => e.currentTarget.style.borderColor=C.inputBorder}
+          />
+          <button onClick={send} disabled={sending||!draft.trim()}
+            style={{ padding:'0 18px', background:(!draft.trim()||sending)?'rgba(77,214,200,0.3)':`linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:13, color:C.navy, cursor:(!draft.trim()||sending)?'default':'pointer', flexShrink:0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── TAB 3: Messages (legacy — kept for reference) ──────────────────────────────
 function TabMessages({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [threads,  setThreads]  = useState<{marina: Marina; last: MsgRow}[]>([])
   const [loading,  setLoading]  = useState(true)
@@ -1974,6 +2134,13 @@ function FormSectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Nav Icons ─────────────────────────────────────────────────────────────────
+function IcoSkipper({ active }: { active: boolean }) {
+  return (
+    <div style={{ width:26, height:26, borderRadius:'50%', overflow:'hidden', border:`2px solid ${active ? C.teal : C.muted}`, opacity: active ? 1 : 0.55, transition:'all 0.2s', boxShadow: active ? `0 0 8px ${C.teal}` : 'none' }}>
+      <Image src="/skipper-avatar.jpg" alt="Skipper" width={26} height={26} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+    </div>
+  )
+}
 function IcoVessel({ active }: { active: boolean }) {
   const c = active ? C.teal : C.muted
   return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 17l1.5-6h15l1.5 6H3z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" fill={active?'rgba(77,214,200,0.15)':'none'}/><path d="M8 11V7a4 4 0 018 0v4" stroke={c} strokeWidth="1.8" strokeLinecap="round"/><path d="M3 17c2 3 16 3 18 0" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
