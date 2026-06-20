@@ -44,6 +44,17 @@ type Screen = 'splash' | 'auth' | 'contact_setup' | 'pin_setup' | 'pin_login' | 
 type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
+type BerthData = {
+  id: string
+  marinaName: string
+  slipNumber: string | null
+  dock: string | null
+  monthlyRate: number | null
+  leaseType: string | null
+  startDate: string | null
+  endDate: string | null
+}
+
 type Profile = {
   id: string
   contact_id: string | null
@@ -127,6 +138,17 @@ async function hashPin(pin: string): Promise<string> {
   const enc = new TextEncoder()
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(pin))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
+}
+
+function fmtDate(d: string | null): string {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+}
+
+function daysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null
+  const diff = new Date(dateStr).getTime() - Date.now()
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
 // ─── Contacts → Profile mapper ─────────────────────────────────────────────────
@@ -773,6 +795,76 @@ function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
   const [showForm, setShowForm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [berths, setBerths] = useState<BerthData[]>([])
+  const [berthLoading, setBerthLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadBerths() {
+      setBerthLoading(true)
+      // 1. Get all coupled marina contacts for this boater
+      const { data: coupled } = await supabase
+        .from('contacts')
+        .select('id, marina_id')
+        .eq('auth_user_id', user.id)
+        .not('marina_id', 'is', null)
+
+      if (!coupled || coupled.length === 0) { setBerthLoading(false); return }
+
+      const contactIds = coupled.map((c: { id: string }) => c.id)
+      const marinaIds  = coupled.map((c: { marina_id: string }) => c.marina_id).filter(Boolean)
+
+      // 2. Active leases for all coupled contacts
+      const { data: leases } = await supabase
+        .from('leases')
+        .select('id, tenant_id, slip_id, monthly_rate, lease_type, start_date, end_date')
+        .in('tenant_id', contactIds)
+        .eq('status', 'active')
+
+      if (!leases || leases.length === 0) { setBerthLoading(false); return }
+
+      // 3. Slip details
+      const slipIds = leases.map((l: { slip_id: string }) => l.slip_id).filter(Boolean)
+      const [{ data: slips }, { data: marinas }] = await Promise.all([
+        slipIds.length > 0
+          ? supabase.from('slips').select('id, slip_number, dock').in('id', slipIds)
+          : Promise.resolve({ data: [] }),
+        supabase.from('marinas').select('id, name').in('id', marinaIds),
+      ])
+
+      // 4. Build lookup maps
+      const slipMap: Record<string, { slip_number: string; dock: string }> =
+        Object.fromEntries((slips ?? []).map((s: { id: string; slip_number: string; dock: string }) => [s.id, s]))
+      const marinaMap: Record<string, string> =
+        Object.fromEntries((marinas ?? []).map((m: { id: string; name: string }) => [m.id, m.name]))
+      const contactMarinaMap: Record<string, string> =
+        Object.fromEntries(coupled.map((c: { id: string; marina_id: string }) => [c.id, c.marina_id]))
+
+      // 5. Build BerthData array
+      const result: BerthData[] = leases.map((lease: {
+        id: string; tenant_id: string; slip_id: string;
+        monthly_rate: number | null; lease_type: string | null;
+        start_date: string | null; end_date: string | null;
+      }) => {
+        const marinaId  = contactMarinaMap[lease.tenant_id]
+        const slip      = slipMap[lease.slip_id]
+        return {
+          id:          lease.id,
+          marinaName:  marinaMap[marinaId] ?? 'Marina',
+          slipNumber:  slip?.slip_number ?? null,
+          dock:        slip?.dock ?? null,
+          monthlyRate: lease.monthly_rate,
+          leaseType:   lease.lease_type,
+          startDate:   lease.start_date,
+          endDate:     lease.end_date,
+        }
+      })
+
+      setBerths(result)
+      setBerthLoading(false)
+    }
+    loadBerths()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id])
 
   // Form state — covers all columns
   const blank = {
@@ -1152,6 +1244,15 @@ function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
       <SectionTitle>My Vessel</SectionTitle>
+
+      {/* ── Active Berths ── */}
+      {!berthLoading && berths.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>Current Berth{berths.length > 1 ? 's' : ''}</div>
+          {berths.map(b => <BerthCard key={b.id} berth={b} />)}
+        </div>
+      )}
+
       {vessel ? (
         <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22 }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
@@ -1199,6 +1300,88 @@ function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
           <PrimaryBtn onClick={openEdit} style={{ maxWidth:220, margin:'0 auto' }}>+ Add Your Vessel</PrimaryBtn>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Berth Card ──────────────────────────────────────────────────────────────────
+function BerthCard({ berth }: { berth: BerthData }) {
+  const days      = daysUntil(berth.endDate)
+  const isExpired = days !== null && days < 0
+  const isDueSoon = days !== null && days >= 0 && days <= 30
+  const isPaymentDue = (() => {
+    // Flag if we're in the last 7 days of the current calendar month
+    const today = new Date()
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    return today.getDate() >= lastDay - 6
+  })()
+
+  return (
+    <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.10) 0%,rgba(13,43,75,0.45) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:18, padding:16, marginBottom:12 }}>
+
+      {/* Payment due banner */}
+      {isExpired && (
+        <div style={{ background:'rgba(248,113,113,0.13)', border:'1px solid rgba(248,113,113,0.35)', borderRadius:10, padding:'8px 12px', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+          <span>🚨</span>
+          <span style={{ fontSize:12, color:'#fca5a5', fontWeight:700 }}>Lease expired {Math.abs(days!)} day{Math.abs(days!) !== 1 ? 's' : ''} ago — contact your marina</span>
+        </div>
+      )}
+      {!isExpired && isDueSoon && (
+        <div style={{ background:'rgba(251,191,36,0.10)', border:'1px solid rgba(251,191,36,0.30)', borderRadius:10, padding:'8px 12px', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+          <span>⏳</span>
+          <span style={{ fontSize:12, color:'#fde68a', fontWeight:700 }}>Lease ends in {days} day{days !== 1 ? 's' : ''}</span>
+        </div>
+      )}
+      {!isExpired && isPaymentDue && berth.monthlyRate && (
+        <div style={{ background:'rgba(77,214,200,0.10)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:10, padding:'8px 12px', marginBottom:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span>🔔</span>
+            <span style={{ fontSize:12, color:C.teal, fontWeight:700 }}>Monthly payment due — ${Number(berth.monthlyRate).toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Marina + slip header */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+        <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>⚓</div>
+        <div>
+          <div style={{ fontSize:16, fontWeight:800, letterSpacing:-0.3 }}>{berth.marinaName}</div>
+          {berth.slipNumber && (
+            <div style={{ fontSize:13, color:C.teal, fontWeight:700, marginTop:1 }}>
+              Slip {berth.slipNumber}{berth.dock ? ` · Dock ${berth.dock}` : ''}
+            </div>
+          )}
+          {!berth.slipNumber && berth.leaseType && (
+            <div style={{ fontSize:13, color:C.muted, marginTop:1 }}>{berth.leaseType}</div>
+          )}
+        </div>
+      </div>
+
+      {/* Lease detail grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+        {berth.monthlyRate != null && (
+          <StatTile label="Monthly" value={`$${Number(berth.monthlyRate).toLocaleString()}`} />
+        )}
+        {berth.leaseType && (
+          <StatTile label="Lease Type" value={berth.leaseType.charAt(0).toUpperCase() + berth.leaseType.slice(1)} />
+        )}
+        {berth.startDate && (
+          <StatTile label="Start" value={fmtDate(berth.startDate)} />
+        )}
+        {berth.endDate && (
+          <StatTile label="Ends" value={fmtDate(berth.endDate)} danger={isExpired} warn={isDueSoon} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StatTile({ label, value, danger, warn }: { label:string; value:string; danger?:boolean; warn?:boolean }) {
+  const color = danger ? '#fca5a5' : warn ? '#fde68a' : C.white
+  return (
+    <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'9px 12px' }}>
+      <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:0.9, marginBottom:3 }}>{label}</div>
+      <div style={{ fontSize:14, fontWeight:700, color }}>{value}</div>
     </div>
   )
 }
