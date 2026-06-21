@@ -2188,10 +2188,10 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
               </FieldGroup>
             </div>
             <FieldGroup label="Mobile phone">
-              <Input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(555) 867-5309" />
+              <Input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="(555) 867-5309" />
             </FieldGroup>
             <FieldGroup label="Mobile (alt)">
-              <Input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="(555) 000-0000" />
+              <Input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(555) 000-0000" />
             </FieldGroup>
             <FormSectionLabel>Home Address</FormSectionLabel>
             <FieldGroup label="Street">
