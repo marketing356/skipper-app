@@ -82,6 +82,40 @@ type Profile = {
   driver_license_number: string | null
   preferred_contact_method: string | null
   language_preference: string | null
+  // Extended OPS fields
+  preferred_name: string | null
+  email_secondary: string | null
+  phone_work: string | null
+  company_organization: string | null
+  job_title: string | null
+  address_line2: string | null
+  country: string | null
+  billing_name: string | null
+  billing_email: string | null
+  tax_exempt: boolean | null
+  emergency_relationship: string | null
+  emergency_name_2: string | null
+  emergency_phone_2: string | null
+  drivers_license_state: string | null
+  drivers_license_expiry: string | null
+  oupv_license_number: string | null
+  oupv_expiry: string | null
+  contact_type: string | null
+  status: string | null
+  sms_opt_in: boolean | null
+  email_opt_in: boolean | null
+  liveaboard: boolean | null
+  pet_on_board: boolean | null
+  parking_permit: boolean | null
+  notes: string | null
+  account_number: string | null
+  lead_source: string | null
+  customer_since: string | null
+  waiver_signed: boolean | null
+  waiver_signed_date: string | null
+  internal_notes: string | null
+  vip_flag: boolean | null
+  do_not_contact: boolean | null
 }
 
 type Vessel = {
@@ -181,6 +215,40 @@ function contactToProfile(c: Record<string, any>): Profile {
     driver_license_number: c.driver_license_number ?? null,
     preferred_contact_method: c.preferred_contact_method ?? null,
     language_preference: c.language_preference ?? null,
+    // Extended OPS fields
+    preferred_name: c.preferred_name ?? null,
+    email_secondary: c.email_secondary ?? null,
+    phone_work: c.phone_work ?? null,
+    company_organization: c.company_organization ?? null,
+    job_title: c.job_title ?? null,
+    address_line2: c.address_line2 ?? null,
+    country: c.country ?? null,
+    billing_name: c.billing_name ?? null,
+    billing_email: c.billing_email ?? null,
+    tax_exempt: c.tax_exempt ?? null,
+    emergency_relationship: c.emergency_relationship ?? null,
+    emergency_name_2: c.emergency_name_2 ?? null,
+    emergency_phone_2: c.emergency_phone_2 ?? null,
+    drivers_license_state: c.drivers_license_state ?? null,
+    drivers_license_expiry: c.drivers_license_expiry ?? null,
+    oupv_license_number: c.oupv_license_number ?? null,
+    oupv_expiry: c.oupv_expiry ?? null,
+    contact_type: c.contact_type ?? null,
+    status: c.status ?? null,
+    sms_opt_in: c.sms_opt_in ?? null,
+    email_opt_in: c.email_opt_in ?? null,
+    liveaboard: c.liveaboard ?? null,
+    pet_on_board: c.pet_on_board ?? null,
+    parking_permit: c.parking_permit ?? null,
+    notes: c.notes ?? null,
+    account_number: c.account_number ?? null,
+    lead_source: c.lead_source ?? null,
+    customer_since: c.customer_since ?? null,
+    waiver_signed: c.waiver_signed ?? null,
+    waiver_signed_date: c.waiver_signed_date ?? null,
+    internal_notes: c.internal_notes ?? null,
+    vip_flag: c.vip_flag ?? null,
+    do_not_contact: c.do_not_contact ?? null,
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2048,7 +2116,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   const [pinFirst,     setPinFirst]      = useState('')
   const [pinErr,       setPinErr]        = useState('')
   const [pinBusy,      setPinBusy]       = useState(false)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<Record<string, any>>({
     first_name:               profile?.first_name ?? '',
     last_name:                profile?.last_name ?? '',
     phone:                    profile?.phone ?? '',
@@ -2064,6 +2132,31 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
     driver_license_number:    profile?.driver_license_number ?? '',
     preferred_contact_method: profile?.preferred_contact_method ?? '',
     language_preference:      profile?.language_preference ?? 'en',
+    // Extended OPS fields
+    preferred_name:           profile?.preferred_name ?? '',
+    email_secondary:          profile?.email_secondary ?? '',
+    phone_work:               profile?.phone_work ?? '',
+    company_organization:     profile?.company_organization ?? '',
+    job_title:                profile?.job_title ?? '',
+    address_line2:            profile?.address_line2 ?? '',
+    country:                  profile?.country ?? '',
+    billing_name:             profile?.billing_name ?? '',
+    billing_email:            profile?.billing_email ?? '',
+    billing_address:          profile?.billing_address ?? '',
+    billing_city:             profile?.billing_city ?? '',
+    billing_state:            profile?.billing_state ?? '',
+    billing_zip:              profile?.billing_zip ?? '',
+    tax_exempt:               profile?.tax_exempt ?? null,
+    emergency_relationship:   profile?.emergency_relationship ?? '',
+    emergency_name_2:         profile?.emergency_name_2 ?? '',
+    emergency_phone_2:        profile?.emergency_phone_2 ?? '',
+    drivers_license_state:    profile?.drivers_license_state ?? '',
+    drivers_license_expiry:   profile?.drivers_license_expiry ?? '',
+    oupv_license_number:      profile?.oupv_license_number ?? '',
+    oupv_expiry:              profile?.oupv_expiry ?? '',
+    sms_opt_in:               profile?.sms_opt_in ?? null,
+    email_opt_in:             profile?.email_opt_in ?? null,
+    notes:                    profile?.notes ?? '',
   })
   const [busy, setBusy] = useState(false)
   const [err,  setErr]  = useState('')
@@ -2126,6 +2219,31 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
       driver_license_number:    form.driver_license_number.trim() || null,
       preferred_contact_method: form.preferred_contact_method || null,
       language_preference:      form.language_preference || 'en',
+      // Extended OPS fields
+      preferred_name:           (form.preferred_name ?? '').trim() || null,
+      email_secondary:          (form.email_secondary ?? '').trim() || null,
+      phone_work:               (form.phone_work ?? '').trim() || null,
+      company_organization:     (form.company_organization ?? '').trim() || null,
+      job_title:                (form.job_title ?? '').trim() || null,
+      address_line2:            (form.address_line2 ?? '').trim() || null,
+      country:                  (form.country ?? '').trim() || null,
+      billing_name:             (form.billing_name ?? '').trim() || null,
+      billing_email:            (form.billing_email ?? '').trim() || null,
+      billing_address:          (form.billing_address ?? '').trim() || null,
+      billing_city:             (form.billing_city ?? '').trim() || null,
+      billing_state:            (form.billing_state ?? '').trim() || null,
+      billing_zip:              (form.billing_zip ?? '').trim() || null,
+      tax_exempt:               form.tax_exempt ?? null,
+      emergency_relationship:   (form.emergency_relationship ?? '').trim() || null,
+      emergency_name_2:         (form.emergency_name_2 ?? '').trim() || null,
+      emergency_phone_2:        (form.emergency_phone_2 ?? '').trim() || null,
+      drivers_license_state:    (form.drivers_license_state ?? '').trim() || null,
+      drivers_license_expiry:   form.drivers_license_expiry || null,
+      oupv_license_number:      (form.oupv_license_number ?? '').trim() || null,
+      oupv_expiry:              form.oupv_expiry || null,
+      sms_opt_in:               form.sms_opt_in ?? null,
+      email_opt_in:             form.email_opt_in ?? null,
+      notes:                    (form.notes ?? '').trim() || null,
     }
     // Update ALL contacts rows for this user — national-pool + all marina-scoped rows
     // so changes appear in Ops regardless of which row is displayed
@@ -2170,7 +2288,42 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
             </div>
           </div>
           {!editing && (
-            <button onClick={() => { setEditing(true); setForm({ first_name:profile?.first_name??'', last_name:profile?.last_name??'', phone:profile?.phone??'', mobile:profile?.mobile??'', address:profile?.address??'', address_city:profile?.address_city??'', address_state:profile?.address_state??'', address_zip:profile?.address_zip??'', emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'', title:profile?.title??'', date_of_birth:profile?.date_of_birth??'', driver_license_number:profile?.driver_license_number??'', preferred_contact_method:profile?.preferred_contact_method??'', language_preference:profile?.language_preference??'en' }); setErr('') }}
+            <button onClick={() => { setEditing(true); setForm({
+            first_name:profile?.first_name??'', last_name:profile?.last_name??'',
+            phone:profile?.phone??'', mobile:profile?.mobile??'',
+            address:profile?.address??'', address_city:profile?.address_city??'',
+            address_state:profile?.address_state??'', address_zip:profile?.address_zip??'',
+            emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'',
+            title:profile?.title??'', date_of_birth:profile?.date_of_birth??'',
+            driver_license_number:profile?.driver_license_number??'',
+            preferred_contact_method:profile?.preferred_contact_method??'',
+            language_preference:profile?.language_preference??'en',
+            // Extended OPS fields
+            preferred_name:profile?.preferred_name??'',
+            email_secondary:profile?.email_secondary??'',
+            phone_work:profile?.phone_work??'',
+            company_organization:profile?.company_organization??'',
+            job_title:profile?.job_title??'',
+            address_line2:profile?.address_line2??'',
+            country:profile?.country??'',
+            billing_name:profile?.billing_name??'',
+            billing_email:profile?.billing_email??'',
+            billing_address:profile?.billing_address??'',
+            billing_city:profile?.billing_city??'',
+            billing_state:profile?.billing_state??'',
+            billing_zip:profile?.billing_zip??'',
+            tax_exempt:profile?.tax_exempt??null,
+            emergency_relationship:profile?.emergency_relationship??'',
+            emergency_name_2:profile?.emergency_name_2??'',
+            emergency_phone_2:profile?.emergency_phone_2??'',
+            drivers_license_state:profile?.drivers_license_state??'',
+            drivers_license_expiry:profile?.drivers_license_expiry??'',
+            oupv_license_number:profile?.oupv_license_number??'',
+            oupv_expiry:profile?.oupv_expiry??'',
+            sms_opt_in:profile?.sms_opt_in??null,
+            email_opt_in:profile?.email_opt_in??null,
+            notes:profile?.notes??'',
+          }); setErr('') }}
               style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
               Edit
             </button>
@@ -2217,6 +2370,64 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
                 <Input type="tel" value={form.emergency_phone} onChange={e => set('emergency_phone', e.target.value)} />
               </FieldGroup>
             </div>
+            <FormSectionLabel>Company / Organization</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Preferred name">
+                <Input value={form.preferred_name??''} onChange={e => set('preferred_name', e.target.value)} placeholder="Nickname" />
+              </FieldGroup>
+              <FieldGroup label="Work phone">
+                <Input type="tel" value={form.phone_work??''} onChange={e => set('phone_work', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Company">
+                <Input value={form.company_organization??''} onChange={e => set('company_organization', e.target.value)} placeholder="ABC Corp" />
+              </FieldGroup>
+              <FieldGroup label="Job title">
+                <Input value={form.job_title??''} onChange={e => set('job_title', e.target.value)} placeholder="Captain" />
+              </FieldGroup>
+              <FieldGroup label="Secondary email">
+                <Input type="email" value={form.email_secondary??''} onChange={e => set('email_secondary', e.target.value)} />
+              </FieldGroup>
+            </div>
+            <FormSectionLabel>Full Address</FormSectionLabel>
+            <FieldGroup label="Address line 2">
+              <Input value={form.address_line2??''} onChange={e => set('address_line2', e.target.value)} placeholder="Unit, Dock…" />
+            </FieldGroup>
+            <FieldGroup label="Country">
+              <Input value={form.country??''} onChange={e => set('country', e.target.value)} placeholder="USA" />
+            </FieldGroup>
+            <FormSectionLabel>Billing</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Billing name">
+                <Input value={form.billing_name??''} onChange={e => set('billing_name', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Billing email">
+                <Input type="email" value={form.billing_email??''} onChange={e => set('billing_email', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Billing address">
+                <Input value={form.billing_address??''} onChange={e => set('billing_address', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Billing city">
+                <Input value={form.billing_city??''} onChange={e => set('billing_city', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Billing state">
+                <Input value={form.billing_state??''} onChange={e => set('billing_state', e.target.value)} maxLength={2} />
+              </FieldGroup>
+              <FieldGroup label="Billing ZIP">
+                <Input value={form.billing_zip??''} onChange={e => set('billing_zip', e.target.value)} />
+              </FieldGroup>
+            </div>
+            <FormSectionLabel>Emergency Contact (extended)</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Relationship">
+                <Input value={form.emergency_relationship??''} onChange={e => set('emergency_relationship', e.target.value)} placeholder="Spouse" />
+              </FieldGroup>
+              <FieldGroup label="Secondary contact name">
+                <Input value={form.emergency_name_2??''} onChange={e => set('emergency_name_2', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Secondary contact phone">
+                <Input type="tel" value={form.emergency_phone_2??''} onChange={e => set('emergency_phone_2', e.target.value)} />
+              </FieldGroup>
+            </div>
             <FormSectionLabel>ID &amp; Preferences</FormSectionLabel>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
               <FieldGroup label="Title">
@@ -2245,6 +2456,41 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
                 <option value="fr">Français</option>
                 <option value="pt">Português</option>
               </SelectInput>
+            </FieldGroup>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Driver License state">
+                <Input value={form.drivers_license_state??''} onChange={e => set('drivers_license_state', e.target.value)} placeholder="FL" />
+              </FieldGroup>
+              <FieldGroup label="DL Expiry">
+                <Input type="date" value={form.drivers_license_expiry??''} onChange={e => set('drivers_license_expiry', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="OUPV License #">
+                <Input value={form.oupv_license_number??''} onChange={e => set('oupv_license_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="OUPV Expiry">
+                <Input type="date" value={form.oupv_expiry??''} onChange={e => set('oupv_expiry', e.target.value)} />
+              </FieldGroup>
+            </div>
+            <FormSectionLabel>Preferences &amp; Notes</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="SMS opt-in">
+                <SelectInput value={form.sms_opt_in === true ? 'true' : form.sms_opt_in === false ? 'false' : ''} onChange={e => set('sms_opt_in', e.target.value === 'true' ? true : e.target.value === 'false' ? false : null as any)}>
+                  <option value="">— Not set —</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </SelectInput>
+              </FieldGroup>
+              <FieldGroup label="Email opt-in">
+                <SelectInput value={form.email_opt_in === true ? 'true' : form.email_opt_in === false ? 'false' : ''} onChange={e => set('email_opt_in', e.target.value === 'true' ? true : e.target.value === 'false' ? false : null as any)}>
+                  <option value="">— Not set —</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </SelectInput>
+              </FieldGroup>
+            </div>
+            <FieldGroup label="Notes">
+              <textarea value={form.notes??''} onChange={e => set('notes', e.target.value)} rows={3}
+                style={{ width:'100%', padding:'12px 14px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:12, fontSize:14, fontFamily:FONT, color:C.white, outline:'none', resize:'none' }} />
             </FieldGroup>
 
             {/* Email change section */}
