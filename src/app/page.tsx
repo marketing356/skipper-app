@@ -2067,7 +2067,14 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
 
   return (
     <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
-      <SectionTitle>Account</SectionTitle>
+      {/* Always-visible header row with sign out */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <h2 style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.8, margin:0 }}>Account</h2>
+        <button onClick={onSignOut}
+          style={{ background:'none', border:`1px solid rgba(248,113,113,0.4)`, borderRadius:8, padding:'5px 12px', color:'#fca5a5', fontFamily:FONT, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+          Sign out
+        </button>
+      </div>
 
       {/* Profile card */}
       <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:20, padding:20, marginBottom:14 }}>
