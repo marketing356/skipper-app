@@ -2034,31 +2034,34 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   async function saveProfile() {
     if (!form.first_name.trim()) { setErr('First name is required'); return }
     setBusy(true); setErr('')
+    const payload = {
+      first_name:               form.first_name.trim(),
+      last_name:                form.last_name.trim() || null,
+      mobile:                   form.phone.trim() || null,
+      address:                  form.address.trim() || null,
+      address_city:             form.address_city.trim() || null,
+      address_state:            form.address_state.trim() || null,
+      address_zip:              form.address_zip.trim() || null,
+      emergency_contact:        form.emergency_contact.trim() || null,
+      emergency_phone:          form.emergency_phone.trim() || null,
+      title:                    form.title.trim() || null,
+      date_of_birth:            form.date_of_birth || null,
+      driver_license_number:    form.driver_license_number.trim() || null,
+      preferred_contact_method: form.preferred_contact_method || null,
+      language_preference:      form.language_preference || 'en',
+    }
+    // Update ALL contacts rows for this user — national-pool + all marina-scoped rows
+    // so changes appear in Ops regardless of which row is displayed
     const { data, error } = await supabase
       .from('contacts')
-      .update({
-        first_name:               form.first_name.trim(),
-        last_name:                form.last_name.trim() || null,
-        mobile:                   form.phone.trim() || null,
-        address:                  form.address.trim() || null,
-        address_city:             form.address_city.trim() || null,
-        address_state:            form.address_state.trim() || null,
-        address_zip:              form.address_zip.trim() || null,
-        emergency_contact:        form.emergency_contact.trim() || null,
-        emergency_phone:          form.emergency_phone.trim() || null,
-        title:                    form.title.trim() || null,
-        date_of_birth:            form.date_of_birth || null,
-        driver_license_number:    form.driver_license_number.trim() || null,
-        preferred_contact_method: form.preferred_contact_method || null,
-        language_preference:      form.language_preference || 'en',
-      })
+      .update(payload)
       .eq('auth_user_id', user.id)
-      .is('marina_id', null)
       .select()
-      .single()
     setBusy(false)
     if (error) { setErr(error.message); return }
-    onProfileUpdated(contactToProfile(data))
+    // Use the national-pool row (marina_id = null) for local profile state
+    const nationalRow = (data ?? []).find((r: any) => !r.marina_id) ?? data?.[0]
+    if (nationalRow) onProfileUpdated(contactToProfile(nationalRow))
     setEditing(false)
   }
 
