@@ -288,9 +288,6 @@ export default function SkipperApp() {
         contact = newContact
       }
 
-      const prof = contact ? contactToProfile(contact) : null
-      setProfile(prof)
-
       // Load ALL assets for this user across ALL their contact IDs (national-pool + marina-scoped)
       // so assets added via Ops (which uses marina-scoped contact IDs) appear here too
       const { data: allContactRows } = await supabase
@@ -331,6 +328,61 @@ export default function SkipperApp() {
           console.log(`[Skipper] Auto-coupled ${pendingLinks.length} marina(s) for ${u.email}`)
         }
       }
+
+      // ── Bidirectional sync: pull marina (abc-marina.ayeayeskipper.com) data into
+      // national-pool row on every login. If Helm has a more recent record (updated_at
+      // newer than national-pool), overwrite all profile fields so the boater always
+      // sees the current marina data. Falls back to fill-gaps if updated_at is equal.
+      if (contact) {
+        const { data: marinaScopedRows } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('auth_user_id', u.id)
+          .not('marina_id', 'is', null)
+          .not('first_name', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+        const marinaContact = marinaScopedRows?.[0] ?? null
+        if (marinaContact) {
+          const marinaTime  = new Date(marinaContact.updated_at ?? 0).getTime()
+          const nationalTime = new Date((contact as any).updated_at ?? 0).getTime()
+          const syncFields = [
+            'first_name','last_name','phone','mobile',
+            'address','address_line2','address_city','address_state','address_zip','country',
+            'emergency_name','emergency_relationship','emergency_phone',
+            'emergency_name_2','emergency_phone_2',
+            'title','date_of_birth','driver_license_number','drivers_license_state','drivers_license_expiry',
+            'oupv_license_number','oupv_expiry',
+            'preferred_contact_method','language_preference',
+            'billing_name','billing_email','billing_address','billing_city','billing_state','billing_zip',
+            'company_organization','job_title','email_secondary','phone_work',
+          ] as const
+          const patch: Record<string, unknown> = {}
+          for (const f of syncFields) {
+            const marinaVal  = (marinaContact as any)[f]
+            const nationalVal = (contact as any)[f]
+            // Overwrite if marina is newer, or fill gap if national is null
+            if (marinaVal != null && (marinaTime > nationalTime || nationalVal == null)) {
+              patch[f] = marinaVal
+            }
+          }
+          if (Object.keys(patch).length > 0) {
+            const { data: synced } = await supabase
+              .from('contacts')
+              .update(patch)
+              .eq('auth_user_id', u.id)
+              .is('marina_id', null)
+              .select()
+              .single()
+            if (synced) contact = synced
+            console.log(`[Skipper] Synced ${Object.keys(patch).length} field(s) from Helm → app`)
+          }
+        }
+      }
+
+      // Build profile AFTER sync so display reflects latest data
+      const prof = contact ? contactToProfile(contact) : null
+      setProfile(prof)
 
       if (!prof?.first_name)  { setScreen('contact_setup'); return }
       if (!contact?.pin_hash) { setScreen('pin_setup'); return }
@@ -978,9 +1030,22 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved }: {
     if (!form.air_draft_ft.trim()){ setErr('Air Draft is required'); return }
     setBusy(true); setErr('')
 
-    // Write vessel data to marina_assets (boat_* columns were dropped from contacts in migration 008)
+    // Resolve contact_id — never allow null tenant_id
+    let contactId = profile?.contact_id ?? null
+    if (!contactId) {
+      const { data: c } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .is('marina_id', null)
+        .maybeSingle()
+      contactId = c?.id ?? null
+    }
+    if (!contactId) { setBusy(false); setErr('Could not resolve your account — please sign out and back in.'); return }
+
+    // Write vessel data to marina_assets
     const assetPayload = {
-      tenant_id:            profile?.contact_id ?? null,
+      tenant_id:            contactId,
       marina_id:            null,
       owner_type:           'customer',
       status:               'active',
