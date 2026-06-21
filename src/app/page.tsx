@@ -291,14 +291,22 @@ export default function SkipperApp() {
       const prof = contact ? contactToProfile(contact) : null
       setProfile(prof)
 
-      // Load ALL vessels for this user — tenant_id references contacts.id
-      const { data: assetRows } = await supabase
-        .from('marina_assets')
-        .select('*')
-        .eq('tenant_id', contact?.id)
-        .is('marina_id', null)
-        .order('created_at', { ascending: false })
-        .limit(50)
+      // Load ALL assets for this user across ALL their contact IDs (national-pool + marina-scoped)
+      // so assets added via Ops (which uses marina-scoped contact IDs) appear here too
+      const { data: allContactRows } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('auth_user_id', u.id)
+      const allContactIds = (allContactRows ?? []).map((c: any) => c.id as string)
+
+      const { data: assetRows } = allContactIds.length > 0
+        ? await supabase
+            .from('marina_assets')
+            .select('*')
+            .in('tenant_id', allContactIds)
+            .order('created_at', { ascending: false })
+            .limit(50)
+        : { data: [] }
 
       const loadedVessels = (assetRows ?? []).map((a: any) => assetRowToVessel(a, contact))
       const loadedIds     = (assetRows ?? []).map((a: any) => a.id as string)
