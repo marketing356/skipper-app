@@ -2105,6 +2105,16 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   user:User; profile:Profile|null; vessel:Vessel|null; onSignOut:()=>void;
   onProfileUpdated:(p:Profile)=>void
 }) {
+  // Re-fetch profile from DB every time Account tab is opened so changes from
+  // Skipper Ops, Helm, or Crew App are immediately visible (flowchart sync doctrine)
+  useEffect(() => {
+    supabase.from('contacts').select('*')
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
+      .single()
+      .then(({ data }) => { if (data) onProfileUpdated(contactToProfile(data)) })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [editing,      setEditing]      = useState(false)
   const [changingEmail,setChangingEmail] = useState(false)
   const [newEmail,     setNewEmail]      = useState('')
