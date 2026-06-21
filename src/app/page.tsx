@@ -203,7 +203,7 @@ function assetRowToVessel(a: Record<string, any>, contact?: Record<string, any> 
     hin: a.hin ?? null,
     registration_number: a.registration_number ?? null,
     registration_state: a.registration_state ?? null,
-    registration_expiry: a.state_reg_expiry ?? null,
+    registration_expiry: a.registration_expiry ?? null,
     documentation_number: a.documentation_number ?? null,
     mmsi_number: a.mmsi_number ?? null,
     flag_state: a.flag_state ?? null,
@@ -289,11 +289,11 @@ export default function SkipperApp() {
       const prof = contact ? contactToProfile(contact) : null
       setProfile(prof)
 
-      // Load vessel from marina_assets
+      // Load vessel from marina_assets — tenant_id references contacts.id (not auth UUID)
       const { data: assetRow } = await supabase
         .from('marina_assets')
         .select('*')
-        .eq('tenant_id', u.id)
+        .eq('tenant_id', contact?.id)
         .is('marina_id', null)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -771,7 +771,7 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
 
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-        {activeTab === 'vessel'   && <TabVessel   vessel={vessel} vesselId={vesselId} user={user} onVesselSaved={onVesselSaved} />}
+        {activeTab === 'vessel'   && <TabVessel   vessel={vessel} vesselId={vesselId} user={user} profile={profile} onVesselSaved={onVesselSaved} />}
         {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -789,8 +789,8 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
-  vessel: Vessel|null; vesselId: string|null; user: User; onVesselSaved: (v: Vessel, id: string) => void
+function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
+  vessel: Vessel|null; vesselId: string|null; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -961,8 +961,10 @@ function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
 
     // Write vessel data to marina_assets (boat_* columns were dropped from contacts in migration 008)
     const assetPayload = {
-      tenant_id:            user.id,
+      tenant_id:            profile?.contact_id ?? null,
       marina_id:            null,
+      owner_type:           'customer',
+      status:               'active',
       asset_type:           form.vessel_type,
       name:                 form.name.trim(),
       make:                 form.make || null,
@@ -977,7 +979,7 @@ function TabVessel({ vessel, vesselId, user, onVesselSaved }: {
       hin:                  form.hin || null,
       registration_number:  form.registration_number || null,
       registration_state:   form.registration_state || null,
-      state_reg_expiry:     form.registration_expiry || null,
+      registration_expiry:  form.registration_expiry || null,
       documentation_number: form.documentation_number || null,
       mmsi_number:          form.mmsi_number || null,
       flag_state:           form.flag_state || null,
