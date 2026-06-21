@@ -329,11 +329,9 @@ export default function SkipperApp() {
         }
       }
 
-      // ── Bidirectional sync: pull marina (abc-marina.ayeayeskipper.com) data into
-      // national-pool row on every login. If Helm has a more recent record (updated_at
-      // newer than national-pool), overwrite all profile fields so the boater always
-      // sees the current marina data. Falls back to fill-gaps if updated_at is equal.
-      if (contact) {
+      // ── One-time fill: ONLY runs when national-pool row has no name yet.
+      // Never overwrites existing data. Login never touches data.
+      if (contact && !contact.first_name) {
         const { data: marinaScopedRows } = await supabase
           .from('contacts')
           .select('*')
@@ -344,8 +342,6 @@ export default function SkipperApp() {
           .limit(1)
         const marinaContact = marinaScopedRows?.[0] ?? null
         if (marinaContact) {
-          const marinaTime  = new Date(marinaContact.updated_at ?? 0).getTime()
-          const nationalTime = new Date((contact as any).updated_at ?? 0).getTime()
           const syncFields = [
             'first_name','last_name','phone','mobile',
             'address','address_line2','address_city','address_state','address_zip','country',
@@ -359,12 +355,7 @@ export default function SkipperApp() {
           ] as const
           const patch: Record<string, unknown> = {}
           for (const f of syncFields) {
-            const marinaVal  = (marinaContact as any)[f]
-            const nationalVal = (contact as any)[f]
-            // Overwrite if marina is newer, or fill gap if national is null
-            if (marinaVal != null && (marinaTime > nationalTime || nationalVal == null)) {
-              patch[f] = marinaVal
-            }
+            if ((marinaContact as any)[f] != null) patch[f] = (marinaContact as any)[f]
           }
           if (Object.keys(patch).length > 0) {
             const { data: synced } = await supabase
@@ -375,7 +366,6 @@ export default function SkipperApp() {
               .select()
               .single()
             if (synced) contact = synced
-            console.log(`[Skipper] Synced ${Object.keys(patch).length} field(s) from Helm → app`)
           }
         }
       }
