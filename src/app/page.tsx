@@ -239,7 +239,9 @@ export default function SkipperApp() {
   const [screen,    setScreen]    = useState<Screen>('splash')
   const [user,      setUser]      = useState<User | null>(null)
   const [profile,   setProfile]   = useState<Profile | null>(null)
-  const [vessel,    setVessel]    = useState<Vessel | null>(null)
+  const [vessel,    setVessel]    = useState<Vessel | null>(null)   // primary (top bar)
+  const [vessels,   setVessels]   = useState<Vessel[]>([])
+  const [vesselIds, setVesselIds] = useState<string[]>([])
   const [homeTab,   setHomeTab]   = useState<HomeTab>('vessel')
   const [savedEmail,setSavedEmail]= useState('')
   const [vesselId,  setVesselId]  = useState<string|null>(null)
@@ -289,23 +291,21 @@ export default function SkipperApp() {
       const prof = contact ? contactToProfile(contact) : null
       setProfile(prof)
 
-      // Load vessel from marina_assets — tenant_id references contacts.id (not auth UUID)
-      const { data: assetRow } = await supabase
+      // Load ALL vessels for this user — tenant_id references contacts.id
+      const { data: assetRows } = await supabase
         .from('marina_assets')
         .select('*')
         .eq('tenant_id', contact?.id)
         .is('marina_id', null)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .limit(50)
 
-      if (assetRow) {
-        setVesselId(assetRow.id)
-        setVessel(assetRowToVessel(assetRow, contact))
-      } else {
-        setVesselId(null)
-        setVessel(null)
-      }
+      const loadedVessels = (assetRows ?? []).map((a: any) => assetRowToVessel(a, contact))
+      const loadedIds     = (assetRows ?? []).map((a: any) => a.id as string)
+      setVessels(loadedVessels)
+      setVesselIds(loadedIds)
+      setVessel(loadedVessels[0] ?? null)
+      setVesselId(loadedIds[0] ?? null)
 
       // Auto-coupling: scan all marina contacts rows with matching email and no auth link
       if (u.email) {
@@ -347,6 +347,7 @@ export default function SkipperApp() {
     localStorage.removeItem('skipper_user_id')
     localStorage.removeItem('skipper_email')
     setUser(null); setProfile(null); setVessel(null); setVesselId(null)
+    setVessels([]); setVesselIds([])
     setScreen('auth')
   }
 
@@ -407,11 +408,17 @@ export default function SkipperApp() {
       user={user!}
       profile={profile}
       vessel={vessel}
-      vesselId={vesselId}
       activeTab={homeTab}
       onTabChange={setHomeTab}
       onSignOut={handleSignOut}
-      onVesselSaved={(v, id) => { setVessel(v); setVesselId(id) }}
+      vessels={vessels}
+      vesselIds={vesselIds}
+      onVesselSaved={(v, id) => {
+        setVessels(prev => { const i = vesselIds.indexOf(id); if (i>=0){const n=[...prev];n[i]=v;return n} return [...prev,v] })
+        setVesselIds(prev => prev.includes(id) ? prev : [...prev, id])
+        setVessel(prev => prev ?? v)
+        setVesselId(prev => prev ?? id)
+      }}
       onProfileUpdated={(p) => setProfile(p)}
     />
   )
@@ -743,8 +750,8 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated }: {
-  user: User; profile: Profile|null; vessel: Vessel|null; vesselId: string|null; activeTab: HomeTab
+function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated }: {
+  user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
   onVesselSaved: (v: Vessel, id: string) => void; onProfileUpdated: (p: Profile) => void
 }) {
@@ -771,7 +778,7 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
 
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-        {activeTab === 'vessel'   && <TabVessel   vessel={vessel} vesselId={vesselId} user={user} profile={profile} onVesselSaved={onVesselSaved} />}
+        {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} />}
         {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -789,10 +796,12 @@ function HomeScreen({ user, profile, vessel, vesselId, activeTab, onTabChange, o
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
-  vessel: Vessel|null; vesselId: string|null; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void
+function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved }: {
+  vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void
 }) {
   const [showForm, setShowForm] = useState(false)
+  const [editingVessel, setEditingVessel] = useState<Vessel|null>(null)
+  const [editingVesselId, setEditingVesselId] = useState<string|null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [berths, setBerths] = useState<BerthData[]>([])
@@ -890,53 +899,55 @@ function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
   const [petOnBoard,        setPetOnBoard]        = useState(false)
   const [parkingPermit,     setParkingPermit]     = useState('')
 
-  function openEdit() {
-    if (vessel) {
+  function openEdit(v: Vessel|null, id: string|null) {
+    setEditingVessel(v)
+    setEditingVesselId(id)
+    if (v) {
       setForm({
-        name: vessel.name ?? '',
-        vessel_type: vessel.vessel_type ?? '',
-        make: vessel.make ?? '',
-        model: vessel.model ?? '',
-        year: vessel.year?.toString() ?? '',
-        color: vessel.color ?? '',
-        length_ft: vessel.length_ft?.toString() ?? '',
-        beam_ft: vessel.beam_ft?.toString() ?? '',
-        draft_ft: vessel.draft_ft?.toString() ?? '',
-        weight_lbs: vessel.weight_lbs?.toString() ?? '',
-        air_draft_ft: vessel.air_draft_ft?.toString() ?? '',
-        hin: vessel.hin ?? '',
-        registration_number: vessel.registration_number ?? '',
-        registration_state: vessel.registration_state ?? '',
-        registration_expiry: vessel.registration_expiry ?? '',
-        documentation_number: vessel.documentation_number ?? '',
-        mmsi_number: vessel.mmsi_number ?? '',
-        flag_state: vessel.flag_state ?? '',
-        hull_material: vessel.hull_material ?? '',
-        engine_count: vessel.engine_count?.toString() ?? '',
-        engine_type: vessel.engine_type ?? '',
-        engine_make: vessel.engine_make ?? '',
-        engine_model: vessel.engine_model ?? '',
-        engine_year: vessel.engine_year?.toString() ?? '',
-        horsepower_per_engine: vessel.horsepower_per_engine?.toString() ?? '',
-        fuel_type: vessel.fuel_type ?? '',
-        fuel_tank_gallons: vessel.fuel_tank_gallons?.toString() ?? '',
-        shore_power: vessel.shore_power ?? '',
-        insurance_provider: vessel.insurance_provider ?? '',
-        insurance_policy: vessel.insurance_policy ?? '',
-        insurance_expiry: vessel.insurance_expiry ?? '',
-        insurance_agent_name: vessel.insurance_agent_name ?? '',
-        insurance_agent_phone: vessel.insurance_agent_phone ?? '',
-        last_survey_date: vessel.last_survey_date ?? '',
-        photo_url: vessel.photo_url ?? '',
-        notes: vessel.notes ?? '',
+        name: v.name ?? '',
+        vessel_type: v.vessel_type ?? '',
+        make: v.make ?? '',
+        model: v.model ?? '',
+        year: v.year?.toString() ?? '',
+        color: v.color ?? '',
+        length_ft: v.length_ft?.toString() ?? '',
+        beam_ft: v.beam_ft?.toString() ?? '',
+        draft_ft: v.draft_ft?.toString() ?? '',
+        weight_lbs: v.weight_lbs?.toString() ?? '',
+        air_draft_ft: v.air_draft_ft?.toString() ?? '',
+        hin: v.hin ?? '',
+        registration_number: v.registration_number ?? '',
+        registration_state: v.registration_state ?? '',
+        registration_expiry: v.registration_expiry ?? '',
+        documentation_number: v.documentation_number ?? '',
+        mmsi_number: v.mmsi_number ?? '',
+        flag_state: v.flag_state ?? '',
+        hull_material: v.hull_material ?? '',
+        engine_count: v.engine_count?.toString() ?? '',
+        engine_type: v.engine_type ?? '',
+        engine_make: v.engine_make ?? '',
+        engine_model: v.engine_model ?? '',
+        engine_year: v.engine_year?.toString() ?? '',
+        horsepower_per_engine: v.horsepower_per_engine?.toString() ?? '',
+        fuel_type: v.fuel_type ?? '',
+        fuel_tank_gallons: v.fuel_tank_gallons?.toString() ?? '',
+        shore_power: v.shore_power ?? '',
+        insurance_provider: v.insurance_provider ?? '',
+        insurance_policy: v.insurance_policy ?? '',
+        insurance_expiry: v.insurance_expiry ?? '',
+        insurance_agent_name: v.insurance_agent_name ?? '',
+        insurance_agent_phone: v.insurance_agent_phone ?? '',
+        last_survey_date: v.last_survey_date ?? '',
+        photo_url: v.photo_url ?? '',
+        notes: v.notes ?? '',
       })
-      setDocRegistration(vessel.doc_registration ?? false)
-      setDocInsuranceCert(vessel.doc_insurance_cert ?? false)
-      setDocSignedContract(vessel.doc_signed_contract ?? false)
-      setDocPhotoId(vessel.doc_photo_id ?? false)
-      setIsLiveaboard(vessel.liveaboard ?? false)
-      setPetOnBoard(vessel.pet_on_board ?? false)
-      setParkingPermit(vessel.parking_permit ?? '')
+      setDocRegistration(v.doc_registration ?? false)
+      setDocInsuranceCert(v.doc_insurance_cert ?? false)
+      setDocSignedContract(v.doc_signed_contract ?? false)
+      setDocPhotoId(v.doc_photo_id ?? false)
+      setIsLiveaboard(v.liveaboard ?? false)
+      setPetOnBoard(v.pet_on_board ?? false)
+      setParkingPermit(v.parking_permit ?? '')
     } else {
       setForm(blank)
       setDocRegistration(false); setDocInsuranceCert(false)
@@ -1008,8 +1019,8 @@ function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
     let assetData: Record<string, any> | null = null
     let assetError: { message: string } | null = null
 
-    if (vesselId) {
-      const { data, error } = await supabase.from('marina_assets').update(assetPayload).eq('id', vesselId).select().single()
+    if (editingVesselId) {
+      const { data, error } = await supabase.from('marina_assets').update(assetPayload).eq('id', editingVesselId).select().single()
       assetData = data; assetError = error
     } else {
       const { data, error } = await supabase.from('marina_assets').insert(assetPayload).select().single()
@@ -1056,7 +1067,7 @@ function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
         <button onClick={() => setShowForm(false)}
           style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20, padding:'0 4px 0 0', fontFamily:FONT }}>←</button>
-        <h2 style={{ margin:0, fontSize:20, fontWeight:800 }}>{vessel ? 'Edit Vessel' : 'Add Your Vessel'}</h2>
+        <h2 style={{ margin:0, fontSize:20, fontWeight:800 }}>{editingVessel ? 'Edit Vessel' : 'Add Vessel'}</h2>
       </div>
 
       <FormSectionLabel>Identity</FormSectionLabel>
@@ -1238,14 +1249,14 @@ function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
 
       {err && <ErrMsg>{err}</ErrMsg>}
       <PrimaryBtn onClick={saveVessel} loading={busy} style={{ marginTop:8 }}>
-        {vessel ? 'Save Changes' : 'Add Vessel'}
+        {editingVessel ? 'Save Changes' : 'Add Vessel'}
       </PrimaryBtn>
     </div>
   )
 
   return (
-    <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
-      <SectionTitle>My Vessel</SectionTitle>
+    <div style={{ padding:'20px 20px 40px', animation:'fadeUp 0.35s ease both' }}>
+      <SectionTitle>My Vessels</SectionTitle>
 
       {/* ── Active Berths ── */}
       {!berthLoading && berths.length > 0 && (
@@ -1255,52 +1266,54 @@ function TabVessel({ vessel, vesselId, user, profile, onVesselSaved }: {
         </div>
       )}
 
-      {vessel ? (
-        <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22 }}>
-          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>⛵</div>
-              <div>
-                <div style={{ fontSize:22, fontWeight:800, letterSpacing:-0.4 }}>{vessel.name}</div>
-                <div style={{ fontSize:13, color:C.muted }}>{vessel.vessel_type}{vessel.year ? ` · ${vessel.year}` : ''}</div>
-                {vessel.make && <div style={{ fontSize:13, color:C.muted }}>{vessel.make}{vessel.model ? ` ${vessel.model}` : ''}</div>}
-              </div>
-            </div>
-            <button onClick={openEdit}
-              style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
-              Edit
-            </button>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            {[
-              vessel.length_ft && ['LOA', `${vessel.length_ft} ft`],
-              vessel.beam_ft && ['Beam', `${vessel.beam_ft} ft`],
-              vessel.draft_ft && ['Draft', `${vessel.draft_ft} ft`],
-              vessel.air_draft_ft && ['Air Draft', `${vessel.air_draft_ft} ft`],
-              vessel.weight_lbs && ['Weight', `${vessel.weight_lbs.toLocaleString()} lbs`],
-              vessel.shore_power && ['Shore Power', vessel.shore_power],
-              vessel.registration_number && ['Reg #', vessel.registration_number],
-            ].filter(Boolean).map(([l, v]) => (
-              <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
-                <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{l}</div>
-                <div style={{ fontSize:14, fontWeight:700 }}>{v}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop:12, background:'rgba(77,214,200,0.08)', border:`1px solid rgba(77,214,200,0.2)`, borderRadius:10, padding:'8px 12px', display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ width:7, height:7, borderRadius:'50%', background:C.green, boxShadow:`0 0 8px ${C.green}`, flexShrink:0 }} />
-            <span style={{ fontSize:12, color:C.muted }}>Identity sent to every marina you message</span>
-          </div>
-        </div>
-      ) : (
+      {/* ── Vessel list ── */}
+      {vessels.length === 0 ? (
         <div style={{ textAlign:'center', padding:'48px 20px' }}>
           <div style={{ fontSize:52, marginBottom:14 }}>⛵</div>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>No vessel on file</div>
+          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>No vessels on file</div>
           <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7, maxWidth:260, margin:'0 auto 24px' }}>
             Add your vessel so marinas know who&apos;s coming and what slip fits you.
           </div>
-          <PrimaryBtn onClick={openEdit} style={{ maxWidth:220, margin:'0 auto' }}>+ Add Your Vessel</PrimaryBtn>
+          <PrimaryBtn onClick={() => openEdit(null, null)} style={{ maxWidth:220, margin:'0 auto' }}>+ Add Your First Vessel</PrimaryBtn>
         </div>
+      ) : (
+        <>
+          {vessels.map((v, i) => (
+            <div key={vesselIds[i]} style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>⛵</div>
+                  <div>
+                    <div style={{ fontSize:20, fontWeight:800, letterSpacing:-0.4 }}>{v.name}</div>
+                    <div style={{ fontSize:13, color:C.muted }}>{v.vessel_type}{v.year ? ` · ${v.year}` : ''}</div>
+                    {v.make && <div style={{ fontSize:13, color:C.muted }}>{v.make}{v.model ? ` ${v.model}` : ''}</div>}
+                  </div>
+                </div>
+                <button onClick={() => openEdit(v, vesselIds[i])}
+                  style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+                  Edit
+                </button>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {[
+                  v.length_ft && ['LOA', `${v.length_ft} ft`],
+                  v.beam_ft   && ['Beam', `${v.beam_ft} ft`],
+                  v.draft_ft  && ['Draft', `${v.draft_ft} ft`],
+                  v.air_draft_ft && ['Air Draft', `${v.air_draft_ft} ft`],
+                  v.weight_lbs && ['Weight', `${v.weight_lbs.toLocaleString()} lbs`],
+                  v.shore_power && ['Shore Power', v.shore_power],
+                  v.registration_number && ['Reg #', v.registration_number],
+                ].filter(Boolean).map(([l, val]) => (
+                  <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
+                    <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{l}</div>
+                    <div style={{ fontSize:14, fontWeight:700 }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <PrimaryBtn onClick={() => openEdit(null, null)} style={{ marginTop:8 }}>+ Add Another Vessel / Asset</PrimaryBtn>
+        </>
       )}
     </div>
   )
