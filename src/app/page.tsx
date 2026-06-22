@@ -700,6 +700,12 @@ export default function SkipperApp() {
         setVessel(prev => prev ?? v)
         setVesselId(prev => prev ?? id)
       }}
+      onVesselDeleted={(id) => {
+        setVessels(prev => prev.filter((_, i) => vesselIds[i] !== id))
+        setVesselIds(prev => prev.filter(vid => vid !== id))
+        setVessel(prev => prev && vesselIds.find(vid => vid === id) ? null : prev)
+        setVesselId(prev => prev === id ? null : prev)
+      }}
       onProfileUpdated={(p) => setProfile(p)}
       vesselsLoading={vesselsLoading}
     />
@@ -1035,10 +1041,10 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated, vesselsLoading }: {
+function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading }: {
   user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
-  onVesselSaved: (v: Vessel, id: string) => void; onProfileUpdated: (p: Profile) => void
+  onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void; onProfileUpdated: (p: Profile) => void
   vesselsLoading: boolean
 }) {
   return (
@@ -1064,7 +1070,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-        {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} vesselsLoading={vesselsLoading} />}
+        {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
         {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1082,8 +1088,8 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, vesselsLoading }: {
-  vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void
+function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselDeleted, vesselsLoading }: {
+  vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void
   vesselsLoading: boolean
 }) {
   const [showForm, setShowForm] = useState(false)
@@ -1363,6 +1369,17 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, vesselsLo
     setShowForm(false)
   }
 
+  async function deleteVessel() {
+    if (!editingVesselId) return
+    if (!window.confirm('Delete this vessel? This cannot be undone.')) return
+    setBusy(true); setErr('')
+    const { error } = await supabase.from('marina_assets').delete().eq('id', editingVesselId)
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    onVesselDeleted(editingVesselId)
+    setShowForm(false)
+  }
+
   if (showForm) return (
     <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.3s ease both' }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
@@ -1552,6 +1569,14 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, vesselsLo
       <PrimaryBtn onClick={saveVessel} loading={busy} style={{ marginTop:8 }}>
         {editingVessel ? 'Save Changes' : 'Add Vessel'}
       </PrimaryBtn>
+      {editingVesselId && (
+        <button
+          onClick={deleteVessel}
+          disabled={busy}
+          style={{ display:'block', width:'100%', marginTop:12, background:'rgba(248,113,113,0.12)', border:'1px solid rgba(248,113,113,0.35)', borderRadius:14, padding:'14px 0', color:'#f87171', fontFamily:FONT, fontSize:14, fontWeight:700, cursor:'pointer' }}>
+          Delete Vessel
+        </button>
+      )}
     </div>
   )
 
