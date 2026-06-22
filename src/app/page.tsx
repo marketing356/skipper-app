@@ -1,7 +1,9 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
+import { CONTACT_FORM_SCHEMA, sectionVisibleTo, fieldVisibleTo } from '@/lib/contact-form-schema'
+import type { ContactSection, ContactField } from '@/lib/contact-form-schema'
 import type { User } from '@supabase/supabase-js'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -1099,6 +1101,64 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved }: {
   }
   const [form, setForm] = useState<Record<string,string>>(blank)
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
+
+  // ── Schema-driven field renderer ─────────────────────────────────────────
+  function renderSchemaField(field: ContactField): React.ReactNode {
+    const rawVal = form[field.name]
+    if (field.type === 'select') {
+      const val = rawVal ?? ''
+      return (
+        <FieldGroup key={field.name} label={field.label}>
+          <SelectInput value={val} onChange={e => set(field.name, e.target.value)}>
+            {(field.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelectInput>
+        </FieldGroup>
+      )
+    }
+    if (field.type === 'bool-select') {
+      const boolVal = rawVal === true ? 'true' : rawVal === false ? 'false' : ''
+      return (
+        <FieldGroup key={field.name} label={field.label}>
+          <SelectInput value={boolVal} onChange={e => set(field.name, e.target.value === 'true' ? true : e.target.value === 'false' ? false : null as any)}>
+            <option value="">— Not set —</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </SelectInput>
+        </FieldGroup>
+      )
+    }
+    if (field.type === 'textarea') {
+      const val = rawVal ?? ''
+      return (
+        <FieldGroup key={field.name} label={field.label}>
+          <textarea value={val} onChange={e => set(field.name, e.target.value)} rows={3}
+            placeholder={field.placeholder}
+            style={{ width:'100%', padding:'12px 14px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:12, fontSize:14, fontFamily:FONT, color:C.white, outline:'none', resize:'none' }} />
+        </FieldGroup>
+      )
+    }
+    // text, email, tel, date, number, tag-input → Input
+    const inputType = field.type === 'tag-input' ? 'text' : field.type
+    const val = rawVal ?? ''
+    return (
+      <FieldGroup key={field.name} label={field.label}>
+        <Input type={inputType} value={val} onChange={e => set(field.name, e.target.value)} placeholder={field.placeholder} />
+      </FieldGroup>
+    )
+  }
+
+  function renderSchemaSection(section: ContactSection): React.ReactNode {
+    const visibleFields = section.rows
+      .flatMap(r => r.fields)
+      .filter(f => fieldVisibleTo(f, 'boater')) as ContactField[]
+    if (visibleFields.length === 0) return null
+    return (
+      <React.Fragment key={section.id}>
+        <FormSectionLabel>{section.title}</FormSectionLabel>
+        {visibleFields.map(field => renderSchemaField(field))}
+      </React.Fragment>
+    )
+  }
 
   // Doc / flag fields (match Helm boat tab)
   const [docRegistration,   setDocRegistration]   = useState(false)
@@ -2571,299 +2631,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
 
         {editing && (
           <div style={{ borderTop:`1px solid rgba(255,255,255,0.08)`, paddingTop:16 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="First name">
-                <Input value={form.first_name} onChange={e => set('first_name', e.target.value)} autoFocus />
-              </FieldGroup>
-              <FieldGroup label="Last name">
-                <Input value={form.last_name} onChange={e => set('last_name', e.target.value)} />
-              </FieldGroup>
-            </div>
-            <FieldGroup label="Mobile phone">
-              <Input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="(555) 867-5309" />
-            </FieldGroup>
-            <FieldGroup label="Mobile (alt)">
-              <Input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(555) 000-0000" />
-            </FieldGroup>
-            <FormSectionLabel>Home Address</FormSectionLabel>
-            <FieldGroup label="Street">
-              <Input value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Harbor Dr" />
-            </FieldGroup>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 80px', gap:10 }}>
-              <FieldGroup label="City">
-                <Input value={form.address_city} onChange={e => set('address_city', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="State">
-                <Input value={form.address_state} onChange={e => set('address_state', e.target.value)} maxLength={2} />
-              </FieldGroup>
-              <FieldGroup label="ZIP">
-                <Input value={form.address_zip} onChange={e => set('address_zip', e.target.value)} />
-              </FieldGroup>
-            </div>
-            <FormSectionLabel>Emergency Contact</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Name">
-                <Input value={form.emergency_contact} onChange={e => set('emergency_contact', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Phone">
-                <Input type="tel" value={form.emergency_phone} onChange={e => set('emergency_phone', e.target.value)} />
-              </FieldGroup>
-            </div>
-            <FormSectionLabel>Company / Organization</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Preferred name">
-                <Input value={form.preferred_name??''} onChange={e => set('preferred_name', e.target.value)} placeholder="Nickname" />
-              </FieldGroup>
-              <FieldGroup label="Work phone">
-                <Input type="tel" value={form.phone_work??''} onChange={e => set('phone_work', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Company">
-                <Input value={form.company_organization??''} onChange={e => set('company_organization', e.target.value)} placeholder="ABC Corp" />
-              </FieldGroup>
-              <FieldGroup label="Job title">
-                <Input value={form.job_title??''} onChange={e => set('job_title', e.target.value)} placeholder="Captain" />
-              </FieldGroup>
-              <FieldGroup label="Secondary email">
-                <Input type="email" value={form.email_secondary??''} onChange={e => set('email_secondary', e.target.value)} />
-              </FieldGroup>
-            </div>
-            <FormSectionLabel>Full Address</FormSectionLabel>
-            <FieldGroup label="Address line 2">
-              <Input value={form.address_line2??''} onChange={e => set('address_line2', e.target.value)} placeholder="Unit, Dock…" />
-            </FieldGroup>
-            <FieldGroup label="Country">
-              <Input value={form.country??''} onChange={e => set('country', e.target.value)} placeholder="USA" />
-            </FieldGroup>
-            <FormSectionLabel>Billing</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Billing name">
-                <Input value={form.billing_name??''} onChange={e => set('billing_name', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Billing email">
-                <Input type="email" value={form.billing_email??''} onChange={e => set('billing_email', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Billing address">
-                <Input value={form.billing_address??''} onChange={e => set('billing_address', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Billing city">
-                <Input value={form.billing_city??''} onChange={e => set('billing_city', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Billing state">
-                <Input value={form.billing_state??''} onChange={e => set('billing_state', e.target.value)} maxLength={2} />
-              </FieldGroup>
-              <FieldGroup label="Billing ZIP">
-                <Input value={form.billing_zip??''} onChange={e => set('billing_zip', e.target.value)} />
-              </FieldGroup>
-            </div>
-            <FormSectionLabel>Emergency Contact (extended)</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Relationship">
-                <Input value={form.emergency_relationship??''} onChange={e => set('emergency_relationship', e.target.value)} placeholder="Spouse" />
-              </FieldGroup>
-              <FieldGroup label="Secondary contact name">
-                <Input value={form.emergency_name_2??''} onChange={e => set('emergency_name_2', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Secondary contact phone">
-                <Input type="tel" value={form.emergency_phone_2??''} onChange={e => set('emergency_phone_2', e.target.value)} />
-              </FieldGroup>
-            </div>
-            <FormSectionLabel>ID &amp; Preferences</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Title">
-                <SelectInput value={form.title} onChange={e => set('title', e.target.value)}>
-                  <option value="">Select…</option>
-                  {['Mr.','Mrs.','Ms.','Dr.','Capt.','Other'].map(v => <option key={v}>{v}</option>)}
-                </SelectInput>
-              </FieldGroup>
-              <FieldGroup label="Date of Birth">
-                <Input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Driver License #">
-                <Input value={form.driver_license_number} onChange={e => set('driver_license_number', e.target.value)} placeholder="DL12345678" />
-              </FieldGroup>
-              <FieldGroup label="Preferred Contact">
-                <SelectInput value={form.preferred_contact_method} onChange={e => set('preferred_contact_method', e.target.value)}>
-                  <option value="">Select…</option>
-                  {['email','sms','phone','app'].map(v => <option key={v} value={v}>{v.toUpperCase()}</option>)}
-                </SelectInput>
-              </FieldGroup>
-            </div>
-            <FieldGroup label="Language">
-              <SelectInput value={form.language_preference} onChange={e => set('language_preference', e.target.value)}>
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
-                <option value="pt">Português</option>
-              </SelectInput>
-            </FieldGroup>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Driver License state">
-                <Input value={form.drivers_license_state??''} onChange={e => set('drivers_license_state', e.target.value)} placeholder="FL" />
-              </FieldGroup>
-              <FieldGroup label="DL Expiry">
-                <Input type="date" value={form.drivers_license_expiry??''} onChange={e => set('drivers_license_expiry', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="OUPV License #">
-                <Input value={form.oupv_license_number??''} onChange={e => set('oupv_license_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="OUPV Expiry">
-                <Input type="date" value={form.oupv_expiry??''} onChange={e => set('oupv_expiry', e.target.value)} />
-              </FieldGroup>
-            </div>
-
-            <FormSectionLabel>Maritime Licenses</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="MMC License #">
-                <Input value={form.mmc_license_number??''} onChange={e => set('mmc_license_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="MMC Tonnage Rating">
-                <SelectInput value={form.mmc_tonnage_rating??''} onChange={e => set('mmc_tonnage_rating', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="Less than 100 GT">Less than 100 GT</option>
-                  <option value="100-200 GT">100-200 GT</option>
-                  <option value="200-500 GT">200-500 GT</option>
-                  <option value="500+ GT">500+ GT</option>
-                </SelectInput>
-              </FieldGroup>
-              <FieldGroup label="MMC Expiry">
-                <Input type="date" value={form.mmc_expiry??''} onChange={e => set('mmc_expiry', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="TWIC #">
-                <Input value={form.twic_number??''} onChange={e => set('twic_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="TWIC Expiry">
-                <Input type="date" value={form.twic_expiry??''} onChange={e => set('twic_expiry', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="STCW Certification">
-                <Input value={form.stcw_certification??''} onChange={e => set('stcw_certification', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="STCW Level">
-                <SelectInput value={form.stcw_level??''} onChange={e => set('stcw_level', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="Basic Safety">Basic Safety</option>
-                  <option value="Management">Management</option>
-                  <option value="Operational">Operational</option>
-                  <option value="Support">Support</option>
-                </SelectInput>
-              </FieldGroup>
-              <FieldGroup label="STCW Expiry">
-                <Input type="date" value={form.stcw_expiry??''} onChange={e => set('stcw_expiry', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="FCC License #">
-                <Input value={form.fcc_license_number??''} onChange={e => set('fcc_license_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="FCC Expiry">
-                <Input type="date" value={form.fcc_expiry??''} onChange={e => set('fcc_expiry', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="CPR Certification">
-                <Input value={form.cpr_certification??''} onChange={e => set('cpr_certification', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="CPR Expiry">
-                <Input type="date" value={form.cpr_expiry??''} onChange={e => set('cpr_expiry', e.target.value)} />
-              </FieldGroup>
-            </div>
-
-            <FormSectionLabel>Trade &amp; Service</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:12 }}>
-              <FieldGroup label="Languages Spoken (comma-separated)">
-                <Input value={form.languages_spoken??''} onChange={e => set('languages_spoken', e.target.value)} placeholder="English, Spanish" />
-              </FieldGroup>
-              <FieldGroup label="ABYC Certifications (comma-separated)">
-                <Input value={form.abyc_certifications??''} onChange={e => set('abyc_certifications', e.target.value)} placeholder="Electrical, Corrosion" />
-              </FieldGroup>
-              <FieldGroup label="Engine Brand Certifications (comma-separated)">
-                <Input value={form.engine_brand_certifications??''} onChange={e => set('engine_brand_certifications', e.target.value)} placeholder="Yamaha, Mercury" />
-              </FieldGroup>
-              <FieldGroup label="Trade Specialties (comma-separated)">
-                <Input value={form.trade_specialties??''} onChange={e => set('trade_specialties', e.target.value)} placeholder="Fiberglass, Rigging" />
-              </FieldGroup>
-            </div>
-
-            <FormSectionLabel>Dealer &amp; Broker Licenses</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Dealer License #">
-                <Input value={form.dealer_license_number??''} onChange={e => set('dealer_license_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Dealer License State">
-                <Input value={form.dealer_license_state??''} onChange={e => set('dealer_license_state', e.target.value)} placeholder="FL" />
-              </FieldGroup>
-              <FieldGroup label="Broker License #">
-                <Input value={form.broker_license_number??''} onChange={e => set('broker_license_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Broker License State">
-                <Input value={form.broker_license_state??''} onChange={e => set('broker_license_state', e.target.value)} placeholder="FL" />
-              </FieldGroup>
-            </div>
-
-            <FormSectionLabel>Memberships</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Sea Tow Membership #">
-                <Input value={form.seatow_membership_number??''} onChange={e => set('seatow_membership_number', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="BoatUS Membership #">
-                <Input value={form.boatus_membership_number??''} onChange={e => set('boatus_membership_number', e.target.value)} />
-              </FieldGroup>
-            </div>
-
-            <FormSectionLabel>Employment</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="Employee ID">
-                <Input value={form.employee_id??''} onChange={e => set('employee_id', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Department">
-                <Input value={form.department??''} onChange={e => set('department', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Employment Type">
-                <SelectInput value={form.employment_type??''} onChange={e => set('employment_type', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="Full-time">Full-time</option>
-                  <option value="Part-time">Part-time</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Seasonal">Seasonal</option>
-                  <option value="Volunteer">Volunteer</option>
-                </SelectInput>
-              </FieldGroup>
-              <FieldGroup label="Tax Classification">
-                <SelectInput value={form.tax_classification??''} onChange={e => set('tax_classification', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="W2">W2</option>
-                  <option value="1099">1099</option>
-                  <option value="LLC">LLC</option>
-                  <option value="S-Corp">S-Corp</option>
-                </SelectInput>
-              </FieldGroup>
-              <FieldGroup label="Hire Date">
-                <Input type="date" value={form.hire_date??''} onChange={e => set('hire_date', e.target.value)} />
-              </FieldGroup>
-              <FieldGroup label="Hourly Rate ($)">
-                <Input type="number" value={form.hourly_rate??''} onChange={e => set('hourly_rate', e.target.value)} placeholder="0.00" />
-              </FieldGroup>
-              <FieldGroup label="Salary ($)">
-                <Input type="number" value={form.salary??''} onChange={e => set('salary', e.target.value)} placeholder="0.00" />
-              </FieldGroup>
-            </div>
-
-            <FormSectionLabel>Preferences &amp; Notes</FormSectionLabel>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FieldGroup label="SMS opt-in">
-                <SelectInput value={form.sms_opt_in === true ? 'true' : form.sms_opt_in === false ? 'false' : ''} onChange={e => set('sms_opt_in', e.target.value === 'true' ? true : e.target.value === 'false' ? false : null as any)}>
-                  <option value="">— Not set —</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </SelectInput>
-              </FieldGroup>
-              <FieldGroup label="Email opt-in">
-                <SelectInput value={form.email_opt_in === true ? 'true' : form.email_opt_in === false ? 'false' : ''} onChange={e => set('email_opt_in', e.target.value === 'true' ? true : e.target.value === 'false' ? false : null as any)}>
-                  <option value="">— Not set —</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </SelectInput>
-              </FieldGroup>
-            </div>
-            <FieldGroup label="Notes">
-              <textarea value={form.notes??''} onChange={e => set('notes', e.target.value)} rows={3}
-                style={{ width:'100%', padding:'12px 14px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:12, fontSize:14, fontFamily:FONT, color:C.white, outline:'none', resize:'none' }} />
-            </FieldGroup>
+            {CONTACT_FORM_SCHEMA.filter(s => sectionVisibleTo(s, 'boater')).map(renderSchemaSection)}
 
             {/* Email change section */}
             <FormSectionLabel>Login Email</FormSectionLabel>
