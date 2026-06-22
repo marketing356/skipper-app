@@ -398,15 +398,18 @@ function assetRowToVessel(a: Record<string, any>, contact?: Record<string, any> 
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function SkipperApp() {
-  const [screen,    setScreen]    = useState<Screen>('splash')
-  const [user,      setUser]      = useState<User | null>(null)
-  const [profile,   setProfile]   = useState<Profile | null>(null)
-  const [vessel,    setVessel]    = useState<Vessel | null>(null)   // primary (top bar)
-  const [vessels,   setVessels]   = useState<Vessel[]>([])
-  const [vesselIds, setVesselIds] = useState<string[]>([])
-  const [homeTab,   setHomeTab]   = useState<HomeTab>('vessel')
-  const [savedEmail,setSavedEmail]= useState('')
-  const [vesselId,  setVesselId]  = useState<string|null>(null)
+  const [screen,         setScreen]         = useState<Screen>('splash')
+  const [user,           setUser]           = useState<User | null>(null)
+  const [profile,        setProfile]        = useState<Profile | null>(null)
+  const [vessel,         setVessel]         = useState<Vessel | null>(null)   // primary (top bar)
+  const [vessels,        setVessels]        = useState<Vessel[]>([])
+  const [vesselIds,      setVesselIds]      = useState<string[]>([])
+  const [homeTab,        setHomeTab]        = useState<HomeTab>('vessel')
+  const [savedEmail,     setSavedEmail]     = useState('')
+  const [vesselId,       setVesselId]       = useState<string|null>(null)
+  const [vesselsLoading, setVesselsLoading] = useState(false)
+  // Keep a ref to the active user so loadUserData can always access the latest value
+  const userRef = useRef<User | null>(null)
 
   useEffect(() => {
     const storedEmail = localStorage.getItem('skipper_email') ?? ''
@@ -429,8 +432,9 @@ export default function SkipperApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function routeAfterAuth(u: User) {
-    localStorage.setItem('skipper_user_id', u.id)
+  // ── Shared data-load function — called by routeAfterAuth, realtime, and visibilitychange ──
+  async function loadUserData(u: User) {
+    setVesselsLoading(true)
     try {
       // Look up national-pool contacts row (marina_id IS NULL)
       let { data: contact } = await supabase
@@ -471,8 +475,28 @@ export default function SkipperApp() {
       const loadedIds     = (assetRows ?? []).map((a: any) => a.id as string)
       setVessels(loadedVessels)
       setVesselIds(loadedIds)
-      setVessel(loadedVessels[0] ?? null)
-      setVesselId(loadedIds[0] ?? null)
+      setVessel(prev => loadedVessels.find(v => v.id === prev?.id) ?? loadedVessels[0] ?? null)
+      setVesselId(prev => loadedIds.includes(prev ?? '') ? prev : (loadedIds[0] ?? null))
+
+      // Build profile from contact
+      const prof = contact ? contactToProfile(contact) : null
+      setProfile(prof)
+
+      return { contact, allContactIds, prof }
+    } finally {
+      setVesselsLoading(false)
+    }
+  }
+
+  async function routeAfterAuth(u: User) {
+    userRef.current = u
+    localStorage.setItem('skipper_user_id', u.id)
+    setVesselsLoading(true)
+    try {
+      // Load contact + vessels via shared function
+      const result = await loadUserData(u)
+      const contact = result?.contact
+      const prof    = result?.prof
 
       // Auto-coupling: scan all marina contacts rows with matching email and no auth link
       if (u.email) {
@@ -527,14 +551,13 @@ export default function SkipperApp() {
               .is('marina_id', null)
               .select()
               .single()
-            if (synced) contact = synced
+            if (synced) {
+              // Re-apply synced contact to profile
+              setProfile(contactToProfile(synced))
+            }
           }
         }
       }
-
-      // Build profile AFTER sync so display reflects latest data
-      const prof = contact ? contactToProfile(contact) : null
-      setProfile(prof)
 
       if (!prof?.first_name)  { setScreen('contact_setup'); return }
       if (!contact?.pin_hash) { setScreen('pin_setup'); return }
@@ -545,6 +568,7 @@ export default function SkipperApp() {
       setScreen('pin_login')
     } catch(err) {
       console.error('[Skipper] routeAfterAuth failed:', err)
+      setVesselsLoading(false)
       // Fallback — always navigate somewhere, never leave user stuck on auth screen
       setScreen('contact_setup')
     }
@@ -558,10 +582,59 @@ export default function SkipperApp() {
     }
     localStorage.removeItem('skipper_user_id')
     localStorage.removeItem('skipper_email')
+    userRef.current = null
     setUser(null); setProfile(null); setVessel(null); setVesselId(null)
     setVessels([]); setVesselIds([])
+    setVesselsLoading(false)
     setScreen('auth')
   }
+
+  // ── Realtime subscription: contacts + marina_assets ──
+  useEffect(() => {
+    if (!user) return
+    const channelName = `skipper-user-${user.id}`
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const channel = (supabase as any)
+      .channel(channelName)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'contacts',
+        filter: `auth_user_id=eq.${user.id}`,
+      }, () => {
+        const u = userRef.current
+        if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'marina_assets',
+      }, () => {
+        // Reload on any marina_assets change for this user's contact IDs.
+        // Supabase realtime `in` filters are not universally supported;
+        // we reload unconditionally here (cheap read, called infrequently).
+        const u = userRef.current
+        if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  // ── Visibility-change refetch: refresh when app comes back to foreground ──
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        const u = userRef.current
+        if (u) loadUserData(u).catch(e => console.error('[Skipper] visibility loadUserData:', e))
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Splash ──
   if (screen === 'splash') return <SplashScreen />
@@ -632,6 +705,7 @@ export default function SkipperApp() {
         setVesselId(prev => prev ?? id)
       }}
       onProfileUpdated={(p) => setProfile(p)}
+      vesselsLoading={vesselsLoading}
     />
   )
 }
@@ -962,10 +1036,11 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated }: {
+function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onProfileUpdated, vesselsLoading }: {
   user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
   onVesselSaved: (v: Vessel, id: string) => void; onProfileUpdated: (p: Profile) => void
+  vesselsLoading: boolean
 }) {
   return (
     <div style={{ minHeight:'100vh', maxHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
@@ -990,7 +1065,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-        {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} />}
+        {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} vesselsLoading={vesselsLoading} />}
         {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1008,8 +1083,9 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved }: {
+function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, vesselsLoading }: {
   vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void
+  vesselsLoading: boolean
 }) {
   const [showForm, setShowForm] = useState(false)
   const [editingVessel, setEditingVessel] = useState<Vessel|null>(null)
@@ -1492,7 +1568,12 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved }: {
       )}
 
       {/* ── Vessel list ── */}
-      {vessels.length === 0 ? (
+      {vesselsLoading ? (
+        <div style={{ textAlign:'center', padding:'48px 20px', color:C.muted }}>
+          <Spinner />
+          <div style={{ fontSize:14, marginTop:14 }}>Loading your vessels…</div>
+        </div>
+      ) : vessels.length === 0 ? (
         <div style={{ textAlign:'center', padding:'48px 20px' }}>
           <div style={{ fontSize:52, marginBottom:14 }}>⛵</div>
           <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>No vessels on file</div>
