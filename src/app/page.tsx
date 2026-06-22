@@ -980,9 +980,9 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
             </div>
             <span style={{ fontSize:17, fontWeight:800, letterSpacing:-0.3 }}>Skipper</span>
           </div>
-          {vessel && (
+          {vessels.length > 0 && (
             <div style={{ fontSize:12, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px' }}>
-              ⛵ {vessel.name}
+              ⛵ {vessels.length === 1 ? vessels[0].name : `${vessels.length} assets`}
             </div>
           )}
         </div>
@@ -993,7 +993,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} />}
         {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
-        {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessel={vessel} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
+        {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
       </div>
 
       {/* Bottom nav */}
@@ -2195,8 +2195,8 @@ function TabMessages({ user, profile, vessel }: { user: User; profile: Profile|n
 }
 
 // ─── TAB 4: Account ────────────────────────────────────────────────────────────
-function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
-  user:User; profile:Profile|null; vessel:Vessel|null; onSignOut:()=>void;
+function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
+  user:User; profile:Profile|null; vessels:Vessel[]; onSignOut:()=>void;
   onProfileUpdated:(p:Profile)=>void
 }) {
   // Re-fetch profile from DB every time Account tab is opened so changes from
@@ -2669,13 +2669,21 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
         )}
       </div>
 
-      {/* Vessel summary */}
-      {vessel && (
-        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'14px 16px', marginBottom:14 }}>
-          <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Vessel on file</div>
-          <div style={{ fontSize:14, fontWeight:700 }}>{vessel.name} · {vessel.vessel_type}</div>
-          <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
-            {[vessel.length_ft && `${vessel.length_ft}ft`, vessel.shore_power, vessel.fuel_type].filter(Boolean).join(' · ')}
+      {/* Assets on file */}
+      {vessels.length > 0 && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:8, paddingLeft:4 }}>
+            Assets on file ({vessels.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {vessels.map((v, i) => (
+              <div key={i} style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'12px 16px' }}>
+                <div style={{ fontSize:14, fontWeight:700 }}>{v.name} · {v.vessel_type}</div>
+                <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
+                  {[v.length_ft && `${v.length_ft}ft`, v.shore_power, v.fuel_type].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
