@@ -436,23 +436,19 @@ export default function SkipperApp() {
   async function loadUserData(u: User) {
     setVesselsLoading(true)
     try {
-      // Look up national-pool contacts row (marina_id IS NULL)
-      let { data: contact } = await supabase
+      // Look up national-pool contacts row (marina_id IS NULL) — READ ONLY.
+      // Use order + limit(1) so multiple rows never throw. Never insert here.
+      const { data: contactRows } = await supabase
         .from('contacts')
         .select('*')
         .eq('auth_user_id', u.id)
         .is('marina_id', null)
-        .maybeSingle()
+        .order('created_at', { ascending: true })
+        .limit(1)
+      const contact = contactRows?.[0] ?? null
 
-      if (!contact) {
-        const { data: newContact, error: insertErr } = await supabase
-          .from('contacts')
-          .insert({ auth_user_id: u.id, email: u.email ?? null })
-          .select()
-          .single()
-        if (insertErr) console.error('[Skipper] contact insert:', insertErr.message)
-        contact = newContact
-      }
+      // If no contact exists yet, profile is null — signup flow will create it.
+      // Do NOT insert here; this function is strictly read-only.
 
       // Load ALL assets for this user across ALL their contact IDs (national-pool + marina-scoped)
       // so assets added via Ops (which uses marina-scoped contact IDs) appear here too
@@ -738,18 +734,20 @@ function AuthScreen({ savedEmail, onAuthed }: {
     if (!clean || !clean.includes('@')) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
 
-    // Look up existing national-pool contact
-    const { data: contact } = await supabase
+    // Look up existing national-pool contact — use limit(1) to survive any legacy dupes
+    const { data: contactRows } = await supabase
       .from('contacts')
       .select('id, auth_user_id')
       .eq('email', clean)
       .is('marina_id', null)
-      .maybeSingle()
+      .order('created_at', { ascending: true })
+      .limit(1)
+    const contact = contactRows?.[0] ?? null
 
     let authUserId = contact?.auth_user_id as string | null
 
     if (!contact) {
-      // Brand-new boater — create national-pool row
+      // Brand-new boater — create national-pool row (explicit signup, not a reload)
       const newId = crypto.randomUUID()
       const { error } = await supabase
         .from('contacts')
@@ -998,7 +996,8 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
     const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
     let match = localHash ? hash === localHash : false
     if (!match) {
-      const { data } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).single()
+      const { data: pinRows } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).order('created_at', { ascending: true }).limit(1)
+      const data = pinRows?.[0] ?? null
       match = !!data?.pin_hash && data.pin_hash === hash
       if (match && data?.pin_hash) localStorage.setItem(`skipper_pin_${user.id}`, data.pin_hash)
     }
@@ -1261,13 +1260,14 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, vesselsLo
     // Resolve contact_id — never allow null tenant_id
     let contactId = profile?.contact_id ?? null
     if (!contactId) {
-      const { data: c } = await supabase
+      const { data: cRows } = await supabase
         .from('contacts')
         .select('id')
         .eq('auth_user_id', user.id)
         .is('marina_id', null)
-        .maybeSingle()
-      contactId = c?.id ?? null
+        .order('created_at', { ascending: true })
+        .limit(1)
+      contactId = cRows?.[0]?.id ?? null
     }
     if (!contactId) { setBusy(false); setErr('Could not resolve your account — please sign out and back in.'); return }
 
@@ -2286,8 +2286,9 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
     supabase.from('contacts').select('*')
       .eq('auth_user_id', user.id)
       .is('marina_id', null)
-      .single()
-      .then(({ data }) => { if (data) onProfileUpdated(contactToProfile(data)) })
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .then(({ data }) => { if (data?.[0]) onProfileUpdated(contactToProfile(data[0])) })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [editing,      setEditing]      = useState(false)
@@ -2458,7 +2459,8 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
       const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
       let match = localHash ? hash === localHash : false
       if (!match) {
-        const { data } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).single()
+        const { data: pinRows2 } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).order('created_at', { ascending: true }).limit(1)
+        const data = pinRows2?.[0] ?? null
         match = !!data?.pin_hash && data.pin_hash === hash
       }
       setPinBusy(false)
