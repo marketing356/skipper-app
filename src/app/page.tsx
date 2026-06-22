@@ -585,37 +585,48 @@ export default function SkipperApp() {
     setScreen('auth')
   }
 
-  // ── Realtime subscription: contacts + marina_assets ──
+  // ── 🔴 SKIPPER UNIVERSE REALTIME DOCTRINE (LOCKED 2026-06-22) ──
+  // Full spec: memory/OPERATION-SKIPPER.md → REALTIME DOCTRINE.
+  // Boater-scoped tables get filtered subscriptions; shared tables fire unconditional reload.
   useEffect(() => {
     if (!user) return
+    const reload = () => {
+      const u = userRef.current
+      if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
+    }
     const channelName = `skipper-user-${user.id}`
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const channel = (supabase as any)
-      .channel(channelName)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'contacts',
-        filter: `auth_user_id=eq.${user.id}`,
-      }, () => {
-        const u = userRef.current
-        if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'marina_assets',
-      }, () => {
-        // Reload on any marina_assets change for this user's contact IDs.
-        // Supabase realtime `in` filters are not universally supported;
-        // we reload unconditionally here (cheap read, called infrequently).
-        const u = userRef.current
-        if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
-      })
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    let ch = (supabase as any).channel(channelName)
+
+    // User-scoped (filtered by auth_user_id)
+    ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: 'contacts',         filter: `auth_user_id=eq.${user.id}` }, reload)
+    ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: 'boater_profiles',  filter: `id=eq.${user.id}` }, reload)
+
+    // Shared tables — cheap unconditional reload (called rarely from boater's perspective)
+    const sharedTables = [
+      'marina_assets',
+      'boater_vessels',
+      'vessel_documents',
+      'slips',
+      'leases',
+      'moorings',
+      'reservations',
+      'transient_reservations',
+      'customer_marina_links',
+      'messages',
+      'transactions',
+      'invoices',
+      'asset_events',
+      'access_credentials',
+      'signed_contracts',
+      'liveaboard_permits',
+    ]
+    sharedTables.forEach(t => {
+      ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, reload)
+    })
+
+    ch.subscribe()
+    return () => { supabase.removeChannel(ch) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
