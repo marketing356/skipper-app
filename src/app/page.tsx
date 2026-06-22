@@ -2360,7 +2360,7 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
   function renderSchemaSection(section: ContactSection): React.ReactNode {
     const visibleFields = section.rows
       .flatMap(r => r.fields)
-      .filter(f => fieldVisibleTo(f, 'boater')) as ContactField[]
+      .filter((f): f is ContactField => f !== null && fieldVisibleTo(f, 'boater'))
     if (visibleFields.length === 0) return null
     return (
       <React.Fragment key={section.id}>
