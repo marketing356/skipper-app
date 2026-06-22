@@ -116,6 +116,52 @@ type Profile = {
   internal_notes: string | null
   vip_flag: boolean | null
   do_not_contact: boolean | null
+  // Master contact form — new fields 2026-06-22
+  fax: string | null
+  website: string | null
+  nationality: string | null
+  passport_number: string | null
+  passport_country: string | null
+  passport_expiry: string | null
+  ssn_tax_id: string | null
+  mmc_license_number: string | null
+  mmc_tonnage_rating: string | null
+  mmc_expiry: string | null
+  twic_number: string | null
+  twic_expiry: string | null
+  stcw_certification: string | null
+  stcw_level: string | null
+  stcw_expiry: string | null
+  fcc_license_number: string | null
+  fcc_expiry: string | null
+  cpr_certification: string | null
+  cpr_expiry: string | null
+  abyc_certifications: string[] | null
+  engine_brand_certifications: string[] | null
+  trade_specialties: string[] | null
+  dealer_license_number: string | null
+  dealer_license_state: string | null
+  broker_license_number: string | null
+  broker_license_state: string | null
+  seatow_membership_number: string | null
+  boatus_membership_number: string | null
+  employee_id: string | null
+  department: string | null
+  employment_type: string | null
+  tax_classification: string | null
+  hire_date: string | null
+  hourly_rate: number | null
+  salary: number | null
+  access_card: string | null
+  locker_number: string | null
+  parking_spot: string | null
+  shift_notes: string | null
+  doc_w2_on_file: boolean | null
+  doc_i9_on_file: boolean | null
+  doc_direct_deposit: boolean | null
+  doc_signed_offer: boolean | null
+  doc_background_check: boolean | null
+  languages_spoken: string[] | null
 }
 
 type Vessel = {
@@ -249,6 +295,52 @@ function contactToProfile(c: Record<string, any>): Profile {
     internal_notes: c.internal_notes ?? null,
     vip_flag: c.vip_flag ?? null,
     do_not_contact: c.do_not_contact ?? null,
+    // Master contact form — new fields 2026-06-22
+    fax: c.fax ?? null,
+    website: c.website ?? null,
+    nationality: c.nationality ?? null,
+    passport_number: c.passport_number ?? null,
+    passport_country: c.passport_country ?? null,
+    passport_expiry: c.passport_expiry ?? null,
+    ssn_tax_id: c.ssn_tax_id ?? null,
+    mmc_license_number: c.mmc_license_number ?? null,
+    mmc_tonnage_rating: c.mmc_tonnage_rating ?? null,
+    mmc_expiry: c.mmc_expiry ?? null,
+    twic_number: c.twic_number ?? null,
+    twic_expiry: c.twic_expiry ?? null,
+    stcw_certification: c.stcw_certification ?? null,
+    stcw_level: c.stcw_level ?? null,
+    stcw_expiry: c.stcw_expiry ?? null,
+    fcc_license_number: c.fcc_license_number ?? null,
+    fcc_expiry: c.fcc_expiry ?? null,
+    cpr_certification: c.cpr_certification ?? null,
+    cpr_expiry: c.cpr_expiry ?? null,
+    abyc_certifications: c.abyc_certifications ?? null,
+    engine_brand_certifications: c.engine_brand_certifications ?? null,
+    trade_specialties: c.trade_specialties ?? null,
+    dealer_license_number: c.dealer_license_number ?? null,
+    dealer_license_state: c.dealer_license_state ?? null,
+    broker_license_number: c.broker_license_number ?? null,
+    broker_license_state: c.broker_license_state ?? null,
+    seatow_membership_number: c.seatow_membership_number ?? null,
+    boatus_membership_number: c.boatus_membership_number ?? null,
+    employee_id: c.employee_id ?? null,
+    department: c.department ?? null,
+    employment_type: c.employment_type ?? null,
+    tax_classification: c.tax_classification ?? null,
+    hire_date: c.hire_date ?? null,
+    hourly_rate: c.hourly_rate ?? null,
+    salary: c.salary ?? null,
+    access_card: c.access_card ?? null,
+    locker_number: c.locker_number ?? null,
+    parking_spot: c.parking_spot ?? null,
+    shift_notes: c.shift_notes ?? null,
+    doc_w2_on_file: c.doc_w2_on_file ?? null,
+    doc_i9_on_file: c.doc_i9_on_file ?? null,
+    doc_direct_deposit: c.doc_direct_deposit ?? null,
+    doc_signed_offer: c.doc_signed_offer ?? null,
+    doc_background_check: c.doc_background_check ?? null,
+    languages_spoken: c.languages_spoken ?? null,
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2167,6 +2259,52 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
     sms_opt_in:               profile?.sms_opt_in ?? null,
     email_opt_in:             profile?.email_opt_in ?? null,
     notes:                    profile?.notes ?? '',
+    // Master contact form — new fields 2026-06-22
+    fax:                      profile?.fax ?? '',
+    website:                  profile?.website ?? '',
+    nationality:              profile?.nationality ?? '',
+    passport_number:          profile?.passport_number ?? '',
+    passport_country:         profile?.passport_country ?? '',
+    passport_expiry:          profile?.passport_expiry ?? '',
+    ssn_tax_id:               profile?.ssn_tax_id ?? '',
+    mmc_license_number:       profile?.mmc_license_number ?? '',
+    mmc_tonnage_rating:       profile?.mmc_tonnage_rating ?? '',
+    mmc_expiry:               profile?.mmc_expiry ?? '',
+    twic_number:              profile?.twic_number ?? '',
+    twic_expiry:              profile?.twic_expiry ?? '',
+    stcw_certification:       profile?.stcw_certification ?? '',
+    stcw_level:               profile?.stcw_level ?? '',
+    stcw_expiry:              profile?.stcw_expiry ?? '',
+    fcc_license_number:       profile?.fcc_license_number ?? '',
+    fcc_expiry:               profile?.fcc_expiry ?? '',
+    cpr_certification:        profile?.cpr_certification ?? '',
+    cpr_expiry:               profile?.cpr_expiry ?? '',
+    abyc_certifications:      profile?.abyc_certifications?.join(', ') ?? '',
+    engine_brand_certifications: profile?.engine_brand_certifications?.join(', ') ?? '',
+    trade_specialties:        profile?.trade_specialties?.join(', ') ?? '',
+    dealer_license_number:    profile?.dealer_license_number ?? '',
+    dealer_license_state:     profile?.dealer_license_state ?? '',
+    broker_license_number:    profile?.broker_license_number ?? '',
+    broker_license_state:     profile?.broker_license_state ?? '',
+    seatow_membership_number: profile?.seatow_membership_number ?? '',
+    boatus_membership_number: profile?.boatus_membership_number ?? '',
+    employee_id:              profile?.employee_id ?? '',
+    department:               profile?.department ?? '',
+    employment_type:          profile?.employment_type ?? '',
+    tax_classification:       profile?.tax_classification ?? '',
+    hire_date:                profile?.hire_date ?? '',
+    hourly_rate:              profile?.hourly_rate ?? '',
+    salary:                   profile?.salary ?? '',
+    access_card:              profile?.access_card ?? '',
+    locker_number:            profile?.locker_number ?? '',
+    parking_spot:             profile?.parking_spot ?? '',
+    shift_notes:              profile?.shift_notes ?? '',
+    doc_w2_on_file:           profile?.doc_w2_on_file ?? null,
+    doc_i9_on_file:           profile?.doc_i9_on_file ?? null,
+    doc_direct_deposit:       profile?.doc_direct_deposit ?? null,
+    doc_signed_offer:         profile?.doc_signed_offer ?? null,
+    doc_background_check:     profile?.doc_background_check ?? null,
+    languages_spoken:         profile?.languages_spoken?.join(', ') ?? '',
   })
   const [busy, setBusy] = useState(false)
   const [err,  setErr]  = useState('')
@@ -2254,6 +2392,52 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
       sms_opt_in:               form.sms_opt_in ?? null,
       email_opt_in:             form.email_opt_in ?? null,
       notes:                    (form.notes ?? '').trim() || null,
+      // Master contact form — new fields 2026-06-22
+      fax:                      (form.fax ?? '').trim() || null,
+      website:                  (form.website ?? '').trim() || null,
+      nationality:              (form.nationality ?? '').trim() || null,
+      passport_number:          (form.passport_number ?? '').trim() || null,
+      passport_country:         (form.passport_country ?? '').trim() || null,
+      passport_expiry:          form.passport_expiry || null,
+      ssn_tax_id:               (form.ssn_tax_id ?? '').trim() || null,
+      mmc_license_number:       (form.mmc_license_number ?? '').trim() || null,
+      mmc_tonnage_rating:       (form.mmc_tonnage_rating ?? '').trim() || null,
+      mmc_expiry:               form.mmc_expiry || null,
+      twic_number:              (form.twic_number ?? '').trim() || null,
+      twic_expiry:              form.twic_expiry || null,
+      stcw_certification:       (form.stcw_certification ?? '').trim() || null,
+      stcw_level:               (form.stcw_level ?? '').trim() || null,
+      stcw_expiry:              form.stcw_expiry || null,
+      fcc_license_number:       (form.fcc_license_number ?? '').trim() || null,
+      fcc_expiry:               form.fcc_expiry || null,
+      cpr_certification:        (form.cpr_certification ?? '').trim() || null,
+      cpr_expiry:               form.cpr_expiry || null,
+      abyc_certifications:      (form.abyc_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.abyc_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
+      engine_brand_certifications: (form.engine_brand_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.engine_brand_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
+      trade_specialties:        (form.trade_specialties ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.trade_specialties ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
+      dealer_license_number:    (form.dealer_license_number ?? '').trim() || null,
+      dealer_license_state:     (form.dealer_license_state ?? '').trim() || null,
+      broker_license_number:    (form.broker_license_number ?? '').trim() || null,
+      broker_license_state:     (form.broker_license_state ?? '').trim() || null,
+      seatow_membership_number: (form.seatow_membership_number ?? '').trim() || null,
+      boatus_membership_number: (form.boatus_membership_number ?? '').trim() || null,
+      employee_id:              (form.employee_id ?? '').trim() || null,
+      department:               (form.department ?? '').trim() || null,
+      employment_type:          (form.employment_type ?? '').trim() || null,
+      tax_classification:       (form.tax_classification ?? '').trim() || null,
+      hire_date:                form.hire_date || null,
+      hourly_rate:              form.hourly_rate !== '' && form.hourly_rate != null ? Number(form.hourly_rate) : null,
+      salary:                   form.salary !== '' && form.salary != null ? Number(form.salary) : null,
+      access_card:              (form.access_card ?? '').trim() || null,
+      locker_number:            (form.locker_number ?? '').trim() || null,
+      parking_spot:             (form.parking_spot ?? '').trim() || null,
+      shift_notes:              (form.shift_notes ?? '').trim() || null,
+      doc_w2_on_file:           form.doc_w2_on_file ?? null,
+      doc_i9_on_file:           form.doc_i9_on_file ?? null,
+      doc_direct_deposit:       form.doc_direct_deposit ?? null,
+      doc_signed_offer:         form.doc_signed_offer ?? null,
+      doc_background_check:     form.doc_background_check ?? null,
+      languages_spoken:         (form.languages_spoken ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.languages_spoken ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
     }
     // Update ALL contacts rows for this user — national-pool + all marina-scoped rows
     // so changes appear in Ops regardless of which row is displayed
@@ -2333,6 +2517,51 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
             sms_opt_in:profile?.sms_opt_in??null,
             email_opt_in:profile?.email_opt_in??null,
             notes:profile?.notes??'',
+            fax:profile?.fax??'',
+            website:profile?.website??'',
+            nationality:profile?.nationality??'',
+            passport_number:profile?.passport_number??'',
+            passport_country:profile?.passport_country??'',
+            passport_expiry:profile?.passport_expiry??'',
+            ssn_tax_id:profile?.ssn_tax_id??'',
+            mmc_license_number:profile?.mmc_license_number??'',
+            mmc_tonnage_rating:profile?.mmc_tonnage_rating??'',
+            mmc_expiry:profile?.mmc_expiry??'',
+            twic_number:profile?.twic_number??'',
+            twic_expiry:profile?.twic_expiry??'',
+            stcw_certification:profile?.stcw_certification??'',
+            stcw_level:profile?.stcw_level??'',
+            stcw_expiry:profile?.stcw_expiry??'',
+            fcc_license_number:profile?.fcc_license_number??'',
+            fcc_expiry:profile?.fcc_expiry??'',
+            cpr_certification:profile?.cpr_certification??'',
+            cpr_expiry:profile?.cpr_expiry??'',
+            abyc_certifications:profile?.abyc_certifications?.join(', ')??'',
+            engine_brand_certifications:profile?.engine_brand_certifications?.join(', ')??'',
+            trade_specialties:profile?.trade_specialties?.join(', ')??'',
+            dealer_license_number:profile?.dealer_license_number??'',
+            dealer_license_state:profile?.dealer_license_state??'',
+            broker_license_number:profile?.broker_license_number??'',
+            broker_license_state:profile?.broker_license_state??'',
+            seatow_membership_number:profile?.seatow_membership_number??'',
+            boatus_membership_number:profile?.boatus_membership_number??'',
+            employee_id:profile?.employee_id??'',
+            department:profile?.department??'',
+            employment_type:profile?.employment_type??'',
+            tax_classification:profile?.tax_classification??'',
+            hire_date:profile?.hire_date??'',
+            hourly_rate:profile?.hourly_rate??'',
+            salary:profile?.salary??'',
+            access_card:profile?.access_card??'',
+            locker_number:profile?.locker_number??'',
+            parking_spot:profile?.parking_spot??'',
+            shift_notes:profile?.shift_notes??'',
+            doc_w2_on_file:profile?.doc_w2_on_file??null,
+            doc_i9_on_file:profile?.doc_i9_on_file??null,
+            doc_direct_deposit:profile?.doc_direct_deposit??null,
+            doc_signed_offer:profile?.doc_signed_offer??null,
+            doc_background_check:profile?.doc_background_check??null,
+            languages_spoken:profile?.languages_spoken?.join(', ')??'',
           }); setErr('') }}
               style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
               Edit
@@ -2481,6 +2710,139 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
                 <Input type="date" value={form.oupv_expiry??''} onChange={e => set('oupv_expiry', e.target.value)} />
               </FieldGroup>
             </div>
+
+            <FormSectionLabel>Maritime Licenses</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="MMC License #">
+                <Input value={form.mmc_license_number??''} onChange={e => set('mmc_license_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="MMC Tonnage Rating">
+                <SelectInput value={form.mmc_tonnage_rating??''} onChange={e => set('mmc_tonnage_rating', e.target.value)}>
+                  <option value="">— Select —</option>
+                  <option value="Less than 100 GT">Less than 100 GT</option>
+                  <option value="100-200 GT">100-200 GT</option>
+                  <option value="200-500 GT">200-500 GT</option>
+                  <option value="500+ GT">500+ GT</option>
+                </SelectInput>
+              </FieldGroup>
+              <FieldGroup label="MMC Expiry">
+                <Input type="date" value={form.mmc_expiry??''} onChange={e => set('mmc_expiry', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="TWIC #">
+                <Input value={form.twic_number??''} onChange={e => set('twic_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="TWIC Expiry">
+                <Input type="date" value={form.twic_expiry??''} onChange={e => set('twic_expiry', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="STCW Certification">
+                <Input value={form.stcw_certification??''} onChange={e => set('stcw_certification', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="STCW Level">
+                <SelectInput value={form.stcw_level??''} onChange={e => set('stcw_level', e.target.value)}>
+                  <option value="">— Select —</option>
+                  <option value="Basic Safety">Basic Safety</option>
+                  <option value="Management">Management</option>
+                  <option value="Operational">Operational</option>
+                  <option value="Support">Support</option>
+                </SelectInput>
+              </FieldGroup>
+              <FieldGroup label="STCW Expiry">
+                <Input type="date" value={form.stcw_expiry??''} onChange={e => set('stcw_expiry', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="FCC License #">
+                <Input value={form.fcc_license_number??''} onChange={e => set('fcc_license_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="FCC Expiry">
+                <Input type="date" value={form.fcc_expiry??''} onChange={e => set('fcc_expiry', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="CPR Certification">
+                <Input value={form.cpr_certification??''} onChange={e => set('cpr_certification', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="CPR Expiry">
+                <Input type="date" value={form.cpr_expiry??''} onChange={e => set('cpr_expiry', e.target.value)} />
+              </FieldGroup>
+            </div>
+
+            <FormSectionLabel>Trade &amp; Service</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:12 }}>
+              <FieldGroup label="Languages Spoken (comma-separated)">
+                <Input value={form.languages_spoken??''} onChange={e => set('languages_spoken', e.target.value)} placeholder="English, Spanish" />
+              </FieldGroup>
+              <FieldGroup label="ABYC Certifications (comma-separated)">
+                <Input value={form.abyc_certifications??''} onChange={e => set('abyc_certifications', e.target.value)} placeholder="Electrical, Corrosion" />
+              </FieldGroup>
+              <FieldGroup label="Engine Brand Certifications (comma-separated)">
+                <Input value={form.engine_brand_certifications??''} onChange={e => set('engine_brand_certifications', e.target.value)} placeholder="Yamaha, Mercury" />
+              </FieldGroup>
+              <FieldGroup label="Trade Specialties (comma-separated)">
+                <Input value={form.trade_specialties??''} onChange={e => set('trade_specialties', e.target.value)} placeholder="Fiberglass, Rigging" />
+              </FieldGroup>
+            </div>
+
+            <FormSectionLabel>Dealer &amp; Broker Licenses</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Dealer License #">
+                <Input value={form.dealer_license_number??''} onChange={e => set('dealer_license_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Dealer License State">
+                <Input value={form.dealer_license_state??''} onChange={e => set('dealer_license_state', e.target.value)} placeholder="FL" />
+              </FieldGroup>
+              <FieldGroup label="Broker License #">
+                <Input value={form.broker_license_number??''} onChange={e => set('broker_license_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Broker License State">
+                <Input value={form.broker_license_state??''} onChange={e => set('broker_license_state', e.target.value)} placeholder="FL" />
+              </FieldGroup>
+            </div>
+
+            <FormSectionLabel>Memberships</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Sea Tow Membership #">
+                <Input value={form.seatow_membership_number??''} onChange={e => set('seatow_membership_number', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="BoatUS Membership #">
+                <Input value={form.boatus_membership_number??''} onChange={e => set('boatus_membership_number', e.target.value)} />
+              </FieldGroup>
+            </div>
+
+            <FormSectionLabel>Employment</FormSectionLabel>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FieldGroup label="Employee ID">
+                <Input value={form.employee_id??''} onChange={e => set('employee_id', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Department">
+                <Input value={form.department??''} onChange={e => set('department', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Employment Type">
+                <SelectInput value={form.employment_type??''} onChange={e => set('employment_type', e.target.value)}>
+                  <option value="">— Select —</option>
+                  <option value="Full-time">Full-time</option>
+                  <option value="Part-time">Part-time</option>
+                  <option value="Contract">Contract</option>
+                  <option value="Seasonal">Seasonal</option>
+                  <option value="Volunteer">Volunteer</option>
+                </SelectInput>
+              </FieldGroup>
+              <FieldGroup label="Tax Classification">
+                <SelectInput value={form.tax_classification??''} onChange={e => set('tax_classification', e.target.value)}>
+                  <option value="">— Select —</option>
+                  <option value="W2">W2</option>
+                  <option value="1099">1099</option>
+                  <option value="LLC">LLC</option>
+                  <option value="S-Corp">S-Corp</option>
+                </SelectInput>
+              </FieldGroup>
+              <FieldGroup label="Hire Date">
+                <Input type="date" value={form.hire_date??''} onChange={e => set('hire_date', e.target.value)} />
+              </FieldGroup>
+              <FieldGroup label="Hourly Rate ($)">
+                <Input type="number" value={form.hourly_rate??''} onChange={e => set('hourly_rate', e.target.value)} placeholder="0.00" />
+              </FieldGroup>
+              <FieldGroup label="Salary ($)">
+                <Input type="number" value={form.salary??''} onChange={e => set('salary', e.target.value)} placeholder="0.00" />
+              </FieldGroup>
+            </div>
+
             <FormSectionLabel>Preferences &amp; Notes</FormSectionLabel>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
               <FieldGroup label="SMS opt-in">
