@@ -1102,64 +1102,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved }: {
   const [form, setForm] = useState<Record<string,string>>(blank)
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
-  // ── Schema-driven field renderer ─────────────────────────────────────────
-  function renderSchemaField(field: ContactField): React.ReactNode {
-    const rawVal = form[field.name]
-    if (field.type === 'select') {
-      const val = rawVal ?? ''
-      return (
-        <FieldGroup key={field.name} label={field.label}>
-          <SelectInput value={val} onChange={e => set(field.name, e.target.value)}>
-            {(field.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </SelectInput>
-        </FieldGroup>
-      )
-    }
-    if (field.type === 'bool-select') {
-      const boolVal = rawVal === true ? 'true' : rawVal === false ? 'false' : ''
-      return (
-        <FieldGroup key={field.name} label={field.label}>
-          <SelectInput value={boolVal} onChange={e => set(field.name, e.target.value === 'true' ? true : e.target.value === 'false' ? false : null as any)}>
-            <option value="">— Not set —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-      )
-    }
-    if (field.type === 'textarea') {
-      const val = rawVal ?? ''
-      return (
-        <FieldGroup key={field.name} label={field.label}>
-          <textarea value={val} onChange={e => set(field.name, e.target.value)} rows={3}
-            placeholder={field.placeholder}
-            style={{ width:'100%', padding:'12px 14px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:12, fontSize:14, fontFamily:FONT, color:C.white, outline:'none', resize:'none' }} />
-        </FieldGroup>
-      )
-    }
-    // text, email, tel, date, number, tag-input → Input
-    const inputType = field.type === 'tag-input' ? 'text' : field.type
-    const val = rawVal ?? ''
-    return (
-      <FieldGroup key={field.name} label={field.label}>
-        <Input type={inputType} value={val} onChange={e => set(field.name, e.target.value)} placeholder={field.placeholder} />
-      </FieldGroup>
-    )
-  }
-
-  function renderSchemaSection(section: ContactSection): React.ReactNode {
-    const visibleFields = section.rows
-      .flatMap(r => r.fields)
-      .filter(f => fieldVisibleTo(f, 'boater')) as ContactField[]
-    if (visibleFields.length === 0) return null
-    return (
-      <React.Fragment key={section.id}>
-        <FormSectionLabel>{section.title}</FormSectionLabel>
-        {visibleFields.map(field => renderSchemaField(field))}
-      </React.Fragment>
-    )
-  }
-
   // Doc / flag fields (match Helm boat tab)
   const [docRegistration,   setDocRegistration]   = useState(false)
   const [docInsuranceCert,  setDocInsuranceCert]  = useState(false)
@@ -2371,6 +2313,63 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
+  // ── Schema-driven field renderer (moved from TabVessel scope) ──────────────
+  function renderSchemaField(field: ContactField): React.ReactNode {
+    const rawVal = form[field.name]
+    if (field.type === 'select') {
+      const val = rawVal ?? ''
+      return (
+        <FieldGroup key={field.name} label={field.label}>
+          <SelectInput value={val} onChange={e => set(field.name, e.target.value)}>
+            {(field.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelectInput>
+        </FieldGroup>
+      )
+    }
+    if (field.type === 'bool-select') {
+      const boolVal = rawVal === true ? 'true' : rawVal === false ? 'false' : ''
+      return (
+        <FieldGroup key={field.name} label={field.label}>
+          <SelectInput value={boolVal} onChange={e => set(field.name, e.target.value === 'true' ? true as any : e.target.value === 'false' ? false as any : null as any)}>
+            <option value="">— Not set —</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </SelectInput>
+        </FieldGroup>
+      )
+    }
+    if (field.type === 'textarea') {
+      const val = rawVal ?? ''
+      return (
+        <FieldGroup key={field.name} label={field.label}>
+          <textarea value={val} onChange={e => set(field.name, e.target.value)} rows={3}
+            placeholder={field.placeholder}
+            style={{ width:'100%', padding:'12px 14px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:12, fontSize:14, fontFamily:FONT, color:C.white, outline:'none', resize:'none' }} />
+        </FieldGroup>
+      )
+    }
+    const inputType = field.type === 'tag-input' ? 'text' : field.type
+    const val = rawVal ?? ''
+    return (
+      <FieldGroup key={field.name} label={field.label}>
+        <Input type={inputType} value={val} onChange={e => set(field.name, e.target.value)} placeholder={field.placeholder} />
+      </FieldGroup>
+    )
+  }
+
+  function renderSchemaSection(section: ContactSection): React.ReactNode {
+    const visibleFields = section.rows
+      .flatMap(r => r.fields)
+      .filter(f => fieldVisibleTo(f, 'boater')) as ContactField[]
+    if (visibleFields.length === 0) return null
+    return (
+      <React.Fragment key={section.id}>
+        <FormSectionLabel>{section.title}</FormSectionLabel>
+        {visibleFields.map(field => renderSchemaField(field))}
+      </React.Fragment>
+    )
+  }
+
   async function handlePinChange(p: string) {
     if (pinStep === 'verify') {
       setPinBusy(true)
@@ -2481,35 +2480,31 @@ function TabAccount({ user, profile, vessel, onSignOut, onProfileUpdated }: {
       broker_license_state:     (form.broker_license_state ?? '').trim() || null,
       seatow_membership_number: (form.seatow_membership_number ?? '').trim() || null,
       boatus_membership_number: (form.boatus_membership_number ?? '').trim() || null,
-      employee_id:              (form.employee_id ?? '').trim() || null,
-      department:               (form.department ?? '').trim() || null,
-      employment_type:          (form.employment_type ?? '').trim() || null,
-      tax_classification:       (form.tax_classification ?? '').trim() || null,
-      hire_date:                form.hire_date || null,
-      hourly_rate:              form.hourly_rate !== '' && form.hourly_rate != null ? Number(form.hourly_rate) : null,
-      salary:                   form.salary !== '' && form.salary != null ? Number(form.salary) : null,
-      access_card:              (form.access_card ?? '').trim() || null,
-      locker_number:            (form.locker_number ?? '').trim() || null,
-      parking_spot:             (form.parking_spot ?? '').trim() || null,
-      shift_notes:              (form.shift_notes ?? '').trim() || null,
-      doc_w2_on_file:           form.doc_w2_on_file ?? null,
-      doc_i9_on_file:           form.doc_i9_on_file ?? null,
-      doc_direct_deposit:       form.doc_direct_deposit ?? null,
-      doc_signed_offer:         form.doc_signed_offer ?? null,
-      doc_background_check:     form.doc_background_check ?? null,
+      // Boater documents-on-file (from master schema)
+      doc_registration:         form.doc_registration ?? null,
+      doc_insurance_cert:       form.doc_insurance_cert ?? null,
+      doc_signed_contract:      form.doc_signed_contract ?? null,
+      doc_photo_id:             form.doc_photo_id ?? null,
+      // Billing extras
+      autopay:                  form.autopay ?? null,
+      // Profile media + free-text emergency
+      photo_url:                (form.photo_url ?? '').trim() || null,
+      emergency_contact:        (form.emergency_contact ?? '').trim() || null,
       languages_spoken:         (form.languages_spoken ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.languages_spoken ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
     }
-    // Update ALL contacts rows for this user — national-pool + all marina-scoped rows
-    // so changes appear in Ops regardless of which row is displayed
+    // Save ONLY to the national-pool row (marina_id = null).
+    // Helm/OPS handle marina-scoped row sync independently.
+    // Staff-only fields (employee_id, salary, etc.) are intentionally NOT written here
+    // — boater surface must not overwrite staff data.
     const { data, error } = await supabase
       .from('contacts')
       .update(payload)
       .eq('auth_user_id', user.id)
+      .is('marina_id', null)
       .select()
     setBusy(false)
     if (error) { setErr(error.message); return }
-    // Use the national-pool row (marina_id = null) for local profile state
-    const nationalRow = (data ?? []).find((r: any) => !r.marina_id) ?? data?.[0]
+    const nationalRow = data?.[0]
     if (nationalRow) onProfileUpdated(contactToProfile(nationalRow))
     setEditing(false)
   }
