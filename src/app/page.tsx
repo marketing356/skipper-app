@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
+import AssetForm from '@/components/AssetForm'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
@@ -1149,18 +1150,18 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void
   vesselsLoading: boolean
 }) {
-  const [showForm, setShowForm] = useState(false)
-  const [editingVessel, setEditingVessel] = useState<Vessel|null>(null)
-  const [editingVesselId, setEditingVesselId] = useState<string|null>(null)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const [berths, setBerths] = useState<BerthData[]>([])
-  const [berthLoading, setBerthLoading] = useState(true)
+  // ── Berth state ──────────────────────────────────────────────────────────────
+  const [berths,      setBerths]      = useState<BerthData[]>([])
+  const [berthLoading,setBerthLoading]= useState(true)
 
+  // ── Form state ───────────────────────────────────────────────────────────────
+  const [showForm,    setShowForm]    = useState(false)
+  const [editingAsset,setEditingAsset]= useState<Record<string,unknown>|null>(null)
+
+  // ── Load berths ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function loadBerths() {
       setBerthLoading(true)
-      // 1. Get all coupled marina contacts for this boater
       const { data: coupled } = await supabase
         .from('contacts')
         .select('id, marina_id')
@@ -1172,7 +1173,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       const contactIds = coupled.map((c: { id: string }) => c.id)
       const marinaIds  = coupled.map((c: { marina_id: string }) => c.marina_id).filter(Boolean)
 
-      // 2. Active leases for all coupled contacts
       const { data: leases } = await supabase
         .from('leases')
         .select('id, tenant_id, slip_id, monthly_rate, lease_type, start_date, end_date')
@@ -1181,7 +1181,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
       if (!leases || leases.length === 0) { setBerthLoading(false); return }
 
-      // 3. Slip details
       const slipIds = leases.map((l: { slip_id: string }) => l.slip_id).filter(Boolean)
       const [{ data: slips }, { data: marinas }] = await Promise.all([
         slipIds.length > 0
@@ -1190,7 +1189,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         supabase.from('marinas').select('id, name').in('id', marinaIds),
       ])
 
-      // 4. Build lookup maps
       const slipMap: Record<string, { slip_number: string; dock: string }> =
         Object.fromEntries((slips ?? []).map((s: { id: string; slip_number: string; dock: string }) => [s.id, s]))
       const marinaMap: Record<string, string> =
@@ -1198,14 +1196,13 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       const contactMarinaMap: Record<string, string> =
         Object.fromEntries(coupled.map((c: { id: string; marina_id: string }) => [c.id, c.marina_id]))
 
-      // 5. Build BerthData array
       const result: BerthData[] = leases.map((lease: {
         id: string; tenant_id: string; slip_id: string;
         monthly_rate: number | null; lease_type: string | null;
         start_date: string | null; end_date: string | null;
       }) => {
-        const marinaId  = contactMarinaMap[lease.tenant_id]
-        const slip      = slipMap[lease.slip_id]
+        const marinaId = contactMarinaMap[lease.tenant_id]
+        const slip     = slipMap[lease.slip_id]
         return {
           id:          lease.id,
           marinaName:  marinaMap[marinaId] ?? 'Marina',
@@ -1217,7 +1214,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
           endDate:     lease.end_date,
         }
       })
-
       setBerths(result)
       setBerthLoading(false)
     }
@@ -1225,666 +1221,58 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
 
-  // Form state — covers all columns
-  const blank = {
-    name:'', vessel_type:'', status:'', asset_category:'', asset_subtype:'',
-    make:'', model:'', year:'', color:'',
-    length_ft:'', beam_ft:'', draft_ft:'', weight_lbs:'', air_draft_ft:'',
-    keel_type:'', bottom_paint_type:'',
-    hin:'', registration_number:'', registration_state:'', registration_expiry:'',
-    documentation_number:'', mmsi_number:'', flag_state:'',
-    hull_material:'',
-    engine_count:'', engine_type:'', engine_make:'', engine_model:'', engine_year:'', horsepower_per_engine:'', engine_hp:'', engine_serial:'', total_horsepower:'', raw_water_cooled:'', fuel_type:'', fuel_tank_gallons:'', shore_power:'',
-    insurance_provider:'', insurance_policy:'', insurance_expiry:'', insurance_agent_name:'', insurance_agent_phone:'', insurance_coverage_amount:'',
-    life_raft:'', life_jacket_count:'', epirb_serial:'', epirb_expiry:'', flare_kit_expiry:'', fire_extinguisher_expiry:'', oil_placard:'', discharge_placard:'',
-    alarm:'', gps_tracker:'', lock_type:'', lock_location:'', lock_combination:'', authorized_operators:'',
-    last_haulout_date:'', last_survey_date:'',
-    has_trailer:'', trailer_make:'', trailer_type:'', trailer_axle_count:'', trailer_length_ft:'', trailer_width_ft:'', trailer_plate:'', trailer_vin:'',
-    photo_url:'', notes:''
-  }
-  const [form, setForm] = useState<Record<string,string>>(blank)
-  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
-
-  // Doc / flag fields (match Helm boat tab)
-  const [docRegistration,   setDocRegistration]   = useState(false)
-  const [docInsuranceCert,  setDocInsuranceCert]  = useState(false)
-  const [docSignedContract, setDocSignedContract] = useState(false)
-  const [docPhotoId,        setDocPhotoId]        = useState(false)
-  const [isLiveaboard,      setIsLiveaboard]      = useState(false)
-  const [petOnBoard,        setPetOnBoard]        = useState(false)
-  const [parkingPermit,     setParkingPermit]     = useState('')
-
-  function openEdit(v: Vessel|null, id: string|null) {
-    setEditingVessel(v)
-    setEditingVesselId(id)
-    if (v) {
-      setForm({
-        name: v.name ?? '',
-        vessel_type: v.vessel_type ?? '',
-        status: v.status ?? '',
-        make: v.make ?? '',
-        model: v.model ?? '',
-        year: v.year?.toString() ?? '',
-        color: v.color ?? '',
-        length_ft: v.length_ft?.toString() ?? '',
-        beam_ft: v.beam_ft?.toString() ?? '',
-        draft_ft: v.draft_ft?.toString() ?? '',
-        weight_lbs: v.weight_lbs?.toString() ?? '',
-        air_draft_ft: v.air_draft_ft?.toString() ?? '',
-        hin: v.hin ?? '',
-        registration_number: v.registration_number ?? '',
-        registration_state: v.registration_state ?? '',
-        registration_expiry: v.registration_expiry ?? '',
-        documentation_number: v.documentation_number ?? '',
-        mmsi_number: v.mmsi_number ?? '',
-        flag_state: v.flag_state ?? '',
-        hull_material: v.hull_material ?? '',
-        engine_count: v.engine_count?.toString() ?? '',
-        engine_type: v.engine_type ?? '',
-        engine_make: v.engine_make ?? '',
-        engine_model: v.engine_model ?? '',
-        engine_year: v.engine_year?.toString() ?? '',
-        horsepower_per_engine: v.horsepower_per_engine?.toString() ?? '',
-        engine_hp: v.engine_hp?.toString() ?? '',
-        fuel_type: v.fuel_type ?? '',
-        fuel_tank_gallons: v.fuel_tank_gallons?.toString() ?? '',
-        shore_power: v.shore_power ?? '',
-        insurance_provider: v.insurance_provider ?? '',
-        insurance_policy: v.insurance_policy ?? '',
-        insurance_expiry: v.insurance_expiry ?? '',
-        insurance_agent_name: v.insurance_agent_name ?? '',
-        insurance_agent_phone: v.insurance_agent_phone ?? '',
-        last_survey_date: v.last_survey_date ?? '',
-        last_haulout_date: v.last_haulout_date ?? '',
-        photo_url: v.photo_url ?? '',
-        notes: v.notes ?? '',
-        keel_type: v.keel_type ?? '',
-        bottom_paint_type: v.bottom_paint_type ?? '',
-        engine_serial: v.engine_serial ?? '',
-        total_horsepower: v.total_horsepower?.toString() ?? '',
-        raw_water_cooled: v.raw_water_cooled == null ? '' : String(v.raw_water_cooled),
-        insurance_coverage_amount: v.insurance_coverage_amount?.toString() ?? '',
-        life_raft: v.life_raft == null ? '' : String(v.life_raft),
-        life_jacket_count: v.life_jacket_count?.toString() ?? '',
-        epirb_serial: v.epirb_serial ?? '',
-        epirb_expiry: v.epirb_expiry ?? '',
-        flare_kit_expiry: v.flare_kit_expiry ?? '',
-        fire_extinguisher_expiry: v.fire_extinguisher_expiry ?? '',
-        oil_placard: v.oil_placard == null ? '' : String(v.oil_placard),
-        discharge_placard: v.discharge_placard == null ? '' : String(v.discharge_placard),
-        alarm: v.alarm == null ? '' : String(v.alarm),
-        gps_tracker: v.gps_tracker == null ? '' : String(v.gps_tracker),
-        lock_type: v.lock_type ?? '',
-        lock_location: v.lock_location ?? '',
-        lock_combination: v.lock_combination ?? '',
-        authorized_operators: v.authorized_operators ?? '',
-        has_trailer: v.has_trailer == null ? '' : String(v.has_trailer),
-        trailer_make: v.trailer_make ?? '',
-        trailer_type: v.trailer_type ?? '',
-        trailer_axle_count: v.trailer_axle_count?.toString() ?? '',
-        trailer_length_ft: v.trailer_length_ft?.toString() ?? '',
-        trailer_width_ft: v.trailer_width_ft?.toString() ?? '',
-        trailer_plate: v.trailer_plate ?? '',
-        trailer_vin: v.trailer_vin ?? '',
-        asset_category: v.asset_category ?? '',
-        asset_subtype: v.asset_subtype ?? '',
-      })
-      setDocRegistration(v.doc_registration ?? false)
-      setDocInsuranceCert(v.doc_insurance_cert ?? false)
-      setDocSignedContract(v.doc_signed_contract ?? false)
-      setDocPhotoId(v.doc_photo_id ?? false)
-      setIsLiveaboard(v.liveaboard ?? false)
-      setPetOnBoard(v.pet_on_board ?? false)
-      setParkingPermit(v.parking_permit ?? '')
-    } else {
-      setForm(blank)
-      setDocRegistration(false); setDocInsuranceCert(false)
-      setDocSignedContract(false); setDocPhotoId(false)
-      setIsLiveaboard(false); setPetOnBoard(false); setParkingPermit('')
-    }
-    setErr('')
-    setShowForm(true)
+  // ── Open edit: fetch raw row from DB ─────────────────────────────────────────
+  async function openEdit(id: string) {
+    const { data } = await supabase.from('marina_assets').select('*').eq('id', id).single()
+    if (data) { setEditingAsset(data); setShowForm(true) }
   }
 
-  function numOrNull(v: string) { const n = parseFloat(v); return isNaN(n) ? null : n }
-  function intOrNull(v: string) { const n = parseInt(v); return isNaN(n) ? null : n }
-  function boolOrNull(v: string) { return v === 'true' ? true : v === 'false' ? false : null }
-  function arrayOrNull(v: string) { const t = v.trim(); if (!t) return null; return t.split(',').map(s => s.trim()).filter(Boolean) }
-
-  async function saveVessel() {
-    if (!form.name.trim())        { setErr('Vessel name is required'); return }
-    if (!form.vessel_type.trim()) { setErr('Vessel type is required'); return }
-    if (!form.length_ft.trim())   { setErr('Length (LOA) is required'); return }
-    if (!form.beam_ft.trim())     { setErr('Beam is required'); return }
-    if (!form.draft_ft.trim())    { setErr('Draft is required'); return }
-    if (!form.air_draft_ft.trim()){ setErr('Air Draft is required'); return }
-    setBusy(true); setErr('')
-
-    // Resolve contact_id — never allow null tenant_id
-    let contactId = profile?.contact_id ?? null
-    if (!contactId) {
-      const { data: cRows } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('auth_user_id', user.id)
-        .is('marina_id', null)
-        .order('created_at', { ascending: true })
-        .limit(1)
-      contactId = cRows?.[0]?.id ?? null
-    }
-    if (!contactId) { setBusy(false); setErr('Could not resolve your account — please sign out and back in.'); return }
-
-    // Write vessel data to marina_assets
-    const assetPayload = {
-      tenant_id:            contactId,
-      marina_id:            null,
-      owner_type:           'customer',
-      status:               form.status || 'active',
-      asset_category:       form.asset_category || null,
-      asset_subtype:        form.asset_subtype || null,
-      asset_type:           form.vessel_type,
-      name:                 form.name.trim(),
-      make:                 form.make || null,
-      model:                form.model || null,
-      year:                 intOrNull(form.year),
-      color:                form.color || null,
-      length_ft:            numOrNull(form.length_ft),
-      beam_ft:              numOrNull(form.beam_ft),
-      draft_ft:             numOrNull(form.draft_ft),
-      air_draft_ft:         numOrNull(form.air_draft_ft),
-      weight_lbs:           numOrNull(form.weight_lbs),
-      hin:                  form.hin || null,
-      registration_number:  form.registration_number || null,
-      registration_state:   form.registration_state || null,
-      registration_expiry:  form.registration_expiry || null,
-      documentation_number: form.documentation_number || null,
-      mmsi_number:          form.mmsi_number || null,
-      flag_state:           form.flag_state || null,
-      hull_material:        form.hull_material || null,
-      engine_count:         intOrNull(form.engine_count),
-      engine_type:          form.engine_type || null,
-      engine_make:          form.engine_make || null,
-      engine_model:         form.engine_model || null,
-      engine_year:          intOrNull(form.engine_year),
-      horsepower_per_engine: intOrNull(form.horsepower_per_engine),
-      engine_hp:            intOrNull(form.engine_hp),
-      fuel_type:            form.fuel_type || null,
-      fuel_tank_gallons:    intOrNull(form.fuel_tank_gallons),
-      shore_power:          form.shore_power || null,
-      insurance_provider:   form.insurance_provider || null,
-      insurance_policy:     form.insurance_policy || null,
-      insurance_expiry:     form.insurance_expiry || null,
-      insurance_agent_name: form.insurance_agent_name || null,
-      insurance_agent_phone:form.insurance_agent_phone || null,
-      last_survey_date:     form.last_survey_date || null,
-      last_haulout_date:    form.last_haulout_date || null,
-      keel_type:            form.keel_type || null,
-      bottom_paint_type:    form.bottom_paint_type || null,
-      engine_serial:        form.engine_serial || null,
-      total_horsepower:     intOrNull(form.total_horsepower),
-      raw_water_cooled:     boolOrNull(form.raw_water_cooled),
-      insurance_coverage_amount: numOrNull(form.insurance_coverage_amount),
-      life_raft:            boolOrNull(form.life_raft),
-      life_jacket_count:    intOrNull(form.life_jacket_count),
-      epirb_serial:         form.epirb_serial || null,
-      epirb_expiry:         form.epirb_expiry || null,
-      flare_kit_expiry:     form.flare_kit_expiry || null,
-      fire_extinguisher_expiry: form.fire_extinguisher_expiry || null,
-      oil_placard:          boolOrNull(form.oil_placard),
-      discharge_placard:    boolOrNull(form.discharge_placard),
-      alarm:                boolOrNull(form.alarm),
-      gps_tracker:          boolOrNull(form.gps_tracker),
-      lock_type:            form.lock_type || null,
-      lock_location:        form.lock_location || null,
-      lock_combination:     form.lock_combination || null,
-      authorized_operators: arrayOrNull(form.authorized_operators),
-      has_trailer:          boolOrNull(form.has_trailer),
-      trailer_make:         form.trailer_make || null,
-      trailer_type:         form.trailer_type || null,
-      trailer_axle_count:   intOrNull(form.trailer_axle_count),
-      trailer_length_ft:    numOrNull(form.trailer_length_ft),
-      trailer_width_ft:     numOrNull(form.trailer_width_ft),
-      trailer_plate:        form.trailer_plate || null,
-      trailer_vin:          form.trailer_vin || null,
-      photo_url:            form.photo_url || null,
-      notes:                form.notes || null,
-      updated_at:           new Date().toISOString(),
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let assetData: Record<string, any> | null = null
-    let assetError: { message: string } | null = null
-
-    if (editingVesselId) {
-      const { data, error } = await supabase.from('marina_assets').update(assetPayload).eq('id', editingVesselId).select().single()
-      assetData = data; assetError = error
-    } else {
-      const { data, error } = await supabase.from('marina_assets').insert(assetPayload).select().single()
-      assetData = data; assetError = error
-    }
-
-    if (assetError) { setBusy(false); setErr(assetError.message); return }
-
-    // Update doc/flag fields on contacts row — those columns still live there
-    const { error: contactError } = await supabase
-      .from('contacts')
-      .update({
-        doc_registration:    docRegistration,
-        doc_insurance_cert:  docInsuranceCert,
-        doc_signed_contract: docSignedContract,
-        doc_photo_id:        docPhotoId,
-        liveaboard:          isLiveaboard,
-        pet_on_board:        petOnBoard,
-        parking_permit:      parkingPermit.trim() || null,
-        updated_at:          new Date().toISOString(),
-      })
-      .eq('auth_user_id', user.id)
-      .is('marina_id', null)
-
-    setBusy(false)
-    if (contactError) { setErr(contactError.message); return }
-
-    const contactFlags = {
-      doc_registration: docRegistration,
-      doc_insurance_cert: docInsuranceCert,
-      doc_signed_contract: docSignedContract,
-      doc_photo_id: docPhotoId,
-      liveaboard: isLiveaboard,
-      pet_on_board: petOnBoard,
-      parking_permit: parkingPermit.trim() || null,
-    }
-    const newVesselId = assetData!.id as string
-    onVesselSaved(assetRowToVessel(assetData!, contactFlags), newVesselId)
-    setShowForm(false)
+  // ── Delete vessel ─────────────────────────────────────────────────────────────
+  async function deleteVessel(id: string) {
+    if (!confirm('Delete this vessel? This cannot be undone.')) return
+    await supabase.from('marina_assets').delete().eq('id', id)
+    onVesselDeleted(id)
   }
 
-  async function deleteVessel() {
-    if (!editingVesselId) return
-    if (!window.confirm('Delete this vessel? This cannot be undone.')) return
-    setBusy(true); setErr('')
-    const { error } = await supabase.from('marina_assets').delete().eq('id', editingVesselId)
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    onVesselDeleted(editingVesselId)
-    setShowForm(false)
-  }
-
+  // ── AssetForm screen ──────────────────────────────────────────────────────────
   if (showForm) return (
     <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.3s ease both' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-        <button onClick={() => setShowForm(false)}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+        <button onClick={() => { setShowForm(false); setEditingAsset(null) }}
           style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20, padding:'0 4px 0 0', fontFamily:FONT }}>←</button>
-        <h2 style={{ margin:0, fontSize:20, fontWeight:800 }}>{editingVessel ? 'Edit Vessel' : 'Add Vessel'}</h2>
+        <h2 style={{ margin:0, fontSize:20, fontWeight:800 }}>
+          {editingAsset ? 'Edit Vessel' : 'Add Vessel'}
+        </h2>
       </div>
-
-      <FormSectionLabel>Identity</FormSectionLabel>
-      <FieldGroup label="Vessel Photo URL">
-        <Input value={form.photo_url} onChange={e => set('photo_url', e.target.value)} placeholder="https://…" />
-      </FieldGroup>
-      <FieldGroup label="Vessel name *">
-        <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder='e.g. "Happy Days"' autoFocus />
-      </FieldGroup>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Type *">
-          <SelectInput value={form.vessel_type} onChange={e => set('vessel_type', e.target.value)}>
-            <option value="">Select type…</option>
-            {['powerboat','sailboat','yacht','catamaran','trawler','pontoon','pwc','tender','kayak','trailer','other'].map(t => <option key={t}>{t}</option>)}
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Status">
-          <SelectInput value={form.status} onChange={e => set('status', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="pending">Pending</option>
-          </SelectInput>
-        </FieldGroup>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Category">
-          <SelectInput value={form.asset_category} onChange={e => set('asset_category', e.target.value)}>
-            <option value="">— Not set —</option>
-            {[['vessel','Vessel'],['trailer','Trailer'],['jet_ski','Jet Ski / PWC'],['tender','Tender / Dinghy'],['kayak','Kayak / Paddle'],['other','Other']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Subtype">
-          <Input value={form.asset_subtype} onChange={e => set('asset_subtype', e.target.value)} placeholder="e.g. center console, sloop…" />
-        </FieldGroup>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Make">
-          <Input value={form.make} onChange={e => set('make', e.target.value)} placeholder="Sea Ray" />
-        </FieldGroup>
-        <FieldGroup label="Model">
-          <Input value={form.model} onChange={e => set('model', e.target.value)} placeholder="240 SX" />
-        </FieldGroup>
-        <FieldGroup label="Year">
-          <Input type="number" value={form.year} onChange={e => set('year', e.target.value)} placeholder="2022" />
-        </FieldGroup>
-        <FieldGroup label="Color">
-          <Input value={form.color} onChange={e => set('color', e.target.value)} placeholder="White / Blue" />
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Dimensions <span style={{fontSize:11,color:C.teal,fontWeight:600}}>* required for slip matching</span></FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-        <FieldGroup label="Length / LOA (ft) *">
-          <Input type="number" value={form.length_ft} onChange={e => set('length_ft', e.target.value)} placeholder="34" />
-        </FieldGroup>
-        <FieldGroup label="Beam (ft) *">
-          <Input type="number" value={form.beam_ft} onChange={e => set('beam_ft', e.target.value)} placeholder="11" />
-        </FieldGroup>
-        <FieldGroup label="Draft (ft) *">
-          <Input type="number" value={form.draft_ft} onChange={e => set('draft_ft', e.target.value)} placeholder="3.5" />
-        </FieldGroup>
-        <FieldGroup label="Air Draft (ft) *">
-          <Input type="number" value={form.air_draft_ft} onChange={e => set('air_draft_ft', e.target.value)} placeholder="12" />
-        </FieldGroup>
-        <FieldGroup label="Weight (lbs)">
-          <Input type="number" value={form.weight_lbs} onChange={e => set('weight_lbs', e.target.value)} placeholder="6200" />
-        </FieldGroup>
-        <FieldGroup label="Keel Type">
-          <SelectInput value={form.keel_type} onChange={e => set('keel_type', e.target.value)}>
-            <option value="">— Not set —</option>
-            {[['full','Full Keel'],['fin','Fin Keel'],['bulb','Bulb Keel'],['wing','Wing Keel'],['centerboard','Centerboard'],['twin','Twin Keels'],['none','None / Powerboat']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-          </SelectInput>
-        </FieldGroup>
-      </div>
-      <FieldGroup label="Bottom Paint Type">
-        <Input value={form.bottom_paint_type} onChange={e => set('bottom_paint_type', e.target.value)} placeholder="Hard/Ablative brand…" />
-      </FieldGroup>
-
-      <FormSectionLabel>Registration</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Hull ID (HIN)">
-          <Input value={form.hin} onChange={e => set('hin', e.target.value)} placeholder="ABC12345D678" />
-        </FieldGroup>
-        <FieldGroup label="Registration #">
-          <Input value={form.registration_number} onChange={e => set('registration_number', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Reg State">
-          <Input value={form.registration_state} onChange={e => set('registration_state', e.target.value)} placeholder="NY" maxLength={2} />
-        </FieldGroup>
-        <FieldGroup label="Reg Expiry">
-          <Input type="date" value={form.registration_expiry} onChange={e => set('registration_expiry', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="USCG Doc #">
-          <Input value={form.documentation_number} onChange={e => set('documentation_number', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="MMSI #">
-          <Input value={form.mmsi_number} onChange={e => set('mmsi_number', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Flag State">
-          <Input value={form.flag_state} onChange={e => set('flag_state', e.target.value)} placeholder="USA" />
-        </FieldGroup>
-        <FieldGroup label="Hull Material">
-          <SelectInput value={form.hull_material} onChange={e => set('hull_material', e.target.value)}>
-            <option value="">Select…</option>
-            {['Fiberglass','Aluminum','Steel','Wood','Carbon Fiber','Other'].map(v => <option key={v}>{v}</option>)}
-          </SelectInput>
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Engine & Fuel</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="# Engines">
-          <Input type="number" value={form.engine_count} onChange={e => set('engine_count', e.target.value)} placeholder="1" />
-        </FieldGroup>
-        <FieldGroup label="Engine Type">
-          <SelectInput value={form.engine_type} onChange={e => set('engine_type', e.target.value)}>
-            <option value="">Select…</option>
-            {['Outboard','Inboard','Sterndrive (I/O)','Jet Drive','Diesel Inboard','Electric','None / Sail'].map(v => <option key={v}>{v}</option>)}
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Engine Make">
-          <Input value={form.engine_make} onChange={e => set('engine_make', e.target.value)} placeholder="Yamaha" />
-        </FieldGroup>
-        <FieldGroup label="Engine Model">
-          <Input value={form.engine_model} onChange={e => set('engine_model', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Engine Year">
-          <Input type="number" value={form.engine_year} onChange={e => set('engine_year', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="HP (per engine)">
-          <Input type="number" value={form.horsepower_per_engine} onChange={e => set('horsepower_per_engine', e.target.value)} placeholder="150" />
-        </FieldGroup>
-        <FieldGroup label="Fuel Type">
-          <SelectInput value={form.fuel_type} onChange={e => set('fuel_type', e.target.value)}>
-            <option value="">Select…</option>
-            {['Gas','Diesel','Electric','Hybrid'].map(v => <option key={v}>{v}</option>)}
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Fuel Tank (gal)">
-          <Input type="number" value={form.fuel_tank_gallons} onChange={e => set('fuel_tank_gallons', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Engine Serial">
-          <Input value={form.engine_serial} onChange={e => set('engine_serial', e.target.value)} placeholder="SN-…" />
-        </FieldGroup>
-        <FieldGroup label="Total HP">
-          <Input type="number" value={form.total_horsepower} onChange={e => set('total_horsepower', e.target.value)} placeholder="600" />
-        </FieldGroup>
-        <FieldGroup label="Engine HP (legacy)">
-          <Input type="number" value={form.engine_hp} onChange={e => set('engine_hp', e.target.value)} placeholder="600" />
-        </FieldGroup>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Shore Power">
-          <SelectInput value={form.shore_power} onChange={e => set('shore_power', e.target.value)}>
-            <option value="">Select…</option>
-            {['None','30A','50A','100A','Dual 30A','Dual 50A'].map(v => <option key={v}>{v}</option>)}
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Raw Water Cooled">
-          <SelectInput value={form.raw_water_cooled} onChange={e => set('raw_water_cooled', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Insurance</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Provider">
-          <Input value={form.insurance_provider} onChange={e => set('insurance_provider', e.target.value)} placeholder="BoatUS" />
-        </FieldGroup>
-        <FieldGroup label="Policy #">
-          <Input value={form.insurance_policy} onChange={e => set('insurance_policy', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Expiry">
-          <Input type="date" value={form.insurance_expiry} onChange={e => set('insurance_expiry', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Agent Name">
-          <Input value={form.insurance_agent_name} onChange={e => set('insurance_agent_name', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Agent Phone">
-          <Input type="tel" value={form.insurance_agent_phone} onChange={e => set('insurance_agent_phone', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Coverage Amount ($)">
-          <Input type="number" value={form.insurance_coverage_amount} onChange={e => set('insurance_coverage_amount', e.target.value)} placeholder="250000" />
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Service History</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Last Haulout Date">
-          <Input type="date" value={form.last_haulout_date} onChange={e => set('last_haulout_date', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Last Survey Date">
-          <Input type="date" value={form.last_survey_date} onChange={e => set('last_survey_date', e.target.value)} />
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Safety Equipment</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Life Raft On Board">
-          <SelectInput value={form.life_raft} onChange={e => set('life_raft', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Life Jacket Count">
-          <Input type="number" value={form.life_jacket_count} onChange={e => set('life_jacket_count', e.target.value)} placeholder="6" />
-        </FieldGroup>
-        <FieldGroup label="EPIRB Serial">
-          <Input value={form.epirb_serial} onChange={e => set('epirb_serial', e.target.value)} placeholder="EPIRB SN" />
-        </FieldGroup>
-        <FieldGroup label="EPIRB Battery Expiry">
-          <Input type="date" value={form.epirb_expiry} onChange={e => set('epirb_expiry', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Flare Kit Expiry">
-          <Input type="date" value={form.flare_kit_expiry} onChange={e => set('flare_kit_expiry', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Fire Extinguisher Expiry">
-          <Input type="date" value={form.fire_extinguisher_expiry} onChange={e => set('fire_extinguisher_expiry', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Oil Placard Posted">
-          <SelectInput value={form.oil_placard} onChange={e => set('oil_placard', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Discharge Placard Posted">
-          <SelectInput value={form.discharge_placard} onChange={e => set('discharge_placard', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Security</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Alarm Installed">
-          <SelectInput value={form.alarm} onChange={e => set('alarm', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="GPS Tracker">
-          <SelectInput value={form.gps_tracker} onChange={e => set('gps_tracker', e.target.value)}>
-            <option value="">— Select —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Lock Type">
-          <Input value={form.lock_type} onChange={e => set('lock_type', e.target.value)} placeholder="Combination, key…" />
-        </FieldGroup>
-        <FieldGroup label="Lock Location">
-          <Input value={form.lock_location} onChange={e => set('lock_location', e.target.value)} placeholder="Companionway…" />
-        </FieldGroup>
-        <FieldGroup label="Lock Combination">
-          <Input value={form.lock_combination} onChange={e => set('lock_combination', e.target.value)} placeholder="Staff-shared if needed" />
-        </FieldGroup>
-      </div>
-      <FieldGroup label="Authorized Operators">
-        <Input value={form.authorized_operators} onChange={e => set('authorized_operators', e.target.value)} placeholder="Comma-separated names" />
-      </FieldGroup>
-
-      <FormSectionLabel>Trailer</FormSectionLabel>
-      <FieldGroup label="Has Trailer">
-        <SelectInput value={form.has_trailer} onChange={e => set('has_trailer', e.target.value)}>
-          <option value="">— Select —</option>
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </SelectInput>
-      </FieldGroup>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Trailer Make">
-          <Input value={form.trailer_make} onChange={e => set('trailer_make', e.target.value)} placeholder="Load Rite" />
-        </FieldGroup>
-        <FieldGroup label="Trailer Type">
-          <Input value={form.trailer_type} onChange={e => set('trailer_type', e.target.value)} placeholder="Bunk/Roller/Float-on" />
-        </FieldGroup>
-        <FieldGroup label="Axle Count">
-          <Input type="number" value={form.trailer_axle_count} onChange={e => set('trailer_axle_count', e.target.value)} placeholder="2" />
-        </FieldGroup>
-        <FieldGroup label="Trailer Plate #">
-          <Input value={form.trailer_plate} onChange={e => set('trailer_plate', e.target.value)} placeholder="ABC-1234" />
-        </FieldGroup>
-        <FieldGroup label="Trailer Length (ft)">
-          <Input type="number" value={form.trailer_length_ft} onChange={e => set('trailer_length_ft', e.target.value)} placeholder="28" />
-        </FieldGroup>
-        <FieldGroup label="Trailer Width (ft)">
-          <Input type="number" value={form.trailer_width_ft} onChange={e => set('trailer_width_ft', e.target.value)} placeholder="8.5" />
-        </FieldGroup>
-      </div>
-      <FieldGroup label="Trailer VIN">
-        <Input value={form.trailer_vin} onChange={e => set('trailer_vin', e.target.value)} placeholder="VIN #" />
-      </FieldGroup>
-
-      <FormSectionLabel>Notes</FormSectionLabel>
-      <FieldGroup label="Notes">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
-          placeholder="Anything the marina should know…"
-          style={{ width:'100%', padding:'14px 15px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:14, color:C.white, fontSize:15, fontFamily:FONT, outline:'none' }} />
-      </FieldGroup>
-
-      <FormSectionLabel>Documents on File</FormSectionLabel>
-      <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:8 }}>
-        {([
-          ['Boat Registration',  docRegistration,   setDocRegistration],
-          ['Insurance Cert',     docInsuranceCert,  setDocInsuranceCert],
-          ['Signed Contract',    docSignedContract, setDocSignedContract],
-          ['Photo ID',           docPhotoId,        setDocPhotoId],
-        ] as [string, boolean, (v:boolean)=>void][]).map(([label, val, setter]) => (
-          <label key={label} style={{ display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
-            <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)}
-              style={{ width:18, height:18, accentColor:C.teal, cursor:'pointer' }} />
-            <span style={{ fontSize:14, color:C.white }}>{label}</span>
-          </label>
-        ))}
-      </div>
-
-      <FormSectionLabel>On Board</FormSectionLabel>
-      <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:8 }}>
-        {([
-          ['Liveaboard',   isLiveaboard, setIsLiveaboard],
-          ['Pet on Board', petOnBoard,   setPetOnBoard],
-        ] as [string, boolean, (v:boolean)=>void][]).map(([label, val, setter]) => (
-          <label key={label} style={{ display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
-            <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)}
-              style={{ width:18, height:18, accentColor:C.teal, cursor:'pointer' }} />
-            <span style={{ fontSize:14, color:C.white }}>{label}</span>
-          </label>
-        ))}
-      </div>
-      <FieldGroup label="Parking Permit #">
-        <Input value={parkingPermit} onChange={e => setParkingPermit(e.target.value)} placeholder="Optional" />
-      </FieldGroup>
-
-      {err && <ErrMsg>{err}</ErrMsg>}
-      <PrimaryBtn onClick={saveVessel} loading={busy} style={{ marginTop:8 }}>
-        {editingVessel ? 'Save Changes' : 'Add Vessel'}
-      </PrimaryBtn>
-      {editingVesselId && (
-        <button
-          onClick={deleteVessel}
-          disabled={busy}
-          style={{ display:'block', width:'100%', marginTop:12, background:'rgba(248,113,113,0.12)', border:'1px solid rgba(248,113,113,0.35)', borderRadius:14, padding:'14px 0', color:'#f87171', fontFamily:FONT, fontSize:14, fontWeight:700, cursor:'pointer' }}>
-          Delete Vessel
-        </button>
-      )}
+      <AssetForm
+        contactId={profile?.contact_id ?? ''}
+        asset={editingAsset ?? undefined}
+        onSaved={(raw) => {
+          onVesselSaved(assetRowToVessel(raw as Record<string, unknown>, null), raw.id as string)
+          setShowForm(false)
+          setEditingAsset(null)
+        }}
+        onCancel={() => { setShowForm(false); setEditingAsset(null) }}
+      />
     </div>
   )
 
+  // ── Main vessel list ──────────────────────────────────────────────────────────
   return (
     <div style={{ padding:'20px 20px 40px', animation:'fadeUp 0.35s ease both' }}>
       <SectionTitle>My Vessels</SectionTitle>
 
-      {/* ── Active Berths ── */}
+      {/* Active Berths */}
       {!berthLoading && berths.length > 0 && (
         <div style={{ marginBottom:24 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>Current Berth{berths.length > 1 ? 's' : ''}</div>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>
+            Current Berth{berths.length > 1 ? 's' : ''}
+          </div>
           {berths.map(b => <BerthCard key={b.id} berth={b} />)}
         </div>
       )}
 
-      {/* ── Vessel list ── */}
+      {/* Vessel list */}
       {vesselsLoading ? (
         <div style={{ textAlign:'center', padding:'48px 20px', color:C.muted }}>
           <Spinner />
@@ -1897,12 +1285,14 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
           <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7, maxWidth:260, margin:'0 auto 24px' }}>
             Add your vessel so marinas know who&apos;s coming and what slip fits you.
           </div>
-          <PrimaryBtn onClick={() => openEdit(null, null)} style={{ maxWidth:220, margin:'0 auto' }}>+ Add Your First Vessel</PrimaryBtn>
+          <PrimaryBtn onClick={() => { setEditingAsset(null); setShowForm(true) }} style={{ maxWidth:220, margin:'0 auto' }}>
+            + Add Your First Vessel
+          </PrimaryBtn>
         </div>
       ) : (
         <>
-          {vessels.map((v, i) => (
-            <div key={vesselIds[i]} style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
+          {vessels.map((v, idx) => (
+            <div key={vesselIds[idx]} style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
               <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>⛵</div>
@@ -1912,10 +1302,16 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                     {v.make && <div style={{ fontSize:13, color:C.muted }}>{v.make}{v.model ? ` ${v.model}` : ''}</div>}
                   </div>
                 </div>
-                <button onClick={() => openEdit(v, vesselIds[i])}
-                  style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
-                  Edit
-                </button>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={() => openEdit(vesselIds[idx])}
+                    style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    Edit
+                  </button>
+                  <button onClick={() => deleteVessel(vesselIds[idx])}
+                    style={{ background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:10, padding:'6px 12px', color:'#f87171', fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    Delete
+                  </button>
+                </div>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                 {[
@@ -1924,7 +1320,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   v.draft_ft  && ['Draft', `${v.draft_ft} ft`],
                   v.air_draft_ft && ['Air Draft', `${v.air_draft_ft} ft`],
                   v.weight_lbs && ['Weight', `${v.weight_lbs.toLocaleString()} lbs`],
-                  v.shore_power && ['Shore Power', v.shore_power],
                   v.registration_number && ['Reg #', v.registration_number],
                 ].filter(Boolean).map(([l, val]) => (
                   <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
@@ -1935,7 +1330,9 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
               </div>
             </div>
           ))}
-          <PrimaryBtn onClick={() => openEdit(null, null)} style={{ marginTop:8 }}>+ Add Another Vessel / Asset</PrimaryBtn>
+          <PrimaryBtn onClick={() => { setEditingAsset(null); setShowForm(true) }} style={{ marginTop:8 }}>
+            + Add Another Vessel / Asset
+          </PrimaryBtn>
         </>
       )}
     </div>
