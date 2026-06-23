@@ -735,7 +735,7 @@ export default function SkipperApp() {
       email={savedEmail || user?.email || ''}
       onUnlock={() => {
         localStorage.setItem(`skipper_unlocked_${user!.id}`, '1')
-        setScreen('home')
+        routeAfterAuth(user!)  // loads vessels + sets userRef, then routes to home
       }}
       onForgotPin={() => setScreen('auth')}
     />
