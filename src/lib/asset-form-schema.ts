@@ -123,12 +123,11 @@ export const ASSET_FORM_SCHEMA: AssetSection[] = [
     title: 'Dimensions',
     roles: 'all',
     rows: [
-      { cols: 5, fields: [
+      { cols: 4, fields: [
         { name: 'length_ft', label: 'LOA (ft)', type: 'number', placeholder: '32', roles: 'all' },
         { name: 'beam_ft', label: 'Beam (ft)', type: 'number', placeholder: '10.5', roles: 'all' },
         { name: 'draft_ft', label: 'Draft (ft)', type: 'number', placeholder: '2.5', roles: 'all' },
         { name: 'air_draft_ft', label: 'Air Draft (ft)', type: 'number', placeholder: '14', roles: 'all' },
-        { name: 'height_ft', label: 'Height (ft)', type: 'number', placeholder: '12', roles: 'all' },
       ]},
       { cols: 3, fields: [
         { name: 'weight_lbs', label: 'Weight (lbs)', type: 'number', placeholder: '8400', roles: 'all' },
@@ -142,7 +141,6 @@ export const ASSET_FORM_SCHEMA: AssetSection[] = [
           { value: 'twin', label: 'Twin Keels' },
           { value: 'none', label: 'None / Powerboat' },
         ]},
-        { name: 'keel_depth_ft', label: 'Keel Depth (ft)', type: 'number', placeholder: '4.0', roles: 'all' },
       ]},
       { cols: 1, fields: [
         { name: 'bottom_paint_type', label: 'Bottom Paint Type', type: 'text', placeholder: 'Hard/Ablative brand…', roles: 'all' },
@@ -327,23 +325,7 @@ export const ASSET_FORM_SCHEMA: AssetSection[] = [
     ],
   },
 
-  // ══ 10. SALE / VALUE ═════════════════════════════════════
-  {
-    id: 'sale_value',
-    title: 'Sale & Value',
-    roles: 'all',
-    rows: [
-      { cols: 2, fields: [
-        { name: 'for_sale', label: 'For Sale', type: 'bool-select', roles: 'all' },
-        { name: 'asking_price', label: 'Asking Price ($)', type: 'number', placeholder: '125000', roles: 'all' },
-      ]},
-      { cols: 1, fields: [
-        { name: 'estimated_value', label: 'Estimated Value ($)', type: 'number', placeholder: '110000', roles: 'all' },
-      ]},
-    ],
-  },
-
-  // ══ 11. LOCATION (marina-side) — ops/helm only ═══════════
+  // ══ 10. LOCATION (marina-side) — ops/helm only ═══════════
   {
     id: 'location',
     title: 'Location',
