@@ -1518,6 +1518,9 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       </div>
 
       <FormSectionLabel>Identity</FormSectionLabel>
+      <FieldGroup label="Vessel Photo URL">
+        <Input value={form.photo_url} onChange={e => set('photo_url', e.target.value)} placeholder="https://…" />
+      </FieldGroup>
       <FieldGroup label="Vessel name *">
         <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder='e.g. "Happy Days"' autoFocus />
       </FieldGroup>
@@ -1528,16 +1531,26 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
             {['powerboat','sailboat','yacht','catamaran','trawler','pontoon','pwc','tender','kayak','trailer','other'].map(t => <option key={t}>{t}</option>)}
           </SelectInput>
         </FieldGroup>
+        <FieldGroup label="Status">
+          <SelectInput value={form.status} onChange={e => set('status', e.target.value)}>
+            <option value="">— Select —</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="pending">Pending</option>
+          </SelectInput>
+        </FieldGroup>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
         <FieldGroup label="Category">
           <SelectInput value={form.asset_category} onChange={e => set('asset_category', e.target.value)}>
             <option value="">— Not set —</option>
             {[['vessel','Vessel'],['trailer','Trailer'],['jet_ski','Jet Ski / PWC'],['tender','Tender / Dinghy'],['kayak','Kayak / Paddle'],['other','Other']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
           </SelectInput>
         </FieldGroup>
+        <FieldGroup label="Subtype">
+          <Input value={form.asset_subtype} onChange={e => set('asset_subtype', e.target.value)} placeholder="e.g. center console, sloop…" />
+        </FieldGroup>
       </div>
-      <FieldGroup label="Subtype">
-        <Input value={form.asset_subtype} onChange={e => set('asset_subtype', e.target.value)} placeholder="e.g. center console, sloop…" />
-      </FieldGroup>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
         <FieldGroup label="Make">
           <Input value={form.make} onChange={e => set('make', e.target.value)} placeholder="Sea Ray" />
@@ -1650,6 +1663,9 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         <FieldGroup label="Total HP">
           <Input type="number" value={form.total_horsepower} onChange={e => set('total_horsepower', e.target.value)} placeholder="600" />
         </FieldGroup>
+        <FieldGroup label="Engine HP (legacy)">
+          <Input type="number" value={form.engine_hp} onChange={e => set('engine_hp', e.target.value)} placeholder="600" />
+        </FieldGroup>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
         <FieldGroup label="Shore Power">
@@ -1687,11 +1703,15 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         <FieldGroup label="Coverage Amount ($)">
           <Input type="number" value={form.insurance_coverage_amount} onChange={e => set('insurance_coverage_amount', e.target.value)} placeholder="250000" />
         </FieldGroup>
-        <FieldGroup label="Last Survey">
-          <Input type="date" value={form.last_survey_date} onChange={e => set('last_survey_date', e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Last Haulout">
+      </div>
+
+      <FormSectionLabel>Service History</FormSectionLabel>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <FieldGroup label="Last Haulout Date">
           <Input type="date" value={form.last_haulout_date} onChange={e => set('last_haulout_date', e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label="Last Survey Date">
+          <Input type="date" value={form.last_survey_date} onChange={e => set('last_survey_date', e.target.value)} />
         </FieldGroup>
       </div>
 
