@@ -223,6 +223,11 @@ function buildPayload(fd: FormData) {
   }
 }
 
+const FORM_CSS = `
+  .skipper-asset-form select option { background: #05111f; color: #ffffff; }
+  .skipper-asset-form select { color-scheme: dark; }
+`
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props) {
   const a = asset ?? {}
@@ -269,7 +274,8 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <form ref={formRef} onSubmit={handleSubmit} className="skipper-asset-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <style>{FORM_CSS}</style>
       {isEdit && <input type="hidden" name="id" value={a.id as string} />}
 
       {ASSET_FORM_SCHEMA
