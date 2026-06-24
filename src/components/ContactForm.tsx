@@ -10,6 +10,9 @@
 import { useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import DocumentList from '@/components/DocumentList'
+import ContactNotesLog from '@/components/ContactNotesLog'
+import MembershipList from '@/components/MembershipList'
+import EmergencyContactList from '@/components/EmergencyContactList'
 import {
   CONTACT_FORM_SCHEMA,
   sectionVisibleTo,
@@ -228,7 +231,7 @@ export default function ContactForm({ userId, contact, onSaved, onCancel, submit
       <style>{FORM_CSS}</style>
 
       {CONTACT_FORM_SCHEMA
-        .filter(section => sectionVisibleTo(section, ROLE))
+        .filter(section => sectionVisibleTo(section, ROLE) && section.id !== 'notes')
         .map((section, sIdx) => (
           <Section key={section.id} title={section.title} defaultOpen={sIdx === 0}>
             {section.rows.map((row, rowIdx) => {
@@ -255,6 +258,36 @@ export default function ContactForm({ userId, contact, onSaved, onCancel, submit
             })}
           </Section>
         ))}
+
+      {/* ── Notes Log (edit only) ──────────────────────────── */}
+      {c.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Notes</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <ContactNotesLog contactId={c.id as string} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Memberships (edit only) ──────────────────────────── */}
+      {c.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Memberships</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <MembershipList contactId={c.id as string} marinaId={null} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Emergency Contacts (edit only) ───────────────────── */}
+      {c.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Emergency Contacts</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <EmergencyContactList contactId={c.id as string} marinaId={null} />
+          </div>
+        </div>
+      )}
 
       {/* ── Documents on File (edit only) ──────────────────── */}
       {c.id && (
