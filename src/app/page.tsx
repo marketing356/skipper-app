@@ -1,6 +1,5 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
-import AssetForm from '@/components/AssetForm'
 import ContactForm from '@/components/ContactForm'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
@@ -1310,10 +1309,6 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   const [berths,      setBerths]      = useState<BerthData[]>([])
   const [berthLoading,setBerthLoading]= useState(true)
 
-  // ── Form state ───────────────────────────────────────────────────────────────
-  const [showForm,    setShowForm]    = useState(false)
-  const [editingAsset,setEditingAsset]= useState<Record<string,unknown>|null>(null)
-
   // ── Load berths ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function loadBerths() {
@@ -1377,41 +1372,12 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
 
-  // ── Open edit: fetch raw row from DB ─────────────────────────────────────────
-  async function openEdit(id: string) {
-    const { data } = await supabase.from('marina_assets').select('*').eq('id', id).single()
-    if (data) { setEditingAsset(data); setShowForm(true) }
-  }
-
   // ── Delete vessel ─────────────────────────────────────────────────────────────
   async function deleteVessel(id: string) {
     if (!confirm('Delete this vessel? This cannot be undone.')) return
     await supabase.from('marina_assets').delete().eq('id', id)
     onVesselDeleted(id)
   }
-
-  // ── AssetForm screen ──────────────────────────────────────────────────────────
-  if (showForm) return (
-    <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.3s ease both' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={() => { setShowForm(false); setEditingAsset(null) }}
-          style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20, padding:'0 4px 0 0', fontFamily:FONT }}>←</button>
-        <h2 style={{ margin:0, fontSize:20, fontWeight:800 }}>
-          {editingAsset ? 'Edit Vessel' : 'Add Vessel'}
-        </h2>
-      </div>
-      <AssetForm
-        contactId={profile?.contact_id ?? ''}
-        asset={editingAsset ?? undefined}
-        onSaved={(raw) => {
-          onVesselSaved(assetRowToVessel(raw as Record<string, unknown>, null), raw.id as string)
-          setShowForm(false)
-          setEditingAsset(null)
-        }}
-        onCancel={() => { setShowForm(false); setEditingAsset(null) }}
-      />
-    </div>
-  )
 
   // ── Main vessel list ──────────────────────────────────────────────────────────
   return (
@@ -1441,9 +1407,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
           <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7, maxWidth:260, margin:'0 auto 24px' }}>
             Add your vessel so marinas know who&apos;s coming and what slip fits you.
           </div>
-          <PrimaryBtn onClick={() => { setEditingAsset(null); setShowForm(true) }} style={{ maxWidth:220, margin:'0 auto' }}>
-            + Add Your First Vessel
-          </PrimaryBtn>
+
         </div>
       ) : (
         <>
@@ -1459,10 +1423,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={() => openEdit(vesselIds[idx])}
-                    style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                    Edit
-                  </button>
+
                   <button onClick={() => deleteVessel(vesselIds[idx])}
                     style={{ background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:10, padding:'6px 12px', color:'#f87171', fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
                     Delete
@@ -1486,9 +1447,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
               </div>
             </div>
           ))}
-          <PrimaryBtn onClick={() => { setEditingAsset(null); setShowForm(true) }} style={{ marginTop:8 }}>
-            + Add Another Vessel / Asset
-          </PrimaryBtn>
+
         </>
       )}
     </div>
