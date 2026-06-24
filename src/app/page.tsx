@@ -786,6 +786,7 @@ export default function SkipperApp() {
       onUnlocked={async (u) => {
         localStorage.setItem('skipper_user_id', u.id)
         localStorage.setItem('skipper_email', u.email ?? savedEmail)
+        localStorage.setItem(`skipper_unlocked_${u.id}`, '1')
         // Reinforce persistent cookie so same device skips email next time
         document.cookie = `skipper_uid=${u.id}; max-age=${60 * 60 * 24 * 365}; path=/; SameSite=Lax`
         setUser(u)
@@ -806,6 +807,7 @@ export default function SkipperApp() {
       email={savedEmail}
       onUnlocked={async (u) => {
         localStorage.setItem('skipper_user_id', u.id)
+        localStorage.setItem(`skipper_unlocked_${u.id}`, '1')
         setUser(u)
         userRef.current = u
         await routeAfterAuth(u)
