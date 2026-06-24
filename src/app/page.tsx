@@ -44,7 +44,7 @@ const GLOBAL_CSS = `
 `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'home'
+type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
 type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
@@ -724,6 +724,11 @@ export default function SkipperApp() {
         setOtpEmail(email)
         setScreen('otp_verify')
       }}
+      onPinLogin={(email, userId) => {
+        setSavedEmail(email)
+        setStoredUserId(userId)
+        setScreen('pin_email_login')
+      }}
     />
   )
 
@@ -769,6 +774,27 @@ export default function SkipperApp() {
       onComplete={() => {
         localStorage.setItem(`skipper_unlocked_${user!.id}`, '1')
         setScreen('home')
+      }}
+    />
+  )
+
+  // ── PIN Email Login (returning user, any device — email entered, DB confirmed PIN exists) ──
+  if (screen === 'pin_email_login') return (
+    <PinSessionRefreshScreen
+      userId={storedUserId!}
+      email={savedEmail}
+      onUnlocked={async (u) => {
+        localStorage.setItem('skipper_user_id', u.id)
+        localStorage.setItem('skipper_email', u.email ?? savedEmail)
+        // Reinforce persistent cookie so same device skips email next time
+        document.cookie = `skipper_uid=${u.id}; max-age=${60 * 60 * 24 * 365}; path=/; SameSite=Lax`
+        setUser(u)
+        userRef.current = u
+        await routeAfterAuth(u)
+      }}
+      onNotMe={() => {
+        setStoredUserId(null)
+        setScreen('auth')
       }}
     />
   )
@@ -851,10 +877,11 @@ function SplashScreen() {
   )
 }
 
-// ─── Auth (email entry — sends Supabase Auth OTP) ────────────────────────────
-function AuthScreen({ savedEmail, onOtpSent }: {
+// ─── Auth (email entry — checks DB for PIN first; OTP only for new users) ────
+function AuthScreen({ savedEmail, onOtpSent, onPinLogin }: {
   savedEmail: string
   onOtpSent: (email: string) => void
+  onPinLogin: (email: string, userId: string) => void
 }) {
   const [email, setEmail] = useState(savedEmail)
   const [busy,  setBusy]  = useState(false)
@@ -865,9 +892,25 @@ function AuthScreen({ savedEmail, onOtpSent }: {
     if (!clean || !clean.includes('@')) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
 
-    // Supabase Auth OTP — sends a 6-digit code to the boater's email.
-    // shouldCreateUser: true creates a new Auth user if email is new.
-    // No magic link redirect. type: 'email' in verifyOtp handles the 6-digit code.
+    // Step 1: Check DB — does this email already have a PIN?
+    // If yes, skip OTP entirely and go straight to PIN pad.
+    try {
+      const checkRes = await fetch('/api/auth/check-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: clean }),
+      })
+      const checkData = await checkRes.json()
+      if (checkData.hasPIN && checkData.userId) {
+        setBusy(false)
+        onPinLogin(clean, checkData.userId)
+        return
+      }
+    } catch {
+      // Check-pin failed — fall through to OTP
+    }
+
+    // Step 2: New user (no PIN yet) — send OTP once to establish identity
     const { error } = await supabase.auth.signInWithOtp({
       email: clean,
       options: { shouldCreateUser: true },
