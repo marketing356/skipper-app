@@ -1,8 +1,10 @@
 /**
- * Contact Form Schema — Single Source of Truth
- * All 4 apps (OPS, Helm, Skipper App, Crew App) render from this schema.
- * To add a field: add it here, redeploy. Done.
- * Last updated: 2026-06-22
+ * Contact Form Schema — fetched from OPS at runtime (doctrine §21).
+ * Source of truth: https://ops.ayeayeskipper.com/api/contact-form-schema
+ * To add a field: update OPS lib/contact-form-schema.ts and redeploy OPS. Done.
+ * This file: provides TypeScript types, helper functions, and a static fallback cache.
+ * DO NOT edit the CONTACT_FORM_SCHEMA array here — edit in OPS only.
+ * Last synced: 2026-06-24
  */
 
 export type Role = 'ops' | 'helm' | 'boater' | 'crew'
@@ -47,6 +49,22 @@ export function fieldVisibleTo(field: ContactField | null, role: Role): boolean 
   return (field.roles as Role[]).includes(role)
 }
 
+// ─── Runtime fetch from OPS (server-side) ───────────────────────────────────
+// Call this from server components and API routes to get the live schema.
+// Falls back to the static array below if OPS is unreachable.
+export async function fetchContactFormSchema(): Promise<ContactSection[]> {
+  try {
+    const res = await fetch('https://ops.ayeayeskipper.com/api/contact-form-schema', {
+      next: { revalidate: 3600 },
+    })
+    if (!res.ok) throw new Error(`OPS schema endpoint returned ${res.status}`)
+    return (await res.json()) as ContactSection[]
+  } catch {
+    return CONTACT_FORM_SCHEMA
+  }
+}
+
+// ─── Static fallback cache (mirrors OPS master — do not edit here) ────────────
 export const CONTACT_FORM_SCHEMA: ContactSection[] = [
   // ══ 1. IDENTITY ══════════════════════════════════════════
   {

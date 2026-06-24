@@ -1,15 +1,11 @@
 /**
- * MASTER ASSET FORM SCHEMA — Skipper Universe
- *
- * Single source of truth for the vessel/asset form across:
- *   - OPS (ops.ayeayeskipper.com)        — render via CONTACT_FORM_SCHEMA pattern
- *   - Helm (helm.ayeayeskipper.com)      — pulls from /api/asset-form-schema
- *   - Mobile APP (app.ayeayeskipper.com) — pulls from /api/asset-form-schema
- *   - Crew APP (crew.ayeayeskipper.com)  — pulls from /api/asset-form-schema
- *   - Contractors (contractors.aya...)   — pulls from /api/asset-form-schema
- *
- * To add a field: add it here, redeploy OPS. All apps reflect on next build/render.
+ * Asset Form Schema — fetched from OPS at runtime (doctrine §21).
+ * Source of truth: https://ops.ayeayeskipper.com/api/asset-form-schema
+ * To add a field: update OPS lib/asset-form-schema.ts and redeploy OPS. All apps reflect automatically.
+ * This file: provides TypeScript types, helper functions, and a static fallback cache.
+ * DO NOT edit the ASSET_FORM_SCHEMA array here — edit in OPS only.
  * Every `name` MUST be a real column in public.marina_assets. No ghost fields. Ever.
+ * Last synced: 2026-06-24
  */
 
 export type Role = 'ops' | 'helm' | 'boater' | 'crew' | 'contractor'
@@ -53,6 +49,22 @@ export function fieldVisibleTo(field: AssetField | null, role: Role): boolean {
   return field.roles.includes(role)
 }
 
+// ─── Runtime fetch from OPS (server-side) ───────────────────────────────────
+// Call this from server components and API routes to get the live schema.
+// Falls back to the static array below if OPS is unreachable.
+export async function fetchAssetFormSchema(): Promise<AssetSection[]> {
+  try {
+    const res = await fetch('https://ops.ayeayeskipper.com/api/asset-form-schema', {
+      next: { revalidate: 3600 },
+    })
+    if (!res.ok) throw new Error(`OPS schema endpoint returned ${res.status}`)
+    return (await res.json()) as AssetSection[]
+  } catch {
+    return ASSET_FORM_SCHEMA
+  }
+}
+
+// ─── Static fallback cache (mirrors OPS master — do not edit here) ────────────
 export const ASSET_FORM_SCHEMA: AssetSection[] = [
   // ══ 1. IDENTITY ══════════════════════════════════════════
   {
