@@ -1,10 +1,8 @@
 /**
- * Contact Form Schema — fetched from OPS at runtime (doctrine §21).
- * Source of truth: https://ops.ayeayeskipper.com/api/contact-form-schema
- * To add a field: update OPS lib/contact-form-schema.ts and redeploy OPS. Done.
- * This file: provides TypeScript types, helper functions, and a static fallback cache.
- * DO NOT edit the CONTACT_FORM_SCHEMA array here — edit in OPS only.
- * Last synced: 2026-06-24
+ * Contact Form Schema — Single Source of Truth
+ * All 4 apps (OPS, Helm, Skipper App, Crew App) render from this schema.
+ * To add a field: add it here, redeploy. Done.
+ * Last updated: 2026-06-22
  */
 
 export type Role = 'ops' | 'helm' | 'boater' | 'crew'
@@ -49,22 +47,6 @@ export function fieldVisibleTo(field: ContactField | null, role: Role): boolean 
   return (field.roles as Role[]).includes(role)
 }
 
-// ─── Runtime fetch from OPS (server-side) ───────────────────────────────────
-// Call this from server components and API routes to get the live schema.
-// Falls back to the static array below if OPS is unreachable.
-export async function fetchContactFormSchema(): Promise<ContactSection[]> {
-  try {
-    const res = await fetch('https://ops.ayeayeskipper.com/api/contact-form-schema', {
-      next: { revalidate: 3600 },
-    })
-    if (!res.ok) throw new Error(`OPS schema endpoint returned ${res.status}`)
-    return (await res.json()) as ContactSection[]
-  } catch {
-    return CONTACT_FORM_SCHEMA
-  }
-}
-
-// ─── Static fallback cache (mirrors OPS master — do not edit here) ────────────
 export const CONTACT_FORM_SCHEMA: ContactSection[] = [
   // ══ 1. IDENTITY ══════════════════════════════════════════
   {
@@ -170,7 +152,7 @@ export const CONTACT_FORM_SCHEMA: ContactSection[] = [
   // ══ 5. IDENTITY DOCUMENTS ════════════════════════════════
   {
     id: 'identity_docs',
-    title: 'Identity Documents',
+    title: 'Government IDs',
     roles: 'all',
     rows: [
       { cols: 2, fields: [
@@ -273,18 +255,7 @@ export const CONTACT_FORM_SCHEMA: ContactSection[] = [
     ],
   },
 
-  // ══ 9. MEMBERSHIPS ═══════════════════════════════════════
-  {
-    id: 'memberships',
-    title: 'Memberships',
-    roles: 'all',
-    rows: [
-      { cols: 2, fields: [
-        { name: 'seatow_membership_number', label: 'Sea Tow Membership #', type: 'text', placeholder: 'Sea Tow #', roles: 'all' },
-        { name: 'boatus_membership_number', label: 'BoatUS Membership #', type: 'text', placeholder: 'BoatUS #', roles: 'all' },
-      ]},
-    ],
-  },
+  // ══ 9. MEMBERSHIPS — dynamic (MembershipList component) ══
 
   // ══ 10. BILLING ══════════════════════════════════════════
   {
@@ -311,26 +282,7 @@ export const CONTACT_FORM_SCHEMA: ContactSection[] = [
     ],
   },
 
-  // ══ 11. EMERGENCY CONTACT ════════════════════════════════
-  {
-    id: 'emergency_contact',
-    title: 'Emergency Contact',
-    roles: 'all',
-    rows: [
-      { cols: 3, fields: [
-        { name: 'emergency_name', label: 'Name', type: 'text', placeholder: 'Jane Smith', roles: 'all' },
-        { name: 'emergency_relationship', label: 'Relationship', type: 'text', placeholder: 'Spouse', roles: 'all' },
-        { name: 'emergency_phone', label: 'Phone', type: 'tel', roles: 'all' },
-      ]},
-      { cols: 1, fields: [
-        { name: 'emergency_contact', label: 'Emergency Contact (free text)', type: 'textarea', placeholder: 'Full emergency contact info if not captured above…', roles: 'all' },
-      ]},
-      { cols: 2, fields: [
-        { name: 'emergency_name_2', label: 'Secondary Emergency Name', type: 'text', placeholder: 'Bob Jones', roles: 'all' },
-        { name: 'emergency_phone_2', label: 'Secondary Emergency Phone', type: 'tel', roles: 'all' },
-      ]},
-    ],
-  },
+  // ══ 11. EMERGENCY CONTACT — dynamic (EmergencyContactList component) ══
 
   // ══ 12. CLASSIFICATION / STATUS — marina staff only ══════
   {
@@ -481,24 +433,7 @@ export const CONTACT_FORM_SCHEMA: ContactSection[] = [
     ],
   },
 
-  // ══ 16. DOCUMENTS ON FILE (BOATER) ═══════════════════════
-  {
-    id: 'documents_on_file',
-    title: 'Documents on File',
-    roles: 'all',
-    rows: [
-      { cols: 2, fields: [
-        { name: 'doc_registration', label: 'Registration', type: 'bool-select', roles: 'all' },
-        { name: 'doc_insurance_cert', label: 'Insurance Certificate', type: 'bool-select', roles: 'all' },
-      ]},
-      { cols: 2, fields: [
-        { name: 'doc_signed_contract', label: 'Signed Contract', type: 'bool-select', roles: 'all' },
-        { name: 'doc_photo_id', label: 'Photo ID', type: 'bool-select', roles: 'all' },
-      ]},
-    ],
-  },
-
-  // ══ 17. NOTES ════════════════════════════════════════════
+  // ══ 16. NOTES ════════════════════════════════════════════
   {
     id: 'notes',
     title: 'Notes',

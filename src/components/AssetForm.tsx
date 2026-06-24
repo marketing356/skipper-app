@@ -87,7 +87,7 @@ function FInput({ name, type = 'text', placeholder, defaultValue }: { name: stri
 
 function FSelect({ name, defaultValue, children }: { name: string; defaultValue?: unknown; children: React.ReactNode }) {
   return (
-    <select name={name} defaultValue={(defaultValue ?? '') as string} style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as React.CSSProperties}>
+    <select name={name} defaultValue={(defaultValue ?? '') as string} style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as unknown as React.CSSProperties}>
       {children}
     </select>
   )
@@ -96,7 +96,7 @@ function FSelect({ name, defaultValue, children }: { name: string; defaultValue?
 function FBoolSelect({ name, defaultValue }: { name: string; defaultValue?: boolean | null }) {
   const val = defaultValue === true ? 'true' : defaultValue === false ? 'false' : ''
   return (
-    <select name={name} defaultValue={val} style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as React.CSSProperties}>
+    <select name={name} defaultValue={val} style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as unknown as React.CSSProperties}>
       <option value="">— Not set —</option>
       <option value="true">Yes</option>
       <option value="false">No</option>

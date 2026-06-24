@@ -1,11 +1,10 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import AssetForm from '@/components/AssetForm'
+import ContactForm from '@/components/ContactForm'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
-import { CONTACT_FORM_SCHEMA, sectionVisibleTo, fieldVisibleTo } from '@/lib/contact-form-schema'
-import type { ContactSection, ContactField } from '@/lib/contact-form-schema'
 import type { User } from '@supabase/supabase-js'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -1041,148 +1040,39 @@ function OtpVerifyScreen({ email, onVerified, onBack }: {
 
 // ─── Contact Setup (Step 1 — new user) ────────────────────────────────────────
 function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: Profile) => void }) {
-  const [firstName,   setFirstName]   = useState('')
-  const [lastName,    setLastName]    = useState('')
-  const [mobile,      setMobile]      = useState('')
-  const [title,       setTitle]       = useState('')
-  const [dob,         setDob]         = useState('')
-  const [dlNum,       setDlNum]       = useState('')
-  const [prefContact, setPrefContact] = useState('')
-  const [language,    setLanguage]    = useState('en')
-  const [address,     setAddress]     = useState('')
-  const [city,        setCity]        = useState('')
-  const [addrState,   setAddrState]   = useState('')
-  const [zip,         setZip]         = useState('')
-  const [emergName,   setEmergName]   = useState('')
-  const [emergPhone,  setEmergPhone]  = useState('')
-  const [busy,        setBusy]        = useState(false)
-  const [err,         setErr]         = useState('')
+  const [contact, setContact] = React.useState<Record<string, unknown> | null>(null)
+  const [loading, setLoading] = React.useState(true)
 
-  async function save() {
-    if (!firstName.trim()) { setErr('First name is required'); return }
-    if (!lastName.trim())  { setErr('Last name is required'); return }
-    setBusy(true); setErr('')
+  React.useEffect(() => {
+    supabase.from('contacts').select('*')
+      .eq('auth_user_id', user.id).is('marina_id', null)
+      .order('created_at', { ascending: true }).limit(1)
+      .then(({ data }) => { setContact(data?.[0] ?? {}); setLoading(false) })
+  }, [user.id])
 
-    // Direct Supabase client write — works because boater now has a real Supabase Auth
-    // session (OTP verified). auth.uid() returns the real UUID. RLS boater_update_own_contact
-    // allows UPDATE where auth.uid() = auth_user_id AND marina_id IS NULL.
-    // /api/auth/profile is deprecated; kept as dead code below.
-    const { data, error } = await supabase
-      .from('contacts')
-      .update({
-        first_name:               firstName.trim(),
-        last_name:                lastName.trim(),
-        email:                    user.email ?? null,
-        mobile:                   mobile.trim() || null,
-        title:                    title || null,
-        date_of_birth:            dob || null,
-        driver_license_number:    dlNum.trim() || null,
-        preferred_contact_method: prefContact || null,
-        language_preference:      language || 'en',
-        address:                  address.trim() || null,
-        address_city:             city.trim() || null,
-        address_state:            addrState.trim() || null,
-        address_zip:              zip.trim() || null,
-        emergency_name:           emergName.trim() || null,
-        emergency_phone:          emergPhone.trim() || null,
-        setup_complete:           false,
-      })
-      .eq('auth_user_id', user.id)
-      .is('marina_id', null)
-      .select()
-      .maybeSingle()
-    setBusy(false)
-    if (error || !data) { setErr(error?.message ?? 'Save failed — please try again'); return }
-
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      Notification.requestPermission().catch(() => {})
-    }
-
-    onComplete(contactToProfile(data))
-  }
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#05111f' }}>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontFamily: '"SF Pro Display", system-ui, sans-serif', fontSize: 15 }}>Loading…</div>
+    </div>
+  )
 
   return (
-    <OnboardingShell step={1} total={2} title="About you" subtitle="Your marina needs this on file. You'll only do this once.">
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="First name *">
-          <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Jane" autoFocus />
-        </FieldGroup>
-        <FieldGroup label="Last name *">
-          <Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" />
-        </FieldGroup>
-      </div>
-
-      <FieldGroup label="Email">
-        <Input type="email" value={user.email ?? ''} readOnly style={{ opacity:0.6, cursor:'default' }} />
-      </FieldGroup>
-      <FieldGroup label="Mobile phone">
-        <Input type="tel" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="(555) 867-5309" />
-      </FieldGroup>
-
-      <FormSectionLabel>ID &amp; Preferences</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Title">
-          <SelectInput value={title} onChange={e => setTitle(e.target.value)}>
-            <option value="">Select…</option>
-            {['Mr.','Mrs.','Ms.','Dr.','Capt.','Other'].map(v => <option key={v}>{v}</option>)}
-          </SelectInput>
-        </FieldGroup>
-        <FieldGroup label="Date of Birth">
-          <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
-        </FieldGroup>
-        <FieldGroup label="Driver License #">
-          <Input value={dlNum} onChange={e => setDlNum(e.target.value)} placeholder="DL12345678" />
-        </FieldGroup>
-        <FieldGroup label="Preferred Contact">
-          <SelectInput value={prefContact} onChange={e => setPrefContact(e.target.value)}>
-            <option value="">Select…</option>
-            {['email','sms','phone','app'].map(v => <option key={v} value={v}>{v.toUpperCase()}</option>)}
-          </SelectInput>
-        </FieldGroup>
-      </div>
-      <FieldGroup label="Language">
-        <SelectInput value={language} onChange={e => setLanguage(e.target.value)}>
-          <option value="en">English</option>
-          <option value="es">Español</option>
-          <option value="fr">Français</option>
-          <option value="pt">Português</option>
-          <option value="zh">中文</option>
-          <option value="other">Other</option>
-        </SelectInput>
-      </FieldGroup>
-
-      <FormSectionLabel>Home Address</FormSectionLabel>
-      <FieldGroup label="Street address">
-        <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Harbor Dr" />
-      </FieldGroup>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 90px', gap:10 }}>
-        <FieldGroup label="City">
-          <Input value={city} onChange={e => setCity(e.target.value)} placeholder="Newport" />
-        </FieldGroup>
-        <FieldGroup label="State">
-          <Input value={addrState} onChange={e => setAddrState(e.target.value)} placeholder="RI" maxLength={2} />
-        </FieldGroup>
-        <FieldGroup label="ZIP">
-          <Input value={zip} onChange={e => setZip(e.target.value)} placeholder="02840" />
-        </FieldGroup>
-      </div>
-
-      <FormSectionLabel>Emergency Contact</FormSectionLabel>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <FieldGroup label="Name">
-          <Input value={emergName} onChange={e => setEmergName(e.target.value)} placeholder="John Smith" />
-        </FieldGroup>
-        <FieldGroup label="Phone">
-          <Input type="tel" value={emergPhone} onChange={e => setEmergPhone(e.target.value)} placeholder="(555) 000-0000" />
-        </FieldGroup>
-      </div>
-
-      {err && <ErrMsg>{err}</ErrMsg>}
-      <PrimaryBtn onClick={save} loading={busy} style={{ marginTop:8 }}>Save & Continue →</PrimaryBtn>
+    <OnboardingShell step={1} total={2} title="About you" subtitle="Your marina needs this on file. You\'ll only do this once.">
+      <ContactForm
+        userId={user.id}
+        contact={contact ?? {}}
+        submitLabel="Save & Continue →"
+        onSaved={(data) => {
+          supabase.from('contacts')
+            .update({ setup_complete: false })
+            .eq('auth_user_id', user.id).is('marina_id', null)
+            .then(() => {})
+          onComplete(contactToProfile(data as Record<string, unknown>))
+        }}
+      />
     </OnboardingShell>
   )
 }
-
 // ─── PIN Setup (Step 2) ────────────────────────────────────────────────────────
 function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => void }) {
   const [pin,    setPin]    = useState('')
@@ -2257,471 +2147,147 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   user:User; profile:Profile|null; vessels:Vessel[]; onSignOut:()=>void;
   onProfileUpdated:(p:Profile)=>void
 }) {
-  // Re-fetch profile from DB every time Account tab is opened so changes from
-  // Skipper Ops, Helm, or Crew App are immediately visible (flowchart sync doctrine)
-  useEffect(() => {
+  const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+
+  // Re-fetch raw contact + profile on every Account tab open
+  const [rawContact, setRawContact] = React.useState<Record<string, unknown> | null>(null)
+  React.useEffect(() => {
     supabase.from('contacts').select('*')
-      .eq('auth_user_id', user.id)
-      .is('marina_id', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .then(({ data }) => { if (data?.[0]) onProfileUpdated(contactToProfile(data[0])) })
+      .eq('auth_user_id', user.id).is('marina_id', null)
+      .order('created_at', { ascending: true }).limit(1)
+      .then(({ data }) => {
+        if (data?.[0]) {
+          setRawContact(data[0] as Record<string, unknown>)
+          onProfileUpdated(contactToProfile(data[0]))
+        }
+      })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [editing,      setEditing]      = useState(false)
-  const [changingEmail,setChangingEmail] = useState(false)
-  const [newEmail,     setNewEmail]      = useState('')
-  const [emailMsg,     setEmailMsg]      = useState('')
-  const [emailBusy,    setEmailBusy]     = useState(false)
-  const [changingPin,  setChangingPin]   = useState(false)
-  const [pinStep,      setPinStep]       = useState<'verify'|'new'|'confirm'>('verify')
-  const [pinVal,       setPinVal]        = useState('')
-  const [pinFirst,     setPinFirst]      = useState('')
-  const [pinErr,       setPinErr]        = useState('')
-  const [pinBusy,      setPinBusy]       = useState(false)
-  const [form, setForm] = useState<Record<string, any>>({
-    first_name:               profile?.first_name ?? '',
-    last_name:                profile?.last_name ?? '',
-    phone:                    profile?.phone ?? '',
-    mobile:                   profile?.mobile ?? '',
-    address:                  profile?.address ?? '',
-    address_city:             profile?.address_city ?? '',
-    address_state:            profile?.address_state ?? '',
-    address_zip:              profile?.address_zip ?? '',
-    emergency_contact:        profile?.emergency_contact ?? '',
-    emergency_phone:          profile?.emergency_phone ?? '',
-    title:                    profile?.title ?? '',
-    date_of_birth:            profile?.date_of_birth ?? '',
-    driver_license_number:    profile?.driver_license_number ?? '',
-    preferred_contact_method: profile?.preferred_contact_method ?? '',
-    language_preference:      profile?.language_preference ?? 'en',
-    // Extended OPS fields
-    preferred_name:           profile?.preferred_name ?? '',
-    email_secondary:          profile?.email_secondary ?? '',
-    phone_work:               profile?.phone_work ?? '',
-    company_organization:     profile?.company_organization ?? '',
-    job_title:                profile?.job_title ?? '',
-    address_line2:            profile?.address_line2 ?? '',
-    country:                  profile?.country ?? '',
-    billing_name:             profile?.billing_name ?? '',
-    billing_email:            profile?.billing_email ?? '',
-    billing_address:          profile?.billing_address ?? '',
-    billing_city:             profile?.billing_city ?? '',
-    billing_state:            profile?.billing_state ?? '',
-    billing_zip:              profile?.billing_zip ?? '',
-    tax_exempt:               profile?.tax_exempt ?? null,
-    emergency_relationship:   profile?.emergency_relationship ?? '',
-    emergency_name_2:         profile?.emergency_name_2 ?? '',
-    emergency_phone_2:        profile?.emergency_phone_2 ?? '',
-    drivers_license_state:    profile?.drivers_license_state ?? '',
-    drivers_license_expiry:   profile?.drivers_license_expiry ?? '',
-    oupv_license_number:      profile?.oupv_license_number ?? '',
-    oupv_expiry:              profile?.oupv_expiry ?? '',
-    sms_opt_in:               profile?.sms_opt_in ?? null,
-    email_opt_in:             profile?.email_opt_in ?? null,
-    notes:                    profile?.notes ?? '',
-    // Master contact form — new fields 2026-06-22
-    fax:                      profile?.fax ?? '',
-    website:                  profile?.website ?? '',
-    nationality:              profile?.nationality ?? '',
-    passport_number:          profile?.passport_number ?? '',
-    passport_country:         profile?.passport_country ?? '',
-    passport_expiry:          profile?.passport_expiry ?? '',
-    ssn_tax_id:               profile?.ssn_tax_id ?? '',
-    mmc_license_number:       profile?.mmc_license_number ?? '',
-    mmc_tonnage_rating:       profile?.mmc_tonnage_rating ?? '',
-    mmc_expiry:               profile?.mmc_expiry ?? '',
-    twic_number:              profile?.twic_number ?? '',
-    twic_expiry:              profile?.twic_expiry ?? '',
-    stcw_certification:       profile?.stcw_certification ?? '',
-    stcw_level:               profile?.stcw_level ?? '',
-    stcw_expiry:              profile?.stcw_expiry ?? '',
-    fcc_license_number:       profile?.fcc_license_number ?? '',
-    fcc_expiry:               profile?.fcc_expiry ?? '',
-    cpr_certification:        profile?.cpr_certification ?? '',
-    cpr_expiry:               profile?.cpr_expiry ?? '',
-    abyc_certifications:      profile?.abyc_certifications?.join(', ') ?? '',
-    engine_brand_certifications: profile?.engine_brand_certifications?.join(', ') ?? '',
-    trade_specialties:        profile?.trade_specialties?.join(', ') ?? '',
-    dealer_license_number:    profile?.dealer_license_number ?? '',
-    dealer_license_state:     profile?.dealer_license_state ?? '',
-    broker_license_number:    profile?.broker_license_number ?? '',
-    broker_license_state:     profile?.broker_license_state ?? '',
-    seatow_membership_number: profile?.seatow_membership_number ?? '',
-    boatus_membership_number: profile?.boatus_membership_number ?? '',
-    employee_id:              profile?.employee_id ?? '',
-    department:               profile?.department ?? '',
-    employment_type:          profile?.employment_type ?? '',
-    tax_classification:       profile?.tax_classification ?? '',
-    hire_date:                profile?.hire_date ?? '',
-    hourly_rate:              profile?.hourly_rate ?? '',
-    salary:                   profile?.salary ?? '',
-    access_card:              profile?.access_card ?? '',
-    locker_number:            profile?.locker_number ?? '',
-    parking_spot:             profile?.parking_spot ?? '',
-    shift_notes:              profile?.shift_notes ?? '',
-    doc_w2_on_file:           profile?.doc_w2_on_file ?? null,
-    doc_i9_on_file:           profile?.doc_i9_on_file ?? null,
-    doc_direct_deposit:       profile?.doc_direct_deposit ?? null,
-    doc_signed_offer:         profile?.doc_signed_offer ?? null,
-    doc_background_check:     profile?.doc_background_check ?? null,
-    languages_spoken:         profile?.languages_spoken?.join(', ') ?? '',
-  })
-  const [busy, setBusy] = useState(false)
-  const [err,  setErr]  = useState('')
-
-  function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
-
-  // ── Schema-driven field renderer (moved from TabVessel scope) ──────────────
-  function renderSchemaField(field: ContactField): React.ReactNode {
-    const rawVal = form[field.name]
-    if (field.type === 'select') {
-      const val = rawVal ?? ''
-      return (
-        <FieldGroup key={field.name} label={field.label}>
-          <SelectInput value={val} onChange={e => set(field.name, e.target.value)}>
-            {(field.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </SelectInput>
-        </FieldGroup>
-      )
-    }
-    if (field.type === 'bool-select') {
-      const boolVal = rawVal === true ? 'true' : rawVal === false ? 'false' : ''
-      return (
-        <FieldGroup key={field.name} label={field.label}>
-          <SelectInput value={boolVal} onChange={e => set(field.name, e.target.value === 'true' ? true as any : e.target.value === 'false' ? false as any : null as any)}>
-            <option value="">— Not set —</option>
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </SelectInput>
-        </FieldGroup>
-      )
-    }
-    if (field.type === 'textarea') {
-      const val = rawVal ?? ''
-      return (
-        <FieldGroup key={field.name} label={field.label}>
-          <textarea value={val} onChange={e => set(field.name, e.target.value)} rows={3}
-            placeholder={field.placeholder}
-            style={{ width:'100%', padding:'12px 14px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:12, fontSize:14, fontFamily:FONT, color:C.white, outline:'none', resize:'none' }} />
-        </FieldGroup>
-      )
-    }
-    const inputType = field.type === 'tag-input' ? 'text' : field.type
-    const val = rawVal ?? ''
-    return (
-      <FieldGroup key={field.name} label={field.label}>
-        <Input type={inputType} value={val} onChange={e => set(field.name, e.target.value)} placeholder={field.placeholder} />
-      </FieldGroup>
-    )
-  }
-
-  function renderSchemaSection(section: ContactSection): React.ReactNode {
-    const visibleFields = section.rows
-      .flatMap(r => r.fields)
-      .filter((f): f is ContactField => f !== null && fieldVisibleTo(f, 'boater'))
-    if (visibleFields.length === 0) return null
-    return (
-      <React.Fragment key={section.id}>
-        <FormSectionLabel>{section.title}</FormSectionLabel>
-        {visibleFields.map(field => renderSchemaField(field))}
-      </React.Fragment>
-    )
-  }
-
-  async function handlePinChange(p: string) {
-    if (pinStep === 'verify') {
-      setPinBusy(true)
-      const hash = await hashPin(p)
-      const localHash = localStorage.getItem(`skipper_pin_${user.id}`)
-      let match = localHash ? hash === localHash : false
-      if (!match) {
-        const { data: pinRows2 } = await supabase.from('contacts').select('pin_hash').eq('auth_user_id', user.id).is('marina_id', null).order('created_at', { ascending: true }).limit(1)
-        const data = pinRows2?.[0] ?? null
-        match = !!data?.pin_hash && data.pin_hash === hash
-      }
-      setPinBusy(false)
-      if (!match) { setPinErr('Wrong PIN — try again'); setPinVal(''); return }
-      setPinErr(''); setPinStep('new'); setPinVal('')
-    } else if (pinStep === 'new') {
-      setPinFirst(p); setPinStep('confirm'); setPinVal('')
-    } else {
-      if (p !== pinFirst) { setPinErr("PINs don't match"); setPinStep('new'); setPinVal(''); setPinFirst(''); return }
-      setPinBusy(true)
-      const hash = await hashPin(p)
-      const { error } = await supabase.from('contacts').update({ pin_hash: hash }).eq('auth_user_id', user.id).is('marina_id', null)
-      setPinBusy(false)
-      if (error) { setPinErr(error.message); return }
-      localStorage.setItem(`skipper_pin_${user.id}`, hash)
-      setChangingPin(false); setPinStep('verify'); setPinVal(''); setPinFirst(''); setPinErr('')
-    }
-  }
+  const [editing,       setEditing]       = React.useState(false)
+  const [changingEmail, setChangingEmail] = React.useState(false)
+  const [newEmail,      setNewEmail]      = React.useState('')
+  const [emailMsg,      setEmailMsg]      = React.useState('')
+  const [emailBusy,     setEmailBusy]     = React.useState(false)
+  const [changingPin,   setChangingPin]   = React.useState(false)
+  const [pinStep,       setPinStep]       = React.useState<'verify'|'new'|'confirm'>('verify')
+  const [pinVal,        setPinVal]        = React.useState('')
+  const [pinFirst,      setPinFirst]      = React.useState('')
+  const [pinErr,        setPinErr]        = React.useState('')
+  const [pinBusy,       setPinBusy]       = React.useState(false)
 
   async function requestEmailChange() {
-    if (!newEmail.trim() || !newEmail.includes('@')) { setEmailMsg('Enter a valid email'); return }
-    setEmailBusy(true); setEmailMsg('')
-    const { error } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() })
+    if (!newEmail.trim()) { setEmailMsg('Enter a new email address'); return }
+    setEmailBusy(true)
+    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() })
     setEmailBusy(false)
     if (error) { setEmailMsg(error.message); return }
-    setEmailMsg('✓ Confirmation sent to both emails. Click the link to confirm the change.')
-    setNewEmail('')
+    setEmailMsg('✓ Confirmation sent — check both inboxes to confirm the change')
+    setChangingEmail(false); setNewEmail('')
   }
 
-  async function saveProfile() {
-    if (!form.first_name.trim()) { setErr('First name is required'); return }
-    setBusy(true); setErr('')
-    const payload = {
-      first_name:               form.first_name.trim(),
-      last_name:                form.last_name.trim() || null,
-      phone:                    form.phone.trim() || null,
-      mobile:                   form.mobile.trim() || null,
-      address:                  form.address.trim() || null,
-      address_city:             form.address_city.trim() || null,
-      address_state:            form.address_state.trim() || null,
-      address_zip:              form.address_zip.trim() || null,
-      emergency_name:           form.emergency_contact.trim() || null,
-      emergency_phone:          form.emergency_phone.trim() || null,
-      title:                    form.title.trim() || null,
-      date_of_birth:            form.date_of_birth || null,
-      driver_license_number:    form.driver_license_number.trim() || null,
-      preferred_contact_method: form.preferred_contact_method || null,
-      language_preference:      form.language_preference || 'en',
-      // Extended OPS fields
-      preferred_name:           (form.preferred_name ?? '').trim() || null,
-      email_secondary:          (form.email_secondary ?? '').trim() || null,
-      phone_work:               (form.phone_work ?? '').trim() || null,
-      company_organization:     (form.company_organization ?? '').trim() || null,
-      job_title:                (form.job_title ?? '').trim() || null,
-      address_line2:            (form.address_line2 ?? '').trim() || null,
-      country:                  (form.country ?? '').trim() || null,
-      billing_name:             (form.billing_name ?? '').trim() || null,
-      billing_email:            (form.billing_email ?? '').trim() || null,
-      billing_address:          (form.billing_address ?? '').trim() || null,
-      billing_city:             (form.billing_city ?? '').trim() || null,
-      billing_state:            (form.billing_state ?? '').trim() || null,
-      billing_zip:              (form.billing_zip ?? '').trim() || null,
-      tax_exempt:               form.tax_exempt ?? null,
-      emergency_relationship:   (form.emergency_relationship ?? '').trim() || null,
-      emergency_name_2:         (form.emergency_name_2 ?? '').trim() || null,
-      emergency_phone_2:        (form.emergency_phone_2 ?? '').trim() || null,
-      drivers_license_state:    (form.drivers_license_state ?? '').trim() || null,
-      drivers_license_expiry:   form.drivers_license_expiry || null,
-      oupv_license_number:      (form.oupv_license_number ?? '').trim() || null,
-      oupv_expiry:              form.oupv_expiry || null,
-      sms_opt_in:               form.sms_opt_in ?? null,
-      email_opt_in:             form.email_opt_in ?? null,
-      notes:                    (form.notes ?? '').trim() || null,
-      // Master contact form — new fields 2026-06-22
-      fax:                      (form.fax ?? '').trim() || null,
-      website:                  (form.website ?? '').trim() || null,
-      nationality:              (form.nationality ?? '').trim() || null,
-      passport_number:          (form.passport_number ?? '').trim() || null,
-      passport_country:         (form.passport_country ?? '').trim() || null,
-      passport_expiry:          form.passport_expiry || null,
-      ssn_tax_id:               (form.ssn_tax_id ?? '').trim() || null,
-      mmc_license_number:       (form.mmc_license_number ?? '').trim() || null,
-      mmc_tonnage_rating:       (form.mmc_tonnage_rating ?? '').trim() || null,
-      mmc_expiry:               form.mmc_expiry || null,
-      twic_number:              (form.twic_number ?? '').trim() || null,
-      twic_expiry:              form.twic_expiry || null,
-      stcw_certification:       (form.stcw_certification ?? '').trim() || null,
-      stcw_level:               (form.stcw_level ?? '').trim() || null,
-      stcw_expiry:              form.stcw_expiry || null,
-      fcc_license_number:       (form.fcc_license_number ?? '').trim() || null,
-      fcc_expiry:               form.fcc_expiry || null,
-      cpr_certification:        (form.cpr_certification ?? '').trim() || null,
-      cpr_expiry:               form.cpr_expiry || null,
-      abyc_certifications:      (form.abyc_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.abyc_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
-      engine_brand_certifications: (form.engine_brand_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.engine_brand_certifications ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
-      trade_specialties:        (form.trade_specialties ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.trade_specialties ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
-      dealer_license_number:    (form.dealer_license_number ?? '').trim() || null,
-      dealer_license_state:     (form.dealer_license_state ?? '').trim() || null,
-      broker_license_number:    (form.broker_license_number ?? '').trim() || null,
-      broker_license_state:     (form.broker_license_state ?? '').trim() || null,
-      seatow_membership_number: (form.seatow_membership_number ?? '').trim() || null,
-      boatus_membership_number: (form.boatus_membership_number ?? '').trim() || null,
-      // Boater documents-on-file (from master schema)
-      doc_registration:         form.doc_registration ?? null,
-      doc_insurance_cert:       form.doc_insurance_cert ?? null,
-      doc_signed_contract:      form.doc_signed_contract ?? null,
-      doc_photo_id:             form.doc_photo_id ?? null,
-      // Billing extras
-      autopay:                  form.autopay ?? null,
-      // Profile media + free-text emergency
-      photo_url:                (form.photo_url ?? '').trim() || null,
-      emergency_contact:        (form.emergency_contact ?? '').trim() || null,
-      languages_spoken:         (form.languages_spoken ?? '').split(',').map((s: string) => s.trim()).filter(Boolean).length ? (form.languages_spoken ?? '').split(',').map((s: string) => s.trim()).filter(Boolean) : null,
-    }
-    // Save ONLY to the national-pool row (marina_id = null).
-    // Helm/OPS handle marina-scoped row sync independently.
-    // Staff-only fields (employee_id, salary, etc.) are intentionally NOT written here
-    // — boater surface must not overwrite staff data.
-    const { data, error } = await supabase
-      .from('contacts')
-      .update(payload)
-      .eq('auth_user_id', user.id)
-      .is('marina_id', null)
-      .select()
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    const nationalRow = data?.[0]
-    if (nationalRow) onProfileUpdated(contactToProfile(nationalRow))
-    setEditing(false)
+  async function verifyCurrentPin(p: string) {
+    const res = await fetch('/api/auth/pin-refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, pin: p }),
+    })
+    return res.ok
+  }
+
+  async function setNewPin(p: string) {
+    setPinBusy(true)
+    const crypto = await import('crypto')
+    const hash = crypto.createHash('sha256').update(p).digest('hex')
+    const { error } = await supabase.from('contacts')
+      .update({ pin_hash: hash })
+      .eq('auth_user_id', user.id).is('marina_id', null)
+    setPinBusy(false)
+    if (error) { setPinErr(error.message); return }
+    setPinErr(''); setChangingPin(false); setPinStep('verify'); setPinVal(''); setPinFirst('')
   }
 
   const displayName = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Set your name' : 'Set your name'
   const initials = displayName[0]?.toUpperCase() ?? 'U'
 
+  // ─── Editing mode ─────────────────────────────────────────────────────────
+  if (editing) {
+    return (
+      <div style={{ padding: '20px 20px 100px', animation: 'fadeUp 0.3s ease both' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <button onClick={() => setEditing(false)}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20, padding: '0 4px 0 0', fontFamily: FONT }}>←</button>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Edit Profile</h2>
+        </div>
+        <ContactForm
+          userId={user.id}
+          contact={rawContact ?? {}}
+          submitLabel="Save Changes"
+          onSaved={(data) => {
+            const raw = data as Record<string, unknown>
+            setRawContact(raw)
+            onProfileUpdated(contactToProfile(raw))
+            setEditing(false)
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      </div>
+    )
+  }
+
+  // ─── View mode ────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
-      {/* Always-visible header row with sign out */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <h2 style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.8, margin:0 }}>Account</h2>
+    <div style={{ padding: '20px 20px 0', animation: 'fadeUp 0.35s ease both' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.8, margin: 0 }}>Account</h2>
         <button onClick={onSignOut}
-          style={{ background:'none', border:`1px solid rgba(248,113,113,0.4)`, borderRadius:8, padding:'5px 12px', color:'#fca5a5', fontFamily:FONT, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+          style={{ background: 'none', border: '1px solid rgba(248,113,113,0.4)', borderRadius: 8, padding: '5px 12px', color: '#fca5a5', fontFamily: FONT, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
           Sign out
         </button>
       </div>
 
       {/* Profile card */}
-      <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:20, padding:20, marginBottom:14 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: editing ? 16 : 0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            <div style={{ width:52, height:52, borderRadius:'50%', background:C.teal, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:800, color:C.navy, flexShrink:0 }}>
+      <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 20, padding: 20, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: C.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: C.navy, flexShrink: 0 }}>
               {initials}
             </div>
             <div>
-              <div style={{ fontSize:16, fontWeight:700, marginBottom:2 }}>{displayName}</div>
-              <div style={{ fontSize:13, color:C.muted }}>{user.email}</div>
-              {profile?.phone && <div style={{ fontSize:12, color:C.muted2, marginTop:2 }}>{profile.phone}</div>}
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{displayName}</div>
+              <div style={{ fontSize: 13, color: C.muted }}>{user.email}</div>
+              {profile?.phone && <div style={{ fontSize: 12, color: C.muted2, marginTop: 2 }}>{profile.phone}</div>}
             </div>
           </div>
-          {!editing && (
-            <button onClick={() => { setEditing(true); setForm({
-            first_name:profile?.first_name??'', last_name:profile?.last_name??'',
-            phone:profile?.phone??'', mobile:profile?.mobile??'',
-            address:profile?.address??'', address_city:profile?.address_city??'',
-            address_state:profile?.address_state??'', address_zip:profile?.address_zip??'',
-            emergency_contact:profile?.emergency_contact??'', emergency_phone:profile?.emergency_phone??'',
-            title:profile?.title??'', date_of_birth:profile?.date_of_birth??'',
-            driver_license_number:profile?.driver_license_number??'',
-            preferred_contact_method:profile?.preferred_contact_method??'',
-            language_preference:profile?.language_preference??'en',
-            // Extended OPS fields
-            preferred_name:profile?.preferred_name??'',
-            email_secondary:profile?.email_secondary??'',
-            phone_work:profile?.phone_work??'',
-            company_organization:profile?.company_organization??'',
-            job_title:profile?.job_title??'',
-            address_line2:profile?.address_line2??'',
-            country:profile?.country??'',
-            billing_name:profile?.billing_name??'',
-            billing_email:profile?.billing_email??'',
-            billing_address:profile?.billing_address??'',
-            billing_city:profile?.billing_city??'',
-            billing_state:profile?.billing_state??'',
-            billing_zip:profile?.billing_zip??'',
-            tax_exempt:profile?.tax_exempt??null,
-            emergency_relationship:profile?.emergency_relationship??'',
-            emergency_name_2:profile?.emergency_name_2??'',
-            emergency_phone_2:profile?.emergency_phone_2??'',
-            drivers_license_state:profile?.drivers_license_state??'',
-            drivers_license_expiry:profile?.drivers_license_expiry??'',
-            oupv_license_number:profile?.oupv_license_number??'',
-            oupv_expiry:profile?.oupv_expiry??'',
-            sms_opt_in:profile?.sms_opt_in??null,
-            email_opt_in:profile?.email_opt_in??null,
-            notes:profile?.notes??'',
-            fax:profile?.fax??'',
-            website:profile?.website??'',
-            nationality:profile?.nationality??'',
-            passport_number:profile?.passport_number??'',
-            passport_country:profile?.passport_country??'',
-            passport_expiry:profile?.passport_expiry??'',
-            ssn_tax_id:profile?.ssn_tax_id??'',
-            mmc_license_number:profile?.mmc_license_number??'',
-            mmc_tonnage_rating:profile?.mmc_tonnage_rating??'',
-            mmc_expiry:profile?.mmc_expiry??'',
-            twic_number:profile?.twic_number??'',
-            twic_expiry:profile?.twic_expiry??'',
-            stcw_certification:profile?.stcw_certification??'',
-            stcw_level:profile?.stcw_level??'',
-            stcw_expiry:profile?.stcw_expiry??'',
-            fcc_license_number:profile?.fcc_license_number??'',
-            fcc_expiry:profile?.fcc_expiry??'',
-            cpr_certification:profile?.cpr_certification??'',
-            cpr_expiry:profile?.cpr_expiry??'',
-            abyc_certifications:profile?.abyc_certifications?.join(', ')??'',
-            engine_brand_certifications:profile?.engine_brand_certifications?.join(', ')??'',
-            trade_specialties:profile?.trade_specialties?.join(', ')??'',
-            dealer_license_number:profile?.dealer_license_number??'',
-            dealer_license_state:profile?.dealer_license_state??'',
-            broker_license_number:profile?.broker_license_number??'',
-            broker_license_state:profile?.broker_license_state??'',
-            seatow_membership_number:profile?.seatow_membership_number??'',
-            boatus_membership_number:profile?.boatus_membership_number??'',
-            employee_id:profile?.employee_id??'',
-            department:profile?.department??'',
-            employment_type:profile?.employment_type??'',
-            tax_classification:profile?.tax_classification??'',
-            hire_date:profile?.hire_date??'',
-            hourly_rate:profile?.hourly_rate??'',
-            salary:profile?.salary??'',
-            access_card:profile?.access_card??'',
-            locker_number:profile?.locker_number??'',
-            parking_spot:profile?.parking_spot??'',
-            shift_notes:profile?.shift_notes??'',
-            doc_w2_on_file:profile?.doc_w2_on_file??null,
-            doc_i9_on_file:profile?.doc_i9_on_file??null,
-            doc_direct_deposit:profile?.doc_direct_deposit??null,
-            doc_signed_offer:profile?.doc_signed_offer??null,
-            doc_background_check:profile?.doc_background_check??null,
-            languages_spoken:profile?.languages_spoken?.join(', ')??'',
-          }); setErr('') }}
-              style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-              Edit
-            </button>
-          )}
+          <button onClick={() => setEditing(true)}
+            style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 10, padding: '6px 12px', color: C.teal, fontFamily: FONT, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            Edit
+          </button>
         </div>
+      </div>
 
-        {editing && (
-          <div style={{ borderTop:`1px solid rgba(255,255,255,0.08)`, paddingTop:16 }}>
-            {CONTACT_FORM_SCHEMA.filter(s => sectionVisibleTo(s, 'boater')).map(renderSchemaSection)}
-
-            {/* Email change section */}
-            <FormSectionLabel>Login Email</FormSectionLabel>
-            <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:12, padding:'12px 14px', marginBottom:12 }}>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Current email</div>
-              <div style={{ fontSize:14, fontWeight:600, color:C.white, marginBottom:10 }}>{user.email}</div>
-              {!changingEmail ? (
-                <button onClick={() => { setChangingEmail(true); setEmailMsg('') }}
-                  style={{ background:'none', border:`1px solid rgba(255,255,255,0.15)`, borderRadius:8, padding:'6px 12px', color:C.muted, fontFamily:FONT, fontSize:12, cursor:'pointer' }}>
-                  Change email
-                </button>
-              ) : (
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <Input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
-                    placeholder="New email address" autoFocus />
-                  {emailMsg && <div style={{ fontSize:12, color: emailMsg.startsWith('✓') ? C.green : C.danger, lineHeight:1.5 }}>{emailMsg}</div>}
-                  <div style={{ display:'flex', gap:8 }}>
-                    <button onClick={requestEmailChange} disabled={emailBusy}
-                      style={{ flex:1, padding:'10px', background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontFamily:FONT, fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                      {emailBusy ? 'Sending…' : 'Send confirmation'}
-                    </button>
-                    <button onClick={() => { setChangingEmail(false); setEmailMsg(''); setNewEmail('') }}
-                      style={{ padding:'10px 14px', background:'none', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:10, color:C.muted, fontFamily:FONT, fontSize:13, cursor:'pointer' }}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {err && <ErrMsg>{err}</ErrMsg>}
-            <div style={{ display:'flex', gap:8 }}>
-              <PrimaryBtn onClick={saveProfile} loading={busy} style={{ flex:1 }}>Save</PrimaryBtn>
-              <button onClick={() => { setEditing(false); setErr('') }}
-                style={{ flex:1, padding:'15px', background:'transparent', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:14, color:C.muted, fontFamily:FONT, fontSize:14, cursor:'pointer' }}>
+      {/* Email change */}
+      <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Login Email</div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>{user.email}</div>
+        {!changingEmail ? (
+          <button onClick={() => { setChangingEmail(true); setEmailMsg('') }}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '6px 12px', color: C.muted, fontFamily: FONT, fontSize: 12, cursor: 'pointer' }}>
+            Change email
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+              placeholder="New email address" autoFocus
+              style={{ width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 8, color: '#fff', fontSize: 14, fontFamily: FONT, outline: 'none', boxSizing: 'border-box' }} />
+            {emailMsg && <div style={{ fontSize: 12, color: emailMsg.startsWith('✓') ? C.green : C.danger, lineHeight: 1.5 }}>{emailMsg}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={requestEmailChange} disabled={emailBusy}
+                style={{ flex: 1, padding: 10, background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 10, color: C.teal, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {emailBusy ? 'Sending…' : 'Send confirmation'}
+              </button>
+              <button onClick={() => { setChangingEmail(false); setEmailMsg(''); setNewEmail('') }}
+                style={{ padding: '10px 14px', background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: C.muted, fontFamily: FONT, fontSize: 13, cursor: 'pointer' }}>
                 Cancel
               </button>
             </div>
@@ -2729,66 +2295,57 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
         )}
       </div>
 
-      {/* Assets on file */}
-      {vessels.length > 0 && (
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:8, paddingLeft:4 }}>
-            Assets on file ({vessels.length})
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {vessels.map((v, i) => (
-              <div key={i} style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'12px 16px' }}>
-                <div style={{ fontSize:14, fontWeight:700 }}>{v.name} · {v.vessel_type}</div>
-                <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
-                  {[v.length_ft && `${v.length_ft}ft`, v.shore_power, v.fuel_type].filter(Boolean).join(' · ')}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Identity note */}
-      <div style={{ background:'rgba(77,214,200,0.06)', border:`1px solid rgba(77,214,200,0.15)`, borderRadius:14, padding:'12px 16px', marginBottom:20 }}>
-        <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Your identity package</div>
-        <div style={{ fontSize:12, color:C.muted, lineHeight:1.7 }}>
-          Your contact info and vessel specs are sent to every marina you message — so they know who&apos;s coming and what slip to assign. You own your data.
-        </div>
-      </div>
-
-      {/* Change PIN */}
-      {!changingPin ? (
-        <button onClick={() => { setChangingPin(true); setPinStep('verify'); setPinVal(''); setPinErr('') }}
-          style={{ width:'100%', padding:'14px', background:'transparent', border:`1px solid rgba(255,255,255,0.12)`, borderRadius:14, color:C.muted, fontFamily:FONT, fontSize:14, fontWeight:600, cursor:'pointer', marginBottom:10 }}>
-          🔒 Change PIN
-        </button>
-      ) : (
-        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'20px 16px', marginBottom:10, textAlign:'center' }}>
-          <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>
-            {pinStep==='verify' ? 'Enter current PIN' : pinStep==='new' ? 'Enter new PIN' : 'Confirm new PIN'}
-          </div>
-          <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
-            {pinStep==='verify' ? 'Verify your identity first' : pinStep==='new' ? 'Choose a new 4-digit PIN' : 'Enter it again to confirm'}
-          </div>
-          <PinDots value={pinVal} />
-          <PinPad value={pinVal} onChange={v => { setPinVal(v); setPinErr('') }} max={4} onFull={p => { setPinVal(''); handlePinChange(p) }} />
-          {pinErr && <div style={{ fontSize:12, color:C.danger, marginTop:8 }}>{pinErr}</div>}
-          {pinBusy && <div style={{ marginTop:8 }}><Spinner /></div>}
-          <button onClick={() => { setChangingPin(false); setPinStep('verify'); setPinVal(''); setPinErr('') }}
-            style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:12 }}>
-            Cancel
+      {/* PIN change */}
+      <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 80 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>PIN</div>
+        {!changingPin ? (
+          <button onClick={() => { setChangingPin(true); setPinStep('verify'); setPinVal(''); setPinErr('') }}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '6px 12px', color: C.muted, fontFamily: FONT, fontSize: 12, cursor: 'pointer' }}>
+            Change PIN
           </button>
-        </div>
-      )}
-
-      <button onClick={onSignOut}
-        style={{ width:'100%', padding:'14px', background:'transparent', border:`1px solid rgba(248,113,113,0.3)`, borderRadius:14, color:C.danger, fontFamily:FONT, fontSize:14, fontWeight:600, cursor:'pointer' }}>
-        Sign Out
-      </button>
+        ) : (
+          <div>
+            {pinStep === 'verify' && (
+              <div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>Enter your current PIN</div>
+                <PinDots value={pinVal} />
+                <PinPad value={pinVal} onChange={setPinVal} onFull={async (p) => {
+                  const ok = await verifyCurrentPin(p)
+                  if (!ok) { setPinErr('Incorrect PIN'); setPinVal(''); return }
+                  setPinErr(''); setPinStep('new'); setPinVal('')
+                }} />
+                {pinErr && <div style={{ color: C.danger, fontSize: 12, textAlign: 'center', marginTop: 6 }}>{pinErr}</div>}
+                <button onClick={() => { setChangingPin(false); setPinVal(''); setPinErr('') }}
+                  style={{ width: '100%', marginTop: 10, padding: '10px', background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: C.muted, fontFamily: FONT, fontSize: 13, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            {pinStep === 'new' && (
+              <div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>Enter new PIN</div>
+                <PinDots value={pinVal} />
+                <PinPad value={pinVal} onChange={setPinVal} onFull={(p) => { setPinFirst(p); setPinStep('confirm'); setPinVal('') }} />
+              </div>
+            )}
+            {pinStep === 'confirm' && (
+              <div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>Confirm new PIN</div>
+                <PinDots value={pinVal} />
+                <PinPad value={pinVal} onChange={setPinVal} onFull={async (p) => {
+                  if (p !== pinFirst) { setPinErr('PINs don\'t match — try again'); setPinStep('new'); setPinVal(''); setPinFirst(''); return }
+                  await setNewPin(p)
+                }} />
+                {pinErr && <div style={{ color: C.danger, fontSize: 12, textAlign: 'center', marginTop: 6 }}>{pinErr}</div>}
+                {pinBusy && <div style={{ color: C.muted, fontSize: 12, textAlign: 'center', marginTop: 6 }}>Saving…</div>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
-
 // ─── PIN UI Primitives ────────────────────────────────────────────────────────
 function PinDots({ value }: { value: string }) {
   return (
