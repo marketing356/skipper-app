@@ -2269,7 +2269,7 @@ function SkipperChat({ user, profile, vessel, onClose }: { user: User; profile: 
           message: msg,
           marina_id: null,
           identity: identityPackage,
-          session: { boater_id: user.id, access_type: 'boater', context: 'global' },
+          session: { boater_id: user.id, access_type: 'tenant', context: 'global' },
         })
       })
       const d = await r.json()
