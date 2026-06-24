@@ -4,6 +4,10 @@ import { supabaseAdmin } from '@/lib/supabase'
 export const dynamic = 'force-dynamic'
 
 /**
+ * @deprecated 2026-06-24 — Replaced by Supabase Auth OTP flow.
+ * The mobile app now uses supabase.auth.signInWithOtp() + /api/auth/link-contact.
+ * This route is kept as dead code for reference. It is no longer called.
+ *
  * POST /api/auth/register
  * Creates or retrieves a national-pool contacts row (marina_id IS NULL) for a boater.
  * Uses supabaseAdmin to bypass RLS — boaters have no Supabase Auth session at signup time.

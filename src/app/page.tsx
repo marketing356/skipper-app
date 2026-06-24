@@ -44,7 +44,7 @@ const GLOBAL_CSS = `
 `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Screen = 'splash' | 'auth' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
+type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
 type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
@@ -486,29 +486,38 @@ export default function SkipperApp() {
   const [vesselIds,      setVesselIds]      = useState<string[]>([])
   const [homeTab,        setHomeTab]        = useState<HomeTab>('vessel')
   const [savedEmail,     setSavedEmail]     = useState('')
+  const [otpEmail,       setOtpEmail]       = useState('')
   const [vesselId,       setVesselId]       = useState<string|null>(null)
   const [vesselsLoading, setVesselsLoading] = useState(false)
   // Keep a ref to the active user so loadUserData can always access the latest value
   const userRef = useRef<User | null>(null)
 
+  // ── Splash init: check real Supabase Auth session ─────────────────────────
+  // Replaces the old custom-UUID localStorage check. With Supabase Auth OTP,
+  // sessions persist in localStorage automatically. auth.uid() works client-side.
   useEffect(() => {
     const storedEmail = localStorage.getItem('skipper_email') ?? ''
-    const storedUserId = localStorage.getItem('skipper_user_id') ?? ''
     setSavedEmail(storedEmail)
 
-    if (!storedUserId) {
-      setScreen('auth')
-      return
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        setScreen('auth')
+        return
+      }
+      const u = session.user
+      const email = u.email ?? storedEmail
+      localStorage.setItem('skipper_email', email)
+      localStorage.setItem('skipper_user_id', u.id)
+      setSavedEmail(email)
+      setUser(u)
+      userRef.current = u
 
-    const fakeUser = { id: storedUserId, email: storedEmail } as User
-    setUser(fakeUser)
-
-    if (localStorage.getItem(`skipper_pin_${storedUserId}`)) {
-      setScreen('pin_login')
-    } else {
-      routeAfterAuth(fakeUser)
-    }
+      if (localStorage.getItem(`skipper_pin_${u.id}`)) {
+        setScreen('pin_login')
+      } else {
+        routeAfterAuth(u)
+      }
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -658,6 +667,7 @@ export default function SkipperApp() {
     }
     localStorage.removeItem('skipper_user_id')
     localStorage.removeItem('skipper_email')
+    supabase.auth.signOut().catch(() => {})  // Clear real Supabase Auth session
     userRef.current = null
     setUser(null); setProfile(null); setVessel(null); setVesselId(null)
     setVessels([]); setVesselIds([])
@@ -697,12 +707,33 @@ export default function SkipperApp() {
   if (screen === 'auth') return (
     <AuthScreen
       savedEmail={savedEmail}
-      onAuthed={async (u, email) => {
+      onOtpSent={(email) => {
+        setSavedEmail(email)
+        setOtpEmail(email)
+        setScreen('otp_verify')
+      }}
+    />
+  )
+
+  // ── OTP Verify ──
+  if (screen === 'otp_verify') return (
+    <OtpVerifyScreen
+      email={otpEmail || savedEmail}
+      onVerified={async (u, email) => {
         localStorage.setItem('skipper_email', email)
         localStorage.setItem('skipper_user_id', u.id)
+        setSavedEmail(email)
         setUser(u)
+        userRef.current = u
+        // Link contacts row on server (creates/updates national-pool row, auto-couples marinas)
+        await fetch('/api/auth/link-contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, userId: u.id }),
+        })
         await routeAfterAuth(u)
       }}
+      onBack={() => setScreen('auth')}
     />
   )
 
@@ -784,10 +815,10 @@ function SplashScreen() {
   )
 }
 
-// ─── Auth (email only — no OTP, no magic link) ────────────────────────────────
-function AuthScreen({ savedEmail, onAuthed }: {
+// ─── Auth (email entry — sends Supabase Auth OTP) ────────────────────────────
+function AuthScreen({ savedEmail, onOtpSent }: {
   savedEmail: string
-  onAuthed: (u: User, email: string) => void
+  onOtpSent: (email: string) => void
 }) {
   const [email, setEmail] = useState(savedEmail)
   const [busy,  setBusy]  = useState(false)
@@ -798,22 +829,18 @@ function AuthScreen({ savedEmail, onAuthed }: {
     if (!clean || !clean.includes('@')) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
 
-    let authUserId: string | null = null
-
-    if (!authUserId) {
-      // New boater OR marina-added contact with no auth — use server route (bypasses RLS)
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: clean }),
-      })
-      const json = await res.json()
-      if (!res.ok || json.error) { setBusy(false); setErr(json.error ?? 'Signup failed'); return }
-      authUserId = json.authUserId
-    }
+    // Supabase Auth OTP — sends a 6-digit code to the boater's email.
+    // shouldCreateUser: true creates a new Auth user if email is new.
+    // No magic link redirect. type: 'email' in verifyOtp handles the 6-digit code.
+    const { error } = await supabase.auth.signInWithOtp({
+      email: clean,
+      options: { shouldCreateUser: true },
+    })
 
     setBusy(false)
-    onAuthed({ id: authUserId!, email: clean } as User, clean)
+    if (error) { setErr(error.message); return }
+
+    onOtpSent(clean)
   }
 
   return (
@@ -837,7 +864,93 @@ function AuthScreen({ savedEmail, onAuthed }: {
           {err && <ErrMsg>{err}</ErrMsg>}
           <PrimaryBtn onClick={submit} loading={busy} style={{ marginTop:8 }}>Continue →</PrimaryBtn>
           <p style={{ fontSize:12, color:C.muted2, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
-            New here? Just enter your email — we&apos;ll set up your account.
+            New here? Just enter your email — we&apos;ll send a verification code.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── OTP Verify ────────────────────────────────────────────────────────────────
+function OtpVerifyScreen({ email, onVerified, onBack }: {
+  email: string
+  onVerified: (u: User, email: string) => void
+  onBack: () => void
+}) {
+  const [code,   setCode]   = useState('')
+  const [busy,   setBusy]   = useState(false)
+  const [err,    setErr]    = useState('')
+  const [resent, setResent] = useState(false)
+
+  async function verify() {
+    const trimmed = code.trim()
+    if (trimmed.length !== 6) { setErr('Enter the 6-digit code from your email'); return }
+    setBusy(true); setErr('')
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token: trimmed,
+      type: 'email',
+    })
+
+    setBusy(false)
+    if (error || !data.session) {
+      setErr(error?.message ?? 'Invalid code — check your email and try again')
+      return
+    }
+    // Real Supabase Auth session. session.user.id is the real UUID.
+    onVerified(data.session.user, email)
+  }
+
+  async function resend() {
+    setResent(false)
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    })
+    if (!error) setResent(true)
+  }
+
+  return (
+    <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'0 28px', maxWidth:420, margin:'0 auto', width:'100%' }}>
+        <div style={{ marginBottom:32, animation:'scaleIn 0.5s ease both' }}>
+          <div style={{ width:64, height:64, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, marginBottom:20, animation:'glow 4s ease-in-out infinite' }}>
+            <Image src="/skipper-avatar.jpg" alt="Skipper" width={64} height={64} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+          </div>
+          <h1 style={{ fontSize:26, fontWeight:800, margin:'0 0 8px', letterSpacing:-0.5, lineHeight:1.15 }}>Check your email</h1>
+          <p style={{ fontSize:14, color:C.muted, margin:0, lineHeight:1.6 }}>
+            We sent a 6-digit code to <strong style={{ color:C.white }}>{email}</strong>
+          </p>
+        </div>
+        <div style={{ animation:'fadeUp 0.4s ease 0.1s both' }}>
+          <FieldGroup label="Verification code">
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={code}
+              onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr('') }}
+              placeholder="123456"
+              onKeyDown={e => e.key === 'Enter' && verify()}
+              autoFocus
+            />
+          </FieldGroup>
+          {err && <ErrMsg>{err}</ErrMsg>}
+          <PrimaryBtn onClick={verify} loading={busy} style={{ marginTop:8 }}>Verify →</PrimaryBtn>
+          <div style={{ display:'flex', justifyContent:'space-between', marginTop:20 }}>
+            <button onClick={onBack}
+              style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT }}>
+              ← Use a different email
+            </button>
+            <button onClick={resend}
+              style={{ background:'none', border:'none', color:C.teal, fontSize:12, cursor:'pointer', fontFamily:FONT }}>
+              {resent ? '✓ Code sent!' : 'Resend code'}
+            </button>
+          </div>
+          <p style={{ fontSize:12, color:C.muted2, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
+            Check your spam folder if it doesn&apos;t arrive within a minute.
           </p>
         </div>
       </div>
@@ -869,11 +982,13 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
     if (!lastName.trim())  { setErr('Last name is required'); return }
     setBusy(true); setErr('')
 
-    const res = await fetch('/api/auth/profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        authUserId:               user.id,
+    // Direct Supabase client write — works because boater now has a real Supabase Auth
+    // session (OTP verified). auth.uid() returns the real UUID. RLS boater_update_own_contact
+    // allows UPDATE where auth.uid() = auth_user_id AND marina_id IS NULL.
+    // /api/auth/profile is deprecated; kept as dead code below.
+    const { data, error } = await supabase
+      .from('contacts')
+      .update({
         first_name:               firstName.trim(),
         last_name:                lastName.trim(),
         email:                    user.email ?? null,
@@ -890,12 +1005,13 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
         emergency_name:           emergName.trim() || null,
         emergency_phone:          emergPhone.trim() || null,
         setup_complete:           false,
-      }),
-    })
-    const json = await res.json()
+      })
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
+      .select()
+      .maybeSingle()
     setBusy(false)
-    if (!res.ok || json.error) { setErr(json.error ?? 'Save failed'); return }
-    const data = json.contact
+    if (error || !data) { setErr(error?.message ?? 'Save failed — please try again'); return }
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
       Notification.requestPermission().catch(() => {})
@@ -1004,14 +1120,15 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
     }
     setBusy(true)
     const hash = await hashPin(p)
-    const res = await fetch('/api/auth/pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ authUserId: user.id, pinHash: hash }),
-    })
-    const json = await res.json()
+    // Direct Supabase client write — works because boater has a real Supabase Auth
+    // session (OTP verified). /api/auth/pin is deprecated; kept as dead code below.
+    const { error } = await supabase
+      .from('contacts')
+      .update({ pin_hash: hash, setup_complete: true })
+      .eq('auth_user_id', user.id)
+      .is('marina_id', null)
     setBusy(false)
-    if (!res.ok || json.error) { setErr(json.error ?? 'PIN save failed'); return }
+    if (error) { setErr(error.message ?? 'PIN save failed'); return }
     localStorage.setItem(`skipper_pin_${user.id}`, hash)
     onComplete()
   }

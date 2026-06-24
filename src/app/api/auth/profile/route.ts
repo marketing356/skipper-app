@@ -4,6 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase'
 export const dynamic = 'force-dynamic'
 
 /**
+ * @deprecated 2026-06-24 — Replaced by direct Supabase client write in ContactSetupScreen.
+ * After Supabase Auth OTP, boaters have real sessions and auth.uid() works client-side.
+ * RLS policy boater_update_own_contact allows direct writes from the browser.
+ * This route is kept as dead code for reference. It is no longer called.
+ *
  * POST /api/auth/profile
  * Updates a boater's national-pool contacts row with onboarding profile fields.
  * Uses supabaseAdmin to bypass RLS — boaters have no Supabase Auth session.
