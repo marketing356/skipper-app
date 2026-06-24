@@ -44,7 +44,7 @@ const GLOBAL_CSS = `
 `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'home'
+type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'home'
 type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
@@ -488,6 +488,7 @@ export default function SkipperApp() {
   const [savedEmail,     setSavedEmail]     = useState('')
   const [otpEmail,       setOtpEmail]       = useState('')
   const [vesselId,       setVesselId]       = useState<string|null>(null)
+  const [storedUserId,   setStoredUserId]   = useState<string|null>(null)
   const [vesselsLoading, setVesselsLoading] = useState(false)
   // Keep a ref to the active user so loadUserData can always access the latest value
   const userRef = useRef<User | null>(null)
@@ -501,7 +502,18 @@ export default function SkipperApp() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
-        setScreen('auth')
+        // Check for persistent user identity cookie (survives new browsers after first login)
+        const uidMatch = document.cookie.match(/(?:^|;\s*)skipper_uid=([^;]+)/)
+        const persistedUid = uidMatch ? decodeURIComponent(uidMatch[1]) : null
+        if (persistedUid) {
+          // Known user on this device — show PIN screen, no email code needed
+          setStoredUserId(persistedUid)
+          const storedEmail = localStorage.getItem('skipper_email') ?? ''
+          setSavedEmail(storedEmail)
+          setScreen('pin_session_refresh')
+        } else {
+          setScreen('auth')
+        }
         return
       }
       const u = session.user
@@ -725,6 +737,8 @@ export default function SkipperApp() {
         setSavedEmail(email)
         setUser(u)
         userRef.current = u
+        // Persist user identity in a 1-year cookie so new browsers skip OTP and go straight to PIN
+        document.cookie = `skipper_uid=${u.id}; max-age=${60 * 60 * 24 * 365}; path=/; SameSite=Lax`
         // Link contacts row on server (creates/updates national-pool row, auto-couples marinas)
         await fetch('/api/auth/link-contact', {
           method: 'POST',
@@ -755,6 +769,28 @@ export default function SkipperApp() {
       onComplete={() => {
         localStorage.setItem(`skipper_unlocked_${user!.id}`, '1')
         setScreen('home')
+      }}
+    />
+  )
+
+  // ── PIN Session Refresh (new browser — has cookie, no session) ──
+  if (screen === 'pin_session_refresh') return (
+    <PinSessionRefreshScreen
+      userId={storedUserId!}
+      email={savedEmail}
+      onUnlocked={async (u) => {
+        localStorage.setItem('skipper_user_id', u.id)
+        setUser(u)
+        userRef.current = u
+        await routeAfterAuth(u)
+      }}
+      onNotMe={() => {
+        // Clear persistent identity — fall back to full OTP login
+        document.cookie = 'skipper_uid=; max-age=0; path=/'
+        localStorage.removeItem('skipper_user_id')
+        localStorage.removeItem('skipper_email')
+        setStoredUserId(null)
+        setScreen('auth')
       }}
     />
   )
@@ -1148,6 +1184,81 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
   )
 }
 
+// ─── PIN Session Refresh (new browser — cookie exists, no Supabase session) ─────────────
+function PinSessionRefreshScreen({ userId, email, onUnlocked, onNotMe }: {
+  userId: string
+  email: string
+  onUnlocked: (u: import('@supabase/supabase-js').User) => void
+  onNotMe: () => void
+}) {
+  const [pin,   setPin]   = useState('')
+  const [shake, setShake] = useState(false)
+  const [err,   setErr]   = useState('')
+  const [busy,  setBusy]  = useState(false)
+
+  async function verify(p: string) {
+    setBusy(true)
+    const pinHash = await hashPin(p)
+
+    const res = await fetch('/api/auth/pin-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, pinHash }),
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      setBusy(false)
+      setPin('')
+      setErr(data.error === 'Incorrect PIN' ? 'Wrong PIN' : 'Something went wrong')
+      setShake(true)
+      setTimeout(() => setShake(false), 600)
+      return
+    }
+
+    // Restore Supabase session client-side — no email needed
+    const { data: sessionData, error: sessErr } = await supabase.auth.setSession({
+      access_token:  data.access_token,
+      refresh_token: data.refresh_token,
+    })
+    setBusy(false)
+
+    if (sessErr || !sessionData?.user) {
+      setErr('Session restore failed — try again')
+      setPin('')
+      return
+    }
+
+    // Cache PIN in localStorage for fast local verify next time
+    localStorage.setItem(`skipper_pin_${sessionData.user.id}`, pinHash)
+    localStorage.setItem('skipper_email', sessionData.user.email ?? email)
+    onUnlocked(sessionData.user)
+  }
+
+  return (
+    <div style={{ minHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{ width:'100%', maxWidth:360, textAlign:'center' }}>
+        <div style={{ width:72, height:72, borderRadius:'50%', overflow:'hidden', margin:'0 auto 20px', border:`2px solid ${C.teal}`, animation:'glow 4s ease-in-out infinite' }}>
+          <Image src="/skipper-avatar.jpg" alt="Skipper" width={72} height={72} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+        </div>
+        <div style={{ fontSize:16, fontWeight:700, marginBottom:4 }}>Welcome back</div>
+        <div style={{ fontSize:13, color:C.muted, marginBottom:32 }}>{email || 'Enter your PIN to continue'}</div>
+        <div style={{ animation: shake ? 'shake 0.5s ease both' : 'none' }}>
+          <PinDots value={pin} />
+        </div>
+        <PinPad value={pin} onChange={v => { setPin(v); setErr('') }} max={4} onFull={verify} />
+        {err && <div style={{ fontSize:13, color:C.danger, marginTop:8 }}>{err}</div>}
+        {busy && <div style={{ marginTop:12 }}><Spinner /></div>}
+        <button onClick={onNotMe}
+          style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
+          Not you? Use a different account →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── PIN Login (returning user) ────────────────────────────────────────────────
 function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
   user: User; email: string
@@ -1176,6 +1287,8 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
       setTimeout(() => setShake(false), 600)
       return
     }
+    // Reinforce persistent cookie on every successful PIN unlock
+    document.cookie = `skipper_uid=${user.id}; max-age=${60 * 60 * 24 * 365}; path=/; SameSite=Lax`
     onUnlock()
   }
 
