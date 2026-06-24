@@ -869,9 +869,11 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
     if (!lastName.trim())  { setErr('Last name is required'); return }
     setBusy(true); setErr('')
 
-    const { data, error } = await supabase
-      .from('contacts')
-      .update({
+    const res = await fetch('/api/auth/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authUserId:               user.id,
         first_name:               firstName.trim(),
         last_name:                lastName.trim(),
         email:                    user.email ?? null,
@@ -888,14 +890,12 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
         emergency_name:           emergName.trim() || null,
         emergency_phone:          emergPhone.trim() || null,
         setup_complete:           false,
-      })
-      .eq('auth_user_id', user.id)
-      .is('marina_id', null)
-      .select()
-      .single()
-
+      }),
+    })
+    const json = await res.json()
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (!res.ok || json.error) { setErr(json.error ?? 'Save failed'); return }
+    const data = json.contact
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
       Notification.requestPermission().catch(() => {})
@@ -1004,13 +1004,14 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
     }
     setBusy(true)
     const hash = await hashPin(p)
-    const { error } = await supabase
-      .from('contacts')
-      .update({ pin_hash: hash, setup_complete: true })
-      .eq('auth_user_id', user.id)
-      .is('marina_id', null)
+    const res = await fetch('/api/auth/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authUserId: user.id, pinHash: hash }),
+    })
+    const json = await res.json()
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (!res.ok || json.error) { setErr(json.error ?? 'PIN save failed'); return }
     localStorage.setItem(`skipper_pin_${user.id}`, hash)
     onComplete()
   }
