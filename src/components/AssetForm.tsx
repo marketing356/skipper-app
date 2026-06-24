@@ -120,6 +120,10 @@ const TEXTAREA_ROWS: Record<string, number> = { notes: 4, retired_reason: 2 }
 
 // ─── Control renderer — mirrors OPS AssetForm ────────────────────────────────
 function renderControl(field: AssetField, a: Record<string, unknown>) {
+  // marina_id / space_id / tenant_id: read-only on mobile (set by marina, not boater)
+  if (['marina_id', 'space_id', 'location_ref', 'tenant_id', 'boater_vessel_id'].includes(field.name)) {
+    return <FInput name={field.name} type="text" placeholder={field.placeholder ?? '(set by marina)'} defaultValue={a[field.name]} />
+  }
   switch (field.type) {
     case 'textarea':
       return (
@@ -231,7 +235,7 @@ const FORM_CSS = `.skipper-asset-form select option { background: #05111f; color
 export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props) {
   const a = asset ?? {}
   const isEdit = !!a.id
-  const role: Role = 'boater'
+  const role: Role = 'ops'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [schema, setSchema] = useState<AssetSection[]>(ASSET_FORM_SCHEMA)
