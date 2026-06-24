@@ -798,31 +798,18 @@ function AuthScreen({ savedEmail, onAuthed }: {
     if (!clean || !clean.includes('@')) { setErr('Enter your email'); return }
     setBusy(true); setErr('')
 
-    // Look up existing national-pool contact — use limit(1) to survive any legacy dupes
-    const { data: contactRows } = await supabase
-      .from('contacts')
-      .select('id, auth_user_id')
-      .eq('email', clean)
-      .is('marina_id', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-    const contact = contactRows?.[0] ?? null
+    let authUserId: string | null = null
 
-    let authUserId = contact?.auth_user_id as string | null
-
-    if (!contact) {
-      // Brand-new boater — create national-pool row (explicit signup, not a reload)
-      const newId = crypto.randomUUID()
-      const { error } = await supabase
-        .from('contacts')
-        .insert({ auth_user_id: newId, email: clean })
-      if (error) { setBusy(false); setErr(error.message); return }
-      authUserId = newId
-    } else if (!authUserId) {
-      // Marina-added contact without auth — link a new UUID
-      const newId = crypto.randomUUID()
-      await supabase.from('contacts').update({ auth_user_id: newId }).eq('id', contact.id)
-      authUserId = newId
+    if (!authUserId) {
+      // New boater OR marina-added contact with no auth — use server route (bypasses RLS)
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: clean }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) { setBusy(false); setErr(json.error ?? 'Signup failed'); return }
+      authUserId = json.authUserId
     }
 
     setBusy(false)
