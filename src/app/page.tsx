@@ -1,4 +1,5 @@
 'use client'
+import AssetForm from '@/components/AssetForm'
 import React, { useState, useEffect, useRef } from 'react'
 import ContactForm from '@/components/ContactForm'
 import Image from 'next/image'
