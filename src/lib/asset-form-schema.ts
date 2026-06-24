@@ -1,11 +1,15 @@
 /**
- * Asset Form Schema — fetched from OPS at runtime (doctrine §21).
- * Source of truth: https://ops.ayeayeskipper.com/api/asset-form-schema
- * To add a field: update OPS lib/asset-form-schema.ts and redeploy OPS. All apps reflect automatically.
- * This file: provides TypeScript types, helper functions, and a static fallback cache.
- * DO NOT edit the ASSET_FORM_SCHEMA array here — edit in OPS only.
+ * MASTER ASSET FORM SCHEMA — Skipper Universe
+ *
+ * Single source of truth for the vessel/asset form across:
+ *   - OPS (ops.ayeayeskipper.com)        — render via CONTACT_FORM_SCHEMA pattern
+ *   - Helm (helm.ayeayeskipper.com)      — pulls from /api/asset-form-schema
+ *   - Mobile APP (app.ayeayeskipper.com) — pulls from /api/asset-form-schema
+ *   - Crew APP (crew.ayeayeskipper.com)  — pulls from /api/asset-form-schema
+ *   - Contractors (contractors.aya...)   — pulls from /api/asset-form-schema
+ *
+ * To add a field: add it here, redeploy OPS. All apps reflect on next build/render.
  * Every `name` MUST be a real column in public.marina_assets. No ghost fields. Ever.
- * Last synced: 2026-06-24
  */
 
 export type Role = 'ops' | 'helm' | 'boater' | 'crew' | 'contractor'
@@ -49,22 +53,6 @@ export function fieldVisibleTo(field: AssetField | null, role: Role): boolean {
   return field.roles.includes(role)
 }
 
-// ─── Runtime fetch from OPS (server-side) ───────────────────────────────────
-// Call this from server components and API routes to get the live schema.
-// Falls back to the static array below if OPS is unreachable.
-export async function fetchAssetFormSchema(): Promise<AssetSection[]> {
-  try {
-    const res = await fetch('https://ops.ayeayeskipper.com/api/asset-form-schema', {
-      next: { revalidate: 3600 },
-    })
-    if (!res.ok) throw new Error(`OPS schema endpoint returned ${res.status}`)
-    return (await res.json()) as AssetSection[]
-  } catch {
-    return ASSET_FORM_SCHEMA
-  }
-}
-
-// ─── Static fallback cache (mirrors OPS master — do not edit here) ────────────
 export const ASSET_FORM_SCHEMA: AssetSection[] = [
   // ══ 1. IDENTITY ══════════════════════════════════════════
   {
@@ -160,52 +148,7 @@ export const ASSET_FORM_SCHEMA: AssetSection[] = [
     ],
   },
 
-  // ══ 3. ENGINE / FUEL ═════════════════════════════════════
-  {
-    id: 'engine_fuel',
-    title: 'Engine / Fuel',
-    roles: 'all',
-    rows: [
-      { cols: 2, fields: [
-        { name: 'fuel_type', label: 'Fuel Type', type: 'select', roles: 'all', options: [
-          { value: '', label: '— Select —' },
-          { value: 'gasoline', label: 'Gasoline' },
-          { value: 'diesel', label: 'Diesel' },
-          { value: 'electric', label: 'Electric' },
-          { value: 'hybrid', label: 'Hybrid' },
-          { value: 'none', label: 'None / Sail' },
-        ]},
-        { name: 'fuel_tank_gallons', label: 'Fuel Tank (gal)', type: 'number', placeholder: '100', roles: 'all' },
-      ]},
-      { cols: 3, fields: [
-        { name: 'engine_count', label: 'Engine Count', type: 'number', placeholder: '2', roles: 'all' },
-        { name: 'engine_type', label: 'Engine Type', type: 'select', roles: 'all', options: [
-          { value: '', label: '— Select —' },
-          { value: 'inboard', label: 'Inboard' },
-          { value: 'outboard', label: 'Outboard' },
-          { value: 'stern_drive', label: 'Stern Drive' },
-          { value: 'jet', label: 'Jet' },
-          { value: 'sail', label: 'Sail' },
-          { value: 'electric', label: 'Electric' },
-        ]},
-        { name: 'horsepower_per_engine', label: 'HP / Engine', type: 'number', placeholder: '300', roles: 'all' },
-      ]},
-      { cols: 3, fields: [
-        { name: 'engine_make', label: 'Engine Make', type: 'text', placeholder: 'Yamaha', roles: 'all' },
-        { name: 'engine_model', label: 'Engine Model', type: 'text', placeholder: 'F300', roles: 'all' },
-        { name: 'engine_year', label: 'Engine Year', type: 'number', placeholder: '2021', roles: 'all' },
-      ]},
-      { cols: 3, fields: [
-        { name: 'engine_hp', label: 'Total Engine HP (legacy)', type: 'number', placeholder: '600', roles: 'all' },
-        { name: 'total_horsepower', label: 'Total Horsepower', type: 'number', placeholder: '600', roles: 'all' },
-        { name: 'engine_serial', label: 'Engine Serial', type: 'text', placeholder: 'SN-…', roles: 'all' },
-      ]},
-      { cols: 2, fields: [
-        { name: 'raw_water_cooled', label: 'Raw Water Cooled', type: 'bool-select', roles: 'all' },
-        { name: 'shore_power', label: 'Shore Power', type: 'bool-select', roles: 'all' },
-      ]},
-    ],
-  },
+  // ══ 3. ENGINE / FUEL — dynamic component (EnginesList) ════
 
   // ══ 4. IDENTIFIERS / REGISTRATION ════════════════════════
   {
@@ -299,43 +242,9 @@ export const ASSET_FORM_SCHEMA: AssetSection[] = [
     ],
   },
 
-  // ══ 8. SERVICE HISTORY ═══════════════════════════════════
-  {
-    id: 'service',
-    title: 'Service History',
-    roles: 'all',
-    rows: [
-      { cols: 2, fields: [
-        { name: 'last_haulout_date', label: 'Last Haulout Date', type: 'date', roles: 'all' },
-        { name: 'last_survey_date', label: 'Last Survey Date', type: 'date', roles: 'all' },
-      ]},
-    ],
-  },
+  // ══ 8. SERVICE HISTORY + SHIP'S LOG — dynamic components (ServiceHistoryList + ShipLogList)
 
-  // ══ 9. TRAILER (if applicable) ═══════════════════════════
-  {
-    id: 'trailer',
-    title: 'Trailer',
-    roles: 'all',
-    rows: [
-      { cols: 1, fields: [
-        { name: 'has_trailer', label: 'Has Trailer', type: 'bool-select', roles: 'all' },
-      ]},
-      { cols: 3, fields: [
-        { name: 'trailer_make', label: 'Trailer Make', type: 'text', placeholder: 'Load Rite', roles: 'all' },
-        { name: 'trailer_type', label: 'Trailer Type', type: 'text', placeholder: 'Bunk/Roller/Float-on', roles: 'all' },
-        { name: 'trailer_axle_count', label: 'Axle Count', type: 'number', placeholder: '2', roles: 'all' },
-      ]},
-      { cols: 3, fields: [
-        { name: 'trailer_length_ft', label: 'Trailer Length (ft)', type: 'number', placeholder: '28', roles: 'all' },
-        { name: 'trailer_width_ft', label: 'Trailer Width (ft)', type: 'number', placeholder: '8.5', roles: 'all' },
-        { name: 'trailer_plate', label: 'Trailer Plate #', type: 'text', placeholder: 'ABC-1234', roles: 'all' },
-      ]},
-      { cols: 1, fields: [
-        { name: 'trailer_vin', label: 'Trailer VIN', type: 'text', placeholder: 'VIN #', roles: 'all' },
-      ]},
-    ],
-  },
+  // ══ 9. TRAILER — removed (not a core vessel record field)
 
   // ══ 10. LOCATION (marina-side) — ops/helm only ═══════════
   {
@@ -397,18 +306,6 @@ export const ASSET_FORM_SCHEMA: AssetSection[] = [
       ]},
       { cols: 1, fields: [
         { name: 'retired_reason', label: 'Retired Reason', type: 'textarea', placeholder: 'Why was this asset retired…', roles: ['ops', 'helm'] },
-      ]},
-    ],
-  },
-
-  // ══ 14. NOTES ════════════════════════════════════════════
-  {
-    id: 'notes',
-    title: 'Notes',
-    roles: 'all',
-    rows: [
-      { cols: 1, fields: [
-        { name: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Any notes about this asset…', roles: 'all' },
       ]},
     ],
   },

@@ -1,19 +1,22 @@
 'use client'
 /**
- * AssetForm — Schema-Driven Vessel/Asset Form for Skipper mobile app.
- * COPIED FROM OPS (ops.ayeayeskipper.com) — this is the authoritative form.
- * Role = 'boater': ops/helm-only sections (Location, Ownership, Status/Retirement) are hidden.
- * Uses Supabase client directly (no server actions — mobile app is pure client-side).
- * One asset = one row in marina_assets. No ghost fields.
+ * AssetForm — Schema-Driven Master Vessel/Asset Form.
+ * SOURCE: ops.ayeayeskipper.com components/AssetForm.tsx — verbatim.
+ * Mobile adaptations only:
+ *   1. Server actions → Supabase client (mobile is pure client-side)
+ *   2. Props: contactId/onSaved/onCancel instead of marinas/contacts
+ *   3. Dark inline styles instead of Tailwind
+ *   4. Role = 'boater'
+ * Fields, sections, layout, sub-components: identical to OPS.
  */
 import { useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase-client'
-import TagInput from '@/components/TagInput'
 import DocumentList from '@/components/DocumentList'
 import EngineList from '@/components/EngineList'
 import ServiceHistoryList from '@/components/ServiceHistoryList'
 import ShipLogList from '@/components/ShipLogList'
 import NotesLog from '@/components/NotesLog'
+import TagInput from '@/components/TagInput'
 import {
   ASSET_FORM_SCHEMA,
   sectionVisibleTo,
@@ -92,7 +95,8 @@ function FInput({ name, type = 'text', placeholder, defaultValue }: { name: stri
 
 function FSelect({ name, defaultValue, children }: { name: string; defaultValue?: unknown; children: React.ReactNode }) {
   return (
-    <select name={name} defaultValue={(defaultValue ?? '') as string} style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as unknown as React.CSSProperties}>
+    <select name={name} defaultValue={(defaultValue ?? '') as string}
+      style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as unknown as React.CSSProperties}>
       {children}
     </select>
   )
@@ -101,7 +105,8 @@ function FSelect({ name, defaultValue, children }: { name: string; defaultValue?
 function FBoolSelect({ name, defaultValue }: { name: string; defaultValue?: boolean | null }) {
   const val = defaultValue === true ? 'true' : defaultValue === false ? 'false' : ''
   return (
-    <select name={name} defaultValue={val} style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as unknown as React.CSSProperties}>
+    <select name={name} defaultValue={val}
+      style={{ ...inputStyle, WebkitAppearance: 'auto', appearance: 'auto' } as unknown as React.CSSProperties}>
       <option value="">— Not set —</option>
       <option value="true">Yes</option>
       <option value="false">No</option>
@@ -109,14 +114,16 @@ function FBoolSelect({ name, defaultValue }: { name: string; defaultValue?: bool
   )
 }
 
-// ─── Control renderer (mirrors OPS AssetForm) ────────────────────────────────
+const TEXTAREA_ROWS: Record<string, number> = { notes: 4, retired_reason: 2 }
+
+// ─── Control renderer — mirrors OPS AssetForm ────────────────────────────────
 function renderControl(field: AssetField, a: Record<string, unknown>) {
   switch (field.type) {
     case 'textarea':
       return (
-        <textarea name={field.name} rows={3} placeholder={field.placeholder}
-          defaultValue={(a[field.name] ?? '') as string}
-          style={{ ...inputStyle, resize: 'none' }} />
+        <textarea name={field.name} rows={TEXTAREA_ROWS[field.name] ?? 3}
+          className="form-input" style={{ ...inputStyle, resize: 'none' }}
+          placeholder={field.placeholder} defaultValue={(a[field.name] ?? '') as string} />
       )
     case 'select':
       return (
@@ -134,104 +141,89 @@ function renderControl(field: AssetField, a: Record<string, unknown>) {
 }
 
 // ─── FormData → payload (mirrors OPS lib/actions.ts assetPayload) ─────────────
-function s(fd: FormData, key: string): string | null {
-  const v = (fd.get(key) as string)?.trim(); return v || null
-}
-function n(fd: FormData, key: string): number | null {
-  const v = fd.get(key) as string; return v ? parseFloat(v) : null
-}
-function i(fd: FormData, key: string): number | null {
-  const v = fd.get(key) as string; return v ? parseInt(v, 10) : null
-}
-function b(fd: FormData, key: string): boolean | null {
-  const v = fd.get(key) as string
-  if (v === 'true') return true; if (v === 'false') return false; return null
-}
-function t(fd: FormData, key: string): string[] {
-  const v = fd.get(key) as string; if (!v) return []
-  try { const p = JSON.parse(v); return Array.isArray(p) ? p.filter(Boolean) : [] } catch { return [] }
-}
+function s(fd: FormData, k: string): string | null { const v = (fd.get(k) as string)?.trim(); return v || null }
+function n(fd: FormData, k: string): number | null { const v = fd.get(k) as string; return v ? parseFloat(v) : null }
+function i(fd: FormData, k: string): number | null { const v = fd.get(k) as string; return v ? parseInt(v, 10) : null }
+function b(fd: FormData, k: string): boolean | null { const v = fd.get(k) as string; if (v === 'true') return true; if (v === 'false') return false; return null }
+function t(fd: FormData, k: string): string[] { const v = fd.get(k) as string; if (!v) return []; try { const p = JSON.parse(v); return Array.isArray(p) ? p.filter(Boolean) : [] } catch { return [] } }
 
 function buildPayload(fd: FormData) {
   return {
-    name:                      s(fd, 'name'),
-    photo_url:                 s(fd, 'photo_url'),
-    status:                    s(fd, 'status') || 'active',
-    asset_category:            s(fd, 'asset_category'),
-    asset_type:                s(fd, 'asset_type') || 'powerboat',
-    asset_subtype:             s(fd, 'asset_subtype'),
-    make:                      s(fd, 'make'),
-    model:                     s(fd, 'model'),
-    year:                      i(fd, 'year'),
-    color:                     s(fd, 'color'),
-    hull_material:             s(fd, 'hull_material'),
-    length_ft:                 n(fd, 'length_ft'),
-    beam_ft:                   n(fd, 'beam_ft'),
-    draft_ft:                  n(fd, 'draft_ft'),
-    air_draft_ft:              n(fd, 'air_draft_ft'),
-    weight_lbs:                n(fd, 'weight_lbs'),
-    keel_type:                 s(fd, 'keel_type'),
-    bottom_paint_type:         s(fd, 'bottom_paint_type'),
-    fuel_type:                 s(fd, 'fuel_type'),
-    fuel_tank_gallons:         n(fd, 'fuel_tank_gallons'),
-    engine_count:              i(fd, 'engine_count'),
-    engine_type:               s(fd, 'engine_type'),
-    engine_make:               s(fd, 'engine_make'),
-    engine_model:              s(fd, 'engine_model'),
-    engine_year:               i(fd, 'engine_year'),
-    engine_serial:             s(fd, 'engine_serial'),
-    horsepower_per_engine:     n(fd, 'horsepower_per_engine'),
-    engine_hp:                 n(fd, 'engine_hp'),
-    total_horsepower:          n(fd, 'total_horsepower'),
-    raw_water_cooled:          b(fd, 'raw_water_cooled'),
-    shore_power:               b(fd, 'shore_power'),
-    hin:                       s(fd, 'hin'),
-    documentation_number:      s(fd, 'documentation_number'),
-    registration_number:       s(fd, 'registration_number'),
-    registration_state:        s(fd, 'registration_state'),
-    registration_expiry:       s(fd, 'registration_expiry'),
-    state_reg_expiry:          s(fd, 'state_reg_expiry'),
-    flag_state:                s(fd, 'flag_state'),
-    mmsi_number:               s(fd, 'mmsi_number'),
-    insurance_provider:        s(fd, 'insurance_provider'),
-    insurance_policy:          s(fd, 'insurance_policy'),
+    name: s(fd, 'name'),
+    photo_url: s(fd, 'photo_url'),
+    status: s(fd, 'status') || 'active',
+    asset_category: s(fd, 'asset_category'),
+    asset_type: s(fd, 'asset_type') || 'powerboat',
+    asset_subtype: s(fd, 'asset_subtype'),
+    make: s(fd, 'make'),
+    model: s(fd, 'model'),
+    year: i(fd, 'year'),
+    color: s(fd, 'color'),
+    hull_material: s(fd, 'hull_material'),
+    length_ft: n(fd, 'length_ft'),
+    beam_ft: n(fd, 'beam_ft'),
+    draft_ft: n(fd, 'draft_ft'),
+    air_draft_ft: n(fd, 'air_draft_ft'),
+    weight_lbs: n(fd, 'weight_lbs'),
+    keel_type: s(fd, 'keel_type'),
+    bottom_paint_type: s(fd, 'bottom_paint_type'),
+    fuel_type: s(fd, 'fuel_type'),
+    fuel_tank_gallons: n(fd, 'fuel_tank_gallons'),
+    engine_count: i(fd, 'engine_count'),
+    engine_type: s(fd, 'engine_type'),
+    engine_make: s(fd, 'engine_make'),
+    engine_model: s(fd, 'engine_model'),
+    engine_year: i(fd, 'engine_year'),
+    engine_serial: s(fd, 'engine_serial'),
+    horsepower_per_engine: n(fd, 'horsepower_per_engine'),
+    engine_hp: n(fd, 'engine_hp'),
+    total_horsepower: n(fd, 'total_horsepower'),
+    raw_water_cooled: b(fd, 'raw_water_cooled'),
+    shore_power: b(fd, 'shore_power'),
+    hin: s(fd, 'hin'),
+    documentation_number: s(fd, 'documentation_number'),
+    registration_number: s(fd, 'registration_number'),
+    registration_state: s(fd, 'registration_state'),
+    registration_expiry: s(fd, 'registration_expiry'),
+    state_reg_expiry: s(fd, 'state_reg_expiry'),
+    flag_state: s(fd, 'flag_state'),
+    mmsi_number: s(fd, 'mmsi_number'),
+    insurance_provider: s(fd, 'insurance_provider'),
+    insurance_policy: s(fd, 'insurance_policy'),
     insurance_coverage_amount: n(fd, 'insurance_coverage_amount'),
-    insurance_expiry:          s(fd, 'insurance_expiry'),
-    insurance_agent_name:      s(fd, 'insurance_agent_name'),
-    insurance_agent_phone:     s(fd, 'insurance_agent_phone'),
-    life_raft:                 b(fd, 'life_raft'),
-    life_jacket_count:         i(fd, 'life_jacket_count'),
-    epirb_serial:              s(fd, 'epirb_serial'),
-    epirb_expiry:              s(fd, 'epirb_expiry'),
-    flare_kit_expiry:          s(fd, 'flare_kit_expiry'),
-    fire_extinguisher_expiry:  s(fd, 'fire_extinguisher_expiry'),
-    oil_placard:               b(fd, 'oil_placard'),
-    discharge_placard:         b(fd, 'discharge_placard'),
-    alarm:                     b(fd, 'alarm'),
-    gps_tracker:               b(fd, 'gps_tracker'),
-    lock_type:                 s(fd, 'lock_type'),
-    lock_location:             s(fd, 'lock_location'),
-    lock_combination:          s(fd, 'lock_combination'),
-    authorized_operators:      t(fd, 'authorized_operators'),
-    last_haulout_date:         s(fd, 'last_haulout_date'),
-    last_survey_date:          s(fd, 'last_survey_date'),
-    has_trailer:               b(fd, 'has_trailer'),
-    trailer_make:              s(fd, 'trailer_make'),
-    trailer_type:              s(fd, 'trailer_type'),
-    trailer_axle_count:        i(fd, 'trailer_axle_count'),
-    trailer_length_ft:         n(fd, 'trailer_length_ft'),
-    trailer_width_ft:          n(fd, 'trailer_width_ft'),
-    trailer_plate:             s(fd, 'trailer_plate'),
-    trailer_vin:               s(fd, 'trailer_vin'),
-    notes:                     s(fd, 'notes'),
-    updated_at:                new Date().toISOString(),
+    insurance_expiry: s(fd, 'insurance_expiry'),
+    insurance_agent_name: s(fd, 'insurance_agent_name'),
+    insurance_agent_phone: s(fd, 'insurance_agent_phone'),
+    life_raft: b(fd, 'life_raft'),
+    life_jacket_count: i(fd, 'life_jacket_count'),
+    epirb_serial: s(fd, 'epirb_serial'),
+    epirb_expiry: s(fd, 'epirb_expiry'),
+    flare_kit_expiry: s(fd, 'flare_kit_expiry'),
+    fire_extinguisher_expiry: s(fd, 'fire_extinguisher_expiry'),
+    oil_placard: b(fd, 'oil_placard'),
+    discharge_placard: b(fd, 'discharge_placard'),
+    alarm: b(fd, 'alarm'),
+    gps_tracker: b(fd, 'gps_tracker'),
+    lock_type: s(fd, 'lock_type'),
+    lock_location: s(fd, 'lock_location'),
+    lock_combination: s(fd, 'lock_combination'),
+    authorized_operators: t(fd, 'authorized_operators'),
+    last_haulout_date: s(fd, 'last_haulout_date'),
+    last_survey_date: s(fd, 'last_survey_date'),
+    has_trailer: b(fd, 'has_trailer'),
+    trailer_make: s(fd, 'trailer_make'),
+    trailer_type: s(fd, 'trailer_type'),
+    trailer_axle_count: i(fd, 'trailer_axle_count'),
+    trailer_length_ft: n(fd, 'trailer_length_ft'),
+    trailer_width_ft: n(fd, 'trailer_width_ft'),
+    trailer_plate: s(fd, 'trailer_plate'),
+    trailer_vin: s(fd, 'trailer_vin'),
+    notes: s(fd, 'notes'),
+    updated_at: new Date().toISOString(),
   }
 }
 
-const FORM_CSS = `
-  .skipper-asset-form select option { background: #05111f; color: #ffffff; }
-  .skipper-asset-form select { color-scheme: dark; }
-`
+const FORM_CSS = `.skipper-asset-form select option { background: #05111f; color: #fff; } .skipper-asset-form select { color-scheme: dark; }`
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props) {
@@ -250,25 +242,15 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
     setBusy(true); setErr('')
 
     const payload = buildPayload(fd)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let result: Record<string, unknown> | null = null
     let errMsg = ''
 
     if (isEdit) {
-      const { data, error } = await supabase
-        .from('marina_assets')
-        .update(payload)
-        .eq('id', a.id as string)
-        .select()
-        .single()
+      const { data, error } = await supabase.from('marina_assets').update(payload).eq('id', a.id as string).select().single()
       if (error) errMsg = error.message
       else result = data as Record<string, unknown>
     } else {
-      const { data, error } = await supabase
-        .from('marina_assets')
-        .insert({ ...payload, tenant_id: contactId, marina_id: null, owner_type: 'customer' })
-        .select()
-        .single()
+      const { data, error } = await supabase.from('marina_assets').insert({ ...payload, tenant_id: contactId, marina_id: null, owner_type: 'customer' }).select().single()
       if (error) errMsg = error.message
       else result = data as Record<string, unknown>
     }
@@ -279,10 +261,12 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="skipper-asset-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <form ref={formRef} onSubmit={handleSubmit} className="skipper-asset-form"
+      style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <style>{FORM_CSS}</style>
       {isEdit && <input type="hidden" name="id" value={a.id as string} />}
 
+      {/* ── Schema-driven sections (mirrors OPS exactly) ── */}
       {ASSET_FORM_SCHEMA
         .filter(section => sectionVisibleTo(section, role))
         .map((section, sIdx) => (
@@ -312,7 +296,7 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
           </Section>
         ))}
 
-      {/* ── Engines ─────────────────────────────────────── */}
+      {/* ── Engines (dynamic, edit only) ── */}
       {isEdit && a.id && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Engines</div>
@@ -322,7 +306,7 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
         </div>
       )}
 
-      {/* ── Notes ───────────────────────────────────────── */}
+      {/* ── Notes (dynamic, edit only) ── */}
       {isEdit && a.id && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Notes</div>
@@ -332,7 +316,7 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
         </div>
       )}
 
-      {/* ── Service History ──────────────────────────────── */}
+      {/* ── Service History (dynamic, edit only) ── */}
       {isEdit && a.id && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Service History</div>
@@ -342,7 +326,7 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
         </div>
       )}
 
-      {/* ── Ship's Log ───────────────────────────────────── */}
+      {/* ── Ship's Log (dynamic, edit only) ── */}
       {isEdit && a.id && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Ship&#39;s Log</div>
@@ -352,7 +336,7 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
         </div>
       )}
 
-      {/* ── Documents on File ───────────────────────────── */}
+      {/* ── Documents on File (dynamic, edit only) ── */}
       {isEdit && a.id && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Documents on File</div>
