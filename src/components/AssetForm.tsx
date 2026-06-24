@@ -269,6 +269,25 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel }: Props
     const fd = new FormData(e.currentTarget)
     const payload = buildPayload(fd)
 
+    // 🔴 HARD STOP VALIDATION (vessel-spec.md — LOCKED 2026-06-24)
+    const isPWC = payload.asset_type === 'jet_ski'
+    if (!payload.name?.trim()) {
+      setError('Vessel name is required.')
+      setSaving(false)
+      return
+    }
+    if (!payload.asset_type) {
+      setError('Vessel type is required.')
+      setSaving(false)
+      return
+    }
+    if (!isPWC) {
+      if (!payload.length_ft) { setError('Length (LOA) is required — needed for slip matching.'); setSaving(false); return }
+      if (!payload.beam_ft)   { setError('Beam is required — needed for slip matching.');         setSaving(false); return }
+      if (!payload.draft_ft)  { setError('Draft is required — needed for slip matching.');        setSaving(false); return }
+      if (!payload.air_draft_ft) { setError('Air draft is required — needed for bridge clearance.'); setSaving(false); return }
+    }
+
     if (isEdit) {
       const { data, error: err } = await supabase
         .from('marina_assets')
