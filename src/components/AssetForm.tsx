@@ -9,6 +9,11 @@
 import { useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import TagInput from '@/components/TagInput'
+import DocumentList from '@/components/DocumentList'
+import EngineList from '@/components/EngineList'
+import ServiceHistoryList from '@/components/ServiceHistoryList'
+import ShipLogList from '@/components/ShipLogList'
+import NotesLog from '@/components/NotesLog'
 import {
   ASSET_FORM_SCHEMA,
   sectionVisibleTo,
@@ -306,6 +311,56 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
             })}
           </Section>
         ))}
+
+      {/* ── Engines ─────────────────────────────────────── */}
+      {isEdit && a.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Engines</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <EngineList assetId={a.id as string} marinaId={a.marina_id as string | null ?? null} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Notes ───────────────────────────────────────── */}
+      {isEdit && a.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Notes</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <NotesLog assetId={a.id as string} marinaId={a.marina_id as string | null ?? null} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Service History ──────────────────────────────── */}
+      {isEdit && a.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Service History</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <ServiceHistoryList assetId={a.id as string} marinaId={a.marina_id as string | null ?? null} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Ship's Log ───────────────────────────────────── */}
+      {isEdit && a.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Ship&#39;s Log</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <ShipLogList assetId={a.id as string} marinaId={a.marina_id as string | null ?? null} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Documents on File ───────────────────────────── */}
+      {isEdit && a.id && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.7)', fontFamily: FONT }}>Documents on File</div>
+          <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+            <DocumentList entityType="asset" entityId={a.id as string} marinaId={a.marina_id as string | null ?? null} />
+          </div>
+        </div>
+      )}
 
       {err && <p style={{ color: '#f87171', fontSize: 13, margin: 0, fontFamily: FONT }}>{err}</p>}
 
