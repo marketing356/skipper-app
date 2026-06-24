@@ -1401,9 +1401,15 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         </h2>
       </div>
       <AssetForm
-        marinas={[]}
-        contacts={[]}
         asset={editingAsset ?? undefined}
+        contactId={profile?.contact_id ?? null}
+        onSaved={(raw) => {
+          const v = assetRowToVessel(raw)
+          onVesselSaved(v, raw.id as string)
+          setShowForm(false)
+          setEditingAsset(null)
+        }}
+        onCancel={() => { setShowForm(false); setEditingAsset(null) }}
       />
     </div>
   )
