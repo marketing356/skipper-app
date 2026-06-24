@@ -44,7 +44,7 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
-type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'messages' | 'account'
+type HomeTab = 'vessel' | 'marinas' | 'messages' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
 type BerthData = {
@@ -1282,7 +1282,6 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
         {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
-        {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1291,11 +1290,13 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       {/* Bottom nav */}
       <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
         <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="My Vessel"  active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
-        <NavBtn icon={<IcoSkipper active={activeTab==='skipper'} />} label="Skipper"    active={activeTab==='skipper'} onClick={() => onTabChange('skipper')} />
         <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"    active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
         <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages"   active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
         <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"    active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
       </div>
+
+      {/* Floating Skipper */}
+      <SkipperFloat user={user} profile={profile} vessel={vessel} />
     </div>
   )
 }
@@ -2161,7 +2162,44 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   )
 }
 
-function TabSkipper({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+// ─── Floating Skipper ──────────────────────────────────────────────────────
+function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <style>{`
+        @keyframes skipperSlideUp { from{transform:translateY(30px);opacity:0} to{transform:translateY(0);opacity:1} }
+        @keyframes skipperBounce  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+        @keyframes skipperPing    { 0%{transform:scale(1);opacity:0.7} 100%{transform:scale(1.6);opacity:0} }
+      `}</style>
+
+      {/* Chat panel */}
+      {open && (
+        <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', background:'rgba(3,14,25,0.97)', backdropFilter:'blur(16px)', animation:'skipperSlideUp 0.3s ease both' }}>
+          <SkipperChat user={user} profile={profile} vessel={vessel} onClose={() => setOpen(false)} />
+        </div>
+      )}
+
+      {/* Floating button */}
+      <div style={{ position:'fixed', bottom:'calc(env(safe-area-inset-bottom,0px) + 78px)', right:18, zIndex:300 }}>
+        <div style={{ position:'relative' }}>
+          {!open && <div style={{ position:'absolute', inset:0, borderRadius:'50%', background:C.teal, animation:'skipperPing 2.2s ease-out infinite', opacity:0.45 }} />}
+          <button
+            onClick={() => setOpen(v => !v)}
+            style={{ position:'relative', width:58, height:58, borderRadius:'50%', background:`linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', cursor:'pointer', padding:0, boxShadow:`0 4px 22px rgba(77,214,200,0.45)`, animation: open?'none':'skipperBounce 2.8s ease-in-out infinite' }}
+          >
+            {open
+              ? <span style={{ color:C.navy, fontSize:26, fontWeight:800, lineHeight:1 }}>×</span>
+              : <Image src="/skipper-avatar.jpg" alt="Skipper" width={54} height={54} style={{ width:54, height:54, borderRadius:'50%', objectFit:'cover', objectPosition:'center top' }} />
+            }
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function SkipperChat({ user, profile, vessel, onClose }: { user: User; profile: Profile|null; vessel: Vessel|null; onClose: () => void }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
     { role:'skipper', text:`Aye aye! I'm Skipper — your personal marine intelligence. I know your boat, I know the marinas, I know transient availability, the marketplace, everything. What do you need?` }
   ])
@@ -2243,7 +2281,8 @@ function TabSkipper({ user, profile, vessel }: { user: User; profile: Profile|nu
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', padding:'0 20px' }}>
       {/* Header */}
-      <div style={{ padding:'14px 0 10px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid rgba(255,255,255,0.08)`, marginBottom:14, flexShrink:0 }}>
+      <div style={{ padding:'env(safe-area-inset-top,16px) 0 10px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid rgba(255,255,255,0.08)`, marginBottom:14, flexShrink:0 }}>
+        <button onClick={onClose} style={{ background:'none', border:'none', color:C.teal, fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1, flexShrink:0 }}>×</button>
         <div style={{ width:42, height:42, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, animation:'glow 4s ease-in-out infinite', flexShrink:0 }}>
           <Image src="/skipper-avatar.jpg" alt="Skipper" width={42} height={42} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
         </div>
