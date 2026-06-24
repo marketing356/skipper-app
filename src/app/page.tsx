@@ -44,7 +44,7 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
-type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'account'
+type HomeTab = 'vessel' | 'skipper' | 'marinas' | 'messages' | 'account'
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
 type BerthData = {
@@ -1284,6 +1284,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
         {activeTab === 'skipper'  && <TabSkipper  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
+        {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
       </div>
 
@@ -1292,6 +1293,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="My Vessel"  active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
         <NavBtn icon={<IcoSkipper active={activeTab==='skipper'} />} label="Skipper"    active={activeTab==='skipper'} onClick={() => onTabChange('skipper')} />
         <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"    active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
+        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages"   active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
         <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"    active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
       </div>
     </div>
@@ -1919,6 +1921,246 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
 }
 
 // ─── TAB: Skipper AI (Global) ────────────────────────────────────────────────
+// ─── TAB: Messages ───────────────────────────────────────────────────────────
+type DirectThread = { marina_id: string; marinaName: string; lastBody: string; lastAt: string; unread: number }
+type DirectMsg    = { id: string; body: string; direction: string; inserted_at: string }
+
+function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
+  const [threads,    setThreads]    = useState<DirectThread[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [activeThread, setActiveThread] = useState<DirectThread|null>(null)
+  const [msgs,       setMsgs]       = useState<DirectMsg[]>([])
+  const [msgsLoading,setMsgsLoading]= useState(false)
+  const [draft,      setDraft]      = useState('')
+  const [sending,    setSending]    = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  const displayName = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
+    : (user.email ?? 'Boater')
+
+  // ── Load thread list ───────────────────────────────────────────────────────
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      // Get all direct messages for this user
+      const { data: msgRows } = await supabase
+        .from('messages')
+        .select('id,body,direction,inserted_at,marina_id')
+        .eq('tenant_id', user.id)
+        .eq('channel', 'direct')
+        .order('inserted_at', { ascending: false })
+
+      if (!msgRows || msgRows.length === 0) { setLoading(false); return }
+
+      // Get marina names
+      const marinaIds = Array.from(new Set(msgRows.map((m: {marina_id:string}) => m.marina_id)))
+      const { data: marinaRows } = await supabase
+        .from('marinas')
+        .select('id,name')
+        .in('id', marinaIds)
+      const nameMap: Record<string,string> = {}
+      for (const m of (marinaRows ?? [])) nameMap[m.id] = m.name
+
+      // Group into threads (one per marina — last message wins)
+      const seen = new Set<string>()
+      const grouped: DirectThread[] = []
+      for (const row of msgRows) {
+        if (!seen.has(row.marina_id)) {
+          seen.add(row.marina_id)
+          grouped.push({
+            marina_id:  row.marina_id,
+            marinaName: nameMap[row.marina_id] ?? 'Marina',
+            lastBody:   row.body,
+            lastAt:     row.inserted_at,
+            unread:     0,
+          })
+        }
+      }
+      setThreads(grouped)
+      setLoading(false)
+    }
+    load()
+  }, [user.id])
+
+  // ── Realtime: new direct messages ─────────────────────────────────────────
+  useSkipperRealtime({
+    scope: { kind: 'boater', authUserId: user.id },
+    onChange: () => {
+      async function reload() {
+        const { data: msgRows } = await supabase
+          .from('messages')
+          .select('id,body,direction,inserted_at,marina_id')
+          .eq('tenant_id', user.id)
+          .eq('channel', 'direct')
+          .order('inserted_at', { ascending: false })
+        if (!msgRows || msgRows.length === 0) return
+        const marinaIds = Array.from(new Set(msgRows.map((m: {marina_id:string}) => m.marina_id)))
+        const { data: marinaRows } = await supabase.from('marinas').select('id,name').in('id', marinaIds)
+        const nameMap: Record<string,string> = {}
+        for (const m of (marinaRows ?? [])) nameMap[m.id] = m.name
+        const seen = new Set<string>()
+        const grouped: DirectThread[] = []
+        for (const row of msgRows) {
+          if (!seen.has(row.marina_id)) {
+            seen.add(row.marina_id)
+            grouped.push({ marina_id: row.marina_id, marinaName: nameMap[row.marina_id] ?? 'Marina', lastBody: row.body, lastAt: row.inserted_at, unread: 0 })
+          }
+        }
+        setThreads(grouped)
+        if (activeThread) loadThread(activeThread.marina_id)
+      }
+      reload()
+    },
+  })
+
+  // ── Load single thread ────────────────────────────────────────────────────
+  async function loadThread(marinaId: string) {
+    setMsgsLoading(true)
+    const { data } = await supabase
+      .from('messages')
+      .select('id,body,direction,inserted_at')
+      .eq('tenant_id', user.id)
+      .eq('marina_id', marinaId)
+      .eq('channel', 'direct')
+      .order('inserted_at', { ascending: true })
+    setMsgs(data ?? [])
+    setMsgsLoading(false)
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
+  }
+
+  function openThread(t: DirectThread) {
+    setActiveThread(t)
+    loadThread(t.marina_id)
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  async function send() {
+    if (!draft.trim() || !activeThread || sending) return
+    setSending(true)
+    const body = draft.trim()
+    setDraft('')
+    await supabase.from('messages').insert({
+      marina_id:   activeThread.marina_id,
+      tenant_id:   user.id,
+      direction:   'inbound',
+      body,
+      channel:     'direct',
+      sender_name: displayName ?? 'Boater',
+    })
+    setSending(false)
+    loadThread(activeThread.marina_id)
+  }
+
+  function fmtTime(iso: string) {
+    try {
+      const d = new Date(iso)
+      const now = new Date()
+      const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
+      if (diffDays === 0) return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+      if (diffDays === 1) return 'Yesterday'
+      if (diffDays < 7)  return d.toLocaleDateString([], { weekday:'short' })
+      return d.toLocaleDateString([], { month:'short', day:'numeric' })
+    } catch { return '' }
+  }
+
+  // ── Thread detail view ────────────────────────────────────────────────────
+  if (activeThread) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', height:'100%', minHeight:0 }}>
+        {/* Header */}
+        <div style={{ padding:'16px 20px 12px', borderBottom:`1px solid rgba(255,255,255,0.08)`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+          <button onClick={() => setActiveThread(null)} style={{ background:'none', border:'none', color:C.teal, fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1 }}>‹</button>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:C.white }}>{activeThread.marinaName}</div>
+            <div style={{ fontSize:11, color:C.muted }}>Direct messages</div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
+          {msgsLoading && <div style={{ textAlign:'center', color:C.muted, fontSize:13, padding:20 }}>Loading…</div>}
+          {!msgsLoading && msgs.length === 0 && (
+            <div style={{ textAlign:'center', color:C.muted, fontSize:14, padding:40 }}>
+              <div style={{ fontSize:32, marginBottom:12 }}>💬</div>
+              <div>No messages yet.</div>
+              <div style={{ fontSize:12, marginTop:6 }}>Send a message to {activeThread.marinaName}.</div>
+            </div>
+          )}
+          {msgs.map(m => {
+            const fromBoater = m.direction === 'inbound'
+            return (
+              <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems: fromBoater ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  maxWidth:'78%', padding:'10px 14px', borderRadius: fromBoater ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                  background: fromBoater ? `linear-gradient(135deg,${C.teal},#2fb3a3)` : 'rgba(255,255,255,0.1)',
+                  color: fromBoater ? C.navy : C.white, fontSize:14, lineHeight:1.45, fontWeight: fromBoater ? 600 : 400,
+                }}>{m.body}</div>
+                <div style={{ fontSize:10, color:C.muted2, marginTop:3, paddingInline:2 }}>{fmtTime(m.inserted_at)}</div>
+              </div>
+            )
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Compose */}
+        <div style={{ padding:'12px 16px env(safe-area-inset-bottom,12px)', borderTop:`1px solid rgba(255,255,255,0.08)`, display:'flex', gap:10, alignItems:'flex-end', flexShrink:0 }}>
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            placeholder="Message…"
+            rows={1}
+            style={{ flex:1, background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:22, color:C.white, fontSize:15, fontFamily:FONT, padding:'11px 16px', outline:'none', resize:'none', maxHeight:100, overflowY:'auto' }}
+          />
+          <button
+            onClick={send}
+            disabled={!draft.trim() || sending}
+            style={{ width:42, height:42, borderRadius:'50%', background: draft.trim() ? `linear-gradient(135deg,${C.teal},#2fb3a3)` : 'rgba(255,255,255,0.1)', border:'none', cursor: draft.trim() ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke={draft.trim()?C.navy:C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke={draft.trim()?C.navy:C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Thread list ───────────────────────────────────────────────────────────
+  return (
+    <div style={{ padding:'24px 20px' }}>
+      <h1 style={{ fontSize:22, fontWeight:800, color:C.white, margin:'0 0 6px', letterSpacing:-0.5 }}>Messages</h1>
+      <p style={{ fontSize:13, color:C.muted, margin:'0 0 24px' }}>Direct conversations with your marinas.</p>
+
+      {loading && <div style={{ textAlign:'center', color:C.muted, fontSize:13, padding:40 }}>Loading…</div>}
+
+      {!loading && threads.length === 0 && (
+        <div style={{ textAlign:'center', color:C.muted, padding:'60px 0' }}>
+          <div style={{ fontSize:40, marginBottom:16 }}>💬</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No messages yet</div>
+          <div style={{ fontSize:13, lineHeight:1.6 }}>When a marina messages you,<br/>it'll show up here.</div>
+        </div>
+      )}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+        {threads.map(t => (
+          <button
+            key={t.marina_id}
+            onClick={() => openThread(t)}
+            style={{ background:'rgba(255,255,255,0.05)', border:`1px solid rgba(255,255,255,0.09)`, borderRadius:16, padding:'16px', display:'flex', alignItems:'center', gap:14, textAlign:'left', cursor:'pointer', width:'100%' }}
+          >
+            <div style={{ width:46, height:46, borderRadius:'50%', background:`linear-gradient(135deg,${C.tealDim},rgba(77,214,200,0.25))`, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:15, fontWeight:700, color:C.white, marginBottom:3 }}>{t.marinaName}</div>
+              <div style={{ fontSize:13, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.lastBody}</div>
+            </div>
+            <div style={{ fontSize:11, color:C.muted2, flexShrink:0 }}>{fmtTime(t.lastAt)}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function TabSkipper({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
     { role:'skipper', text:`Aye aye! I'm Skipper — your personal marine intelligence. I know your boat, I know the marinas, I know transient availability, the marketplace, everything. What do you need?` }
@@ -2076,73 +2318,6 @@ function TabSkipper({ user, profile, vessel }: { user: User; profile: Profile|nu
   )
 }
 
-// ─── TAB 3: Messages (legacy — kept for reference) ──────────────────────────────
-function TabMessages({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
-  const [threads,  setThreads]  = useState<{marina: Marina; last: MsgRow}[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [selected, setSelected] = useState<Marina|null>(null)
-
-  useEffect(() => {
-    async function load() {
-      const { data: rows } = await supabase
-        .from('messages')
-        .select('id, body, direction, inserted_at, marina_id')
-        .eq('tenant_id', user.id)
-        .eq('channel', 'skipper')
-        .order('inserted_at', { ascending: false })
-
-      if (!rows || rows.length === 0) { setLoading(false); return }
-
-      const seen = new Set<string>()
-      const grouped: {marina_id:string; last:MsgRow}[] = []
-      for (const row of rows) {
-        if (!seen.has(row.marina_id)) { seen.add(row.marina_id); grouped.push({ marina_id: row.marina_id, last: row }) }
-      }
-
-      const ids = grouped.map(g => g.marina_id)
-      const { data: marinas } = await supabase.from('marinas').select('id,name,city,state,total_slips').in('id', ids)
-      const marinaMap: Record<string,Marina> = {}
-      for (const m of (marinas ?? [])) marinaMap[m.id] = m
-
-      setThreads(grouped.filter(g => marinaMap[g.marina_id]).map(g => ({ marina: marinaMap[g.marina_id], last: g.last })))
-      setLoading(false)
-    }
-    load()
-  }, [user.id])
-
-  if (selected) return <MarinaChat marina={selected} user={user} profile={profile} vessel={vessel} onBack={() => setSelected(null)} onAddVessel={() => setSelected(null)} />
-
-  return (
-    <div style={{ padding:'20px 20px 0', animation:'fadeUp 0.35s ease both' }}>
-      <SectionTitle>Messages</SectionTitle>
-      {loading && <div style={{ textAlign:'center', color:C.muted, padding:'32px 0' }}>Loading…</div>}
-      {!loading && threads.length === 0 && (
-        <div style={{ textAlign:'center', padding:'48px 20px' }}>
-          <div style={{ width:60, height:60, borderRadius:'50%', overflow:'hidden', margin:'0 auto 14px', border:`2px solid ${C.teal}` }}>
-            <Image src="/skipper-avatar.jpg" alt="Skipper" width={60} height={60} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
-          </div>
-          <div style={{ fontSize:16, fontWeight:700, marginBottom:6 }}>No messages yet</div>
-          <div style={{ fontSize:13, color:C.muted, lineHeight:1.6, maxWidth:260, margin:'0 auto' }}>
-            Message any marina from the Marinas tab — your threads show up here.
-          </div>
-        </div>
-      )}
-      {!loading && threads.map(({ marina, last }, i) => (
-        <button key={marina.id} onClick={() => setSelected(marina)}
-          style={{ width:'100%', display:'flex', alignItems:'center', gap:14, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:18, padding:'14px 16px', marginBottom:10, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.05}s both` }}>
-          <div style={{ width:46, height:46, borderRadius:13, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:15, fontWeight:700, marginBottom:3 }}>{marina.name}</div>
-            <div style={{ fontSize:12, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{last.body}</div>
-          </div>
-          <div style={{ fontSize:11, color:C.muted2, flexShrink:0 }}>{new Date(last.inserted_at).toLocaleDateString()}</div>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ─── TAB 4: Account ────────────────────────────────────────────────────────────
 function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   user:User; profile:Profile|null; vessels:Vessel[]; onSignOut:()=>void;
   onProfileUpdated:(p:Profile)=>void
