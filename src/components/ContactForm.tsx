@@ -7,7 +7,7 @@
  * One person = ONE row in contacts. No ghost fields.
  * To add a field: edit OPS lib/contact-form-schema.ts, redeploy. This form reflects automatically.
  */
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import DocumentList from '@/components/DocumentList'
 import ContactNotesLog from '@/components/ContactNotesLog'
@@ -15,10 +15,12 @@ import MembershipList from '@/components/MembershipList'
 import EmergencyContactList from '@/components/EmergencyContactList'
 import {
   CONTACT_FORM_SCHEMA,
+  fetchContactFormSchema,
   sectionVisibleTo,
   fieldVisibleTo,
   type Role,
   type ContactField,
+  type ContactSection,
 } from '@/lib/contact-form-schema'
 
 const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
@@ -202,6 +204,8 @@ export default function ContactForm({ userId, contact, onSaved, onCancel, submit
   const formRef = useRef<HTMLFormElement>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [schema, setSchema] = useState<ContactSection[]>(CONTACT_FORM_SCHEMA)
+  useEffect(() => { fetchContactFormSchema().then(setSchema).catch(() => {}) }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -230,7 +234,7 @@ export default function ContactForm({ userId, contact, onSaved, onCancel, submit
       style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <style>{FORM_CSS}</style>
 
-      {CONTACT_FORM_SCHEMA
+      {schema
         .filter(section => sectionVisibleTo(section, ROLE) && section.id !== 'notes')
         .map((section, sIdx) => (
           <Section key={section.id} title={section.title} defaultOpen={sIdx === 0}>

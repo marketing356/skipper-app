@@ -9,7 +9,7 @@
  *   4. Role = 'boater'
  * Fields, sections, layout, sub-components: identical to OPS.
  */
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import DocumentList from '@/components/DocumentList'
 import EngineList from '@/components/EngineList'
@@ -19,10 +19,12 @@ import NotesLog from '@/components/NotesLog'
 import TagInput from '@/components/TagInput'
 import {
   ASSET_FORM_SCHEMA,
+  fetchAssetFormSchema,
   sectionVisibleTo,
   fieldVisibleTo,
   type Role,
   type AssetField,
+  type AssetSection,
 } from '@/lib/asset-form-schema'
 
 const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
@@ -232,6 +234,8 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
   const role: Role = 'boater'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [schema, setSchema] = useState<AssetSection[]>(ASSET_FORM_SCHEMA)
+  useEffect(() => { fetchAssetFormSchema().then(setSchema).catch(() => {}) }, [])
   const formRef = useRef<HTMLFormElement>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -266,8 +270,8 @@ export default function AssetForm({ contactId, asset, onSaved, onCancel }: Props
       <style>{FORM_CSS}</style>
       {isEdit && <input type="hidden" name="id" value={a.id as string} />}
 
-      {/* ── Schema-driven sections (mirrors OPS exactly) ── */}
-      {ASSET_FORM_SCHEMA
+      {/* ── Schema-driven sections (live from OPS) ── */}
+      {schema
         .filter(section => sectionVisibleTo(section, role))
         .map((section, sIdx) => (
           <Section key={section.id} title={section.title} defaultOpen={sIdx === 0}>
