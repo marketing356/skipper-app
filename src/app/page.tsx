@@ -290,6 +290,16 @@ function daysUntil(dateStr: string | null): number | null {
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
+// ─── Dynamic vessel icon by type ─────────────────────────────────────────────
+function vesselIcon(type: string | null | undefined): string {
+  const t = (type || '').toLowerCase()
+  if (t.includes('sail')) return '⛵'
+  if (t.includes('pwc') || t.includes('jet')) return '🛥️'
+  if (t.includes('kayak') || t.includes('canoe')) return '🛶'
+  if (t.includes('power') || t.includes('motor')) return '🚤'
+  return '⚓'
+}
+
 // ─── Contacts → Profile mapper ─────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function contactToProfile(c: Record<string, any>): Profile {
@@ -871,6 +881,7 @@ export default function SkipperApp() {
       }}
       onProfileUpdated={(p) => setProfile(p)}
       vesselsLoading={vesselsLoading}
+      onRefreshVessels={() => { if (userRef.current) loadUserData(userRef.current).catch(()=>{}) }}
     />
   )
 }
@@ -1263,11 +1274,11 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading }: {
+function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading, onRefreshVessels }: {
   user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
   onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void; onProfileUpdated: (p: Profile) => void
-  vesselsLoading: boolean
+  vesselsLoading: boolean; onRefreshVessels: () => void
 }) {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
 
@@ -1301,7 +1312,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
           </div>
           {vessels.length > 0 && (
             <div style={{ fontSize:12, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px' }}>
-              ⛵ {vessels.length === 1 ? vessels[0].name : `${vessels.length} assets`}
+              {vesselIcon(vessels[0]?.vessel_type)} {vessels.length === 1 ? vessels[0].name : `${vessels.length} assets`}
             </div>
           )}
         </div>
@@ -1335,7 +1346,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       </div>
 
       {/* Floating Skipper */}
-      <SkipperFloat user={user} profile={profile} vessel={vessel} />
+      <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} />
     </div>
   )
 }
@@ -1352,6 +1363,10 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   // ── Form state ───────────────────────────────────────────────────────────────
   const [showForm,    setShowForm]    = useState(false)
   const [editingAsset,setEditingAsset]= useState<Record<string,unknown>|null>(null)
+
+  // ── Expand/collapse vessel card state ────────────────────────────────────────
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
+  const toggleExpand = (id: string) => setExpandedIds(p => ({ ...p, [id]: !p[id] }))
 
   // ── Load berths ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1492,7 +1507,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
             <div key={vesselIds[idx]} style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
               <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>⛵</div>
+                  <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>{vesselIcon(v.vessel_type)}</div>
                   <div>
                     <div style={{ fontSize:20, fontWeight:800, letterSpacing:-0.4 }}>{v.name}</div>
                     <div style={{ fontSize:13, color:C.muted }}>{v.vessel_type}{v.year ? ` · ${v.year}` : ''}</div>
@@ -1500,7 +1515,10 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
-
+                  <button onClick={() => toggleExpand(vesselIds[idx])}
+                    style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                    {expandedIds[vesselIds[idx]] ? '▼' : '▶'}
+                  </button>
                   <button onClick={() => openEdit(vesselIds[idx])}
                     style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
                     Edit
@@ -1511,21 +1529,23 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </button>
                 </div>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                {[
-                  v.length_ft && ['LOA', `${v.length_ft} ft`],
-                  v.beam_ft   && ['Beam', `${v.beam_ft} ft`],
-                  v.draft_ft  && ['Draft', `${v.draft_ft} ft`],
-                  v.air_draft_ft && ['Air Draft', `${v.air_draft_ft} ft`],
-                  v.weight_lbs && ['Weight', `${v.weight_lbs.toLocaleString()} lbs`],
-                  v.registration_number && ['Reg #', v.registration_number],
-                ].filter(Boolean).map(([l, val]) => (
-                  <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
-                    <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{l}</div>
-                    <div style={{ fontSize:14, fontWeight:700 }}>{val}</div>
-                  </div>
-                ))}
-              </div>
+              {expandedIds[vesselIds[idx]] && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  {[
+                    v.length_ft && ['LOA', `${v.length_ft} ft`],
+                    v.beam_ft   && ['Beam', `${v.beam_ft} ft`],
+                    v.draft_ft  && ['Draft', `${v.draft_ft} ft`],
+                    v.air_draft_ft && ['Air Draft', `${v.air_draft_ft} ft`],
+                    v.weight_lbs && ['Weight', `${v.weight_lbs.toLocaleString()} lbs`],
+                    v.registration_number && ['Reg #', v.registration_number],
+                  ].filter(Boolean).map(([l, val]) => (
+                    <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
+                      <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{l}</div>
+                      <div style={{ fontSize:14, fontWeight:700 }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           <PrimaryBtn onClick={() => { setEditingAsset(null); setShowForm(true) }} style={{ marginTop:8 }}>
@@ -2208,7 +2228,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 const SKIPPER_ENGINE = 'https://skipper-engine-production.up.railway.app'
 const GREETING = `Welcome aboard — I'm Skipper, your personal boating assistant. You don't need to type a thing. Just talk to me and I'll record everything — boat specs, maintenance, anything. You can also upload documents right here (registration, insurance, whatever you have) so marinas always have them on file. Let's start: tell me your boat's name, make, length, and whatever specs you know. I'll build your first profile.`
 
-function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+function SkipperFloat({ user, profile, vessel, onRefreshVessels }: { user: User; profile: Profile|null; vessel: Vessel|null; onRefreshVessels: () => void }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<{role:string;text:string}[]>([{ role:'skipper', text: GREETING }])
   const [sessionLoaded, setSessionLoaded] = useState(false)
@@ -2237,7 +2257,7 @@ function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|
 
       {/* Chat panel — always mounted to preserve scroll/state; hidden when closed */}
       <div style={{ position:'fixed', inset:0, zIndex:400, display: open ? 'flex' : 'none', flexDirection:'column', background:'rgba(3,14,25,0.97)', backdropFilter:'blur(16px)', animation: open ? 'skipperSlideUp 0.3s ease both' : 'none' }}>
-        <SkipperChat user={user} profile={profile} vessel={vessel} msgs={msgs} setMsgs={setMsgs} onClose={() => setOpen(false)} />
+        <SkipperChat user={user} profile={profile} vessel={vessel} msgs={msgs} setMsgs={setMsgs} onClose={() => setOpen(false)} onRefreshVessels={onRefreshVessels} />
       </div>
 
       {/* Floating button */}
@@ -2259,7 +2279,7 @@ function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|
   )
 }
 
-function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: User; profile: Profile|null; vessel: Vessel|null; msgs: {role:string;text:string}[]; setMsgs: React.Dispatch<React.SetStateAction<{role:string;text:string}[]>>; onClose: () => void }) {
+function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshVessels }: { user: User; profile: Profile|null; vessel: Vessel|null; msgs: {role:string;text:string}[]; setMsgs: React.Dispatch<React.SetStateAction<{role:string;text:string}[]>>; onClose: () => void; onRefreshVessels: () => void }) {
   const [draft,      setDraft]      = useState('')
   const [sending,    setSending]    = useState(false)
   const [uploading,  setUploading]  = useState(false)
@@ -2391,6 +2411,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
       const skipperReply = d.reply || 'Let me look into that.'
       const updatedMsgs = [...msgs, { role:'user', text:msg }, { role:'skipper', text:skipperReply }]
       setMsgs(updatedMsgs)
+      onRefreshVessels()
       // Persist session to engine (fire-and-forget)
       fetch(`${SKIPPER_ENGINE}/chat`, { method:'HEAD' }).catch(() => {})
       fetch(`${SKIPPER_ENGINE}/session-save`, {
@@ -2433,7 +2454,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
         </div>
         {vessel && (
           <div style={{ marginLeft:'auto', fontSize:11, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px', flexShrink:0 }}>
-            ⛵ {vessel.name}
+            {vesselIcon(vessel?.vessel_type)} {vessel.name}
           </div>
         )}
       </div>
