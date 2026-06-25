@@ -1845,12 +1845,35 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
 }
 // ─── Marina Chat ──────────────────────────────────────────────────────────────
 function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVessel }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; coupled?:boolean; onBack:()=>void; onAddVessel:()=>void }) {
-  const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
-    { role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }
-  ])
+  const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([])
   const [draft,   setDraft]   = useState('')
   const [sending, setSending] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Load full persistent history on mount
+  useEffect(() => {
+    async function loadHistory() {
+      const { data } = await supabase
+        .from('messages')
+        .select('direction,body,inserted_at')
+        .eq('tenant_id', user.id)
+        .eq('marina_id', marina.id)
+        .eq('channel', 'skipper')
+        .order('inserted_at', { ascending: true })
+      if (data && data.length > 0) {
+        setMsgs(data.map((m: { direction: string; body: string }) => ({
+          role: m.direction === 'inbound' ? 'user' : 'skipper',
+          text: m.body,
+        })))
+      } else {
+        setMsgs([{ role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }])
+      }
+      setHistoryLoaded(true)
+    }
+    loadHistory()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marina.id, user.id])
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.display_name || user.email
@@ -1925,6 +1948,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
             identity: identityPackage,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             session: { marina_id: marina.id, boater_id: user.id, access_type: 'anonymous' },
+            history: msgs.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
           })
       })
       const d = await r.json()
@@ -1956,6 +1980,9 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
         </div>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:14, minHeight:200 }}>
+        {!historyLoaded && (
+          <div style={{ textAlign:'center', color:C.muted, fontSize:13, padding:'20px 0' }}>Loading conversation…</div>
+        )}
         {msgs.map((m,i) => (
           <div key={i} style={{ display:'flex', justifyContent:m.role==='user'?'flex-end':'flex-start', gap:8, alignItems:'flex-end' }}>
             {m.role==='skipper' && (
