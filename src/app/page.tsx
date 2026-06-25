@@ -1867,6 +1867,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
     // Full identity package — all fields
     const identityPackage = {
       auth_user_id:  user.id,
+      contact_id:    profile?.contact_id ?? null,
       first_name:    profile?.first_name ?? null,
       last_name:     profile?.last_name ?? null,
       display_name:  displayName,
@@ -2376,6 +2377,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
 
     const identityPackage = {
       auth_user_id:  user.id,
+      contact_id:    profile?.contact_id ?? null,
       first_name:    profile?.first_name ?? null,
       last_name:     profile?.last_name ?? null,
       display_name:  displayName,
