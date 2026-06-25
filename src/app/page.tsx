@@ -44,7 +44,18 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
-type HomeTab = 'vessel' | 'marinas' | 'messages' | 'account'
+type HomeTab = 'vessel' | 'weather' | 'marinas' | 'messages' | 'account'
+
+type WeatherData = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  current:  Record<string, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  forecast: any[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  marine:   Record<string, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tides:    Record<string, any>
+}
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
 
 type BerthData = {
@@ -1258,6 +1269,23 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void; onProfileUpdated: (p: Profile) => void
   vesselsLoading: boolean
 }) {
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude: lat, longitude: lon } = pos.coords
+        fetch(`/api/weather?lat=${lat}&lon=${lon}`)
+          .then(r => r.json())
+          .then(d => setWeatherData(d))
+          .catch(() => {})
+      },
+      () => { /* location denied — silent */ },
+      { enableHighAccuracy: false, timeout: 10000 }
+    )
+  }, [])
+
   return (
     <div style={{ minHeight:'100vh', maxHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
       <style>{GLOBAL_CSS}</style>
@@ -1279,9 +1307,19 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         </div>
       </div>
 
+      {/* Weather strip */}
+      <WeatherStrip data={weatherData} onTap={() => onTabChange('weather')} />
+
       {/* Scrollable content */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
         {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
+        {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
+          if (typeof navigator === 'undefined' || !navigator.geolocation) return
+          navigator.geolocation.getCurrentPosition(pos => {
+            fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+              .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
+          }, () => {})
+        }} />}
         {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
         {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
         {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1289,10 +1327,11 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
       {/* Bottom nav */}
       <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
-        <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="My Vessel"  active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
-        <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"    active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
-        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages"   active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
-        <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"    active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
+        <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="Vessel"   active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
+        <NavBtn icon={<IcoWeather active={activeTab==='weather'} />} label="Weather"  active={activeTab==='weather'} onClick={() => onTabChange('weather')} />
+        <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"  active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
+        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
+        <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"  active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
       </div>
 
       {/* Floating Skipper */}
@@ -2746,6 +2785,210 @@ function FormSectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Nav Icons ─────────────────────────────────────────────────────────────────
+// ── WEATHER STRIP ───────────────────────────────────────────────────────────────────────
+function WeatherStrip({ data, onTap }: { data: WeatherData | null; onTap: () => void }) {
+  if (!data?.current?.temp_f) return null
+  const { current, tides } = data
+  const nextTide = tides?.next
+  const tideDir  = tides?.is_rising ? '↑' : '↓'
+  const tideTime = nextTide
+    ? new Date(nextTide.time).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true })
+    : null
+  return (
+    <button
+      onClick={onTap}
+      style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'none', borderBottom:'1px solid rgba(255,255,255,0.06)', padding:'6px 20px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:14, fontFamily:FONT, flexShrink:0 }}
+    >
+      <span style={{ fontSize:13, color:C.white, fontWeight:600 }}>
+        {current.icon} {current.temp_f}° · {current.wind_dir} {current.wind_kts} kts
+      </span>
+      {nextTide && tideTime && (
+        <span style={{ fontSize:13, color:C.teal, fontWeight:600 }}>
+          🌊{tideDir} {nextTide.type} {tideTime}
+        </span>
+      )}
+    </button>
+  )
+}
+
+// ── TAB: WEATHER ────────────────────────────────────────────────────────────────────
+function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | null; onRefresh: () => void }) {
+  const w = weatherData
+
+  if (!w) return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'60px 20px', gap:16 }}>
+      <div style={{ fontSize:48 }}>🌤️</div>
+      <div style={{ fontSize:16, fontWeight:700, color:C.white }}>Getting your weather…</div>
+      <div style={{ fontSize:13, color:C.muted, textAlign:'center', lineHeight:1.6, maxWidth:260 }}>
+        Allow location access for live marine weather at your current position.
+      </div>
+      <button onClick={onRefresh} style={{ marginTop:8, padding:'10px 24px', background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:12, color:C.teal, fontFamily:FONT, fontWeight:700, cursor:'pointer', fontSize:13 }}>
+        Try Again
+      </button>
+    </div>
+  )
+
+  const c     = w.current || {}
+  const tides = w.tides   || {}
+  const mar   = w.marine  || {}
+  const fcast = w.forecast || []
+
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
+  return (
+    <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.35s ease both' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <SectionTitle>Marine Weather</SectionTitle>
+        <button onClick={onRefresh} style={{ background:'none', border:'none', color:C.teal, fontSize:11, fontFamily:FONT, cursor:'pointer', fontWeight:700 }}>Refresh ↻</button>
+      </div>
+
+      {/* Current conditions */}
+      <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.16) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
+          <div>
+            <div style={{ fontSize:52, lineHeight:1 }}>{c.icon || '🌤️'}</div>
+            <div style={{ fontSize:44, fontWeight:800, letterSpacing:-2, lineHeight:1.1, marginTop:8 }}>{c.temp_f}°<span style={{ fontSize:20 }}>F</span></div>
+            <div style={{ fontSize:15, color:C.muted, marginTop:4 }}>{c.description}</div>
+          </div>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontSize:11, color:C.muted2, textTransform:'uppercase', letterSpacing:1 }}>Feels like</div>
+            <div style={{ fontSize:22, fontWeight:700 }}>{c.feels_like_f}°</div>
+            {c.pressure_mb && (
+              <div style={{ fontSize:12, color:C.muted, marginTop:6 }}>{c.pressure_mb} mb</div>
+            )}
+            {c.visibility_mi != null && (
+              <div style={{ fontSize:12, color:C.muted }}>{c.visibility_mi} mi visibility</div>
+            )}
+          </div>
+        </div>
+
+        {/* Wind compass */}
+        <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:14, padding:'14px 16px', display:'flex', alignItems:'center', gap:16 }}>
+          <WindCompass deg={c.wind_dir_deg || 0} size={56} />
+          <div>
+            <div style={{ fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>Wind</div>
+            <div style={{ fontSize:22, fontWeight:800 }}>{c.wind_kts} <span style={{ fontSize:13, fontWeight:400 }}>kts</span></div>
+            <div style={{ fontSize:13, color:C.muted }}>{c.wind_dir} {c.gusts_kts > 0 ? `· Gusts ${c.gusts_kts} kts` : ''}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tides */}
+      <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:22, padding:20, marginBottom:14 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:14 }}>Tides</div>
+        {tides.status === 'ok' ? (
+          <>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+              <div style={{ fontSize:32 }}>{tides.is_rising ? '🌊↑' : '🌊↓'}</div>
+              <div>
+                <div style={{ fontSize:18, fontWeight:800 }}>{tides.is_rising ? 'Rising' : 'Falling'}</div>
+                {tides.next && (
+                  <div style={{ fontSize:13, color:C.teal }}>
+                    Next {tides.next.type}: {tides.next.height_ft} ft · {new Date(tides.next.time).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {tides.predictions?.slice(0, 4).map((p: {time:string;type:string;height_ft:string}, i: number) => (
+                <div key={i} style={{ background:'rgba(0,0,0,0.2)', borderRadius:10, padding:'10px 12px' }}>
+                  <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:2 }}>{p.type} Tide</div>
+                  <div style={{ fontSize:15, fontWeight:700 }}>{p.height_ft} ft</div>
+                  <div style={{ fontSize:12, color:C.muted }}>{new Date(p.time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}</div>
+                  <div style={{ fontSize:10, color:C.muted2 }}>{new Date(p.time).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</div>
+                </div>
+              ))}
+            </div>
+            {tides.nearest_station && (
+              <div style={{ fontSize:11, color:C.muted2, marginTop:10 }}>
+                Station: {tides.nearest_station} ({tides.distance_mi} mi)
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ fontSize:13, color:C.muted, textAlign:'center', padding:'12px 0' }}>
+            Tide data unavailable for this location
+          </div>
+        )}
+      </div>
+
+      {/* Marine conditions */}
+      {mar.wave_height_ft != null && (
+        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:22, padding:20, marginBottom:14 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:14 }}>Sea Conditions</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+            <div style={{ background:'rgba(0,0,0,0.2)', borderRadius:10, padding:'10px 12px', textAlign:'center' }}>
+              <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>Wave Ht</div>
+              <div style={{ fontSize:18, fontWeight:700 }}>{mar.wave_height_ft}<span style={{ fontSize:11 }}> ft</span></div>
+            </div>
+            {mar.wave_period_s != null && (
+              <div style={{ background:'rgba(0,0,0,0.2)', borderRadius:10, padding:'10px 12px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>Period</div>
+                <div style={{ fontSize:18, fontWeight:700 }}>{mar.wave_period_s}<span style={{ fontSize:11 }}> sec</span></div>
+              </div>
+            )}
+            {mar.wave_dir && (
+              <div style={{ background:'rgba(0,0,0,0.2)', borderRadius:10, padding:'10px 12px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>Swell</div>
+                <div style={{ fontSize:18, fontWeight:700 }}>{mar.wave_dir}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3-day forecast */}
+      {fcast.length > 0 && (
+        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:22, padding:20 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:14 }}>3-Day Forecast</div>
+          {fcast.map((day: {date:string;icon:string;high_f:number;low_f:number;wind_kts:number;wind_dir:string;precip_pct:number;description:string}, i: number) => {
+            const d    = new Date(day.date + 'T12:00:00')
+            const name = dayNames[d.getDay()]
+            return (
+              <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'11px 0', borderBottom: i < fcast.length-1 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                <div style={{ width:36, fontSize:13, fontWeight:700, color:C.muted }}>{name}</div>
+                <div style={{ fontSize:22, width:32, textAlign:'center' }}>{day.icon}</div>
+                <div style={{ flex:1, paddingLeft:10 }}>
+                  <div style={{ fontSize:12, color:C.muted }}>{day.description}</div>
+                  <div style={{ fontSize:11, color:C.muted2 }}>{day.wind_dir} {day.wind_kts} kts{day.precip_pct > 20 ? ` · 🌧️ ${day.precip_pct}%` : ''}</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <span style={{ fontSize:15, fontWeight:700 }}>{day.high_f}°</span>
+                  <span style={{ fontSize:13, color:C.muted2, marginLeft:4 }}>{day.low_f}°</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Simple wind compass rose
+function WindCompass({ deg, size = 56 }: { deg: number; size?: number }) {
+  const r = size / 2
+  const cx = r, cy = r
+  // Arrow tip and tail
+  const rad = (deg - 90) * Math.PI / 180
+  const tip  = { x: cx + (r - 4) * Math.cos(rad),  y: cy + (r - 4) * Math.sin(rad)  }
+  const tail = { x: cx - (r - 10) * Math.cos(rad), y: cy - (r - 10) * Math.sin(rad) }
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink:0 }}>
+      <circle cx={cx} cy={cy} r={r - 2} fill="rgba(77,214,200,0.1)" stroke="rgba(77,214,200,0.35)" strokeWidth="1.5" />
+      {['N','E','S','W'].map((d, i) => {
+        const a = (i * 90 - 90) * Math.PI / 180
+        const tx = cx + (r - 9) * Math.cos(a)
+        const ty = cy + (r - 9) * Math.sin(a) + 4
+        return <text key={d} x={tx} y={ty} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.4)" fontWeight="700">{d}</text>
+      })}
+      <line x1={tail.x} y1={tail.y} x2={tip.x} y2={tip.y} stroke="#4dd6c8" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx={tip.x} cy={tip.y} r="3" fill="#4dd6c8" />
+      <circle cx={cx} cy={cy} r="3" fill="rgba(77,214,200,0.5)" />
+    </svg>
+  )
+}
+
 function IcoSkipper({ active }: { active: boolean }) {
   return (
     <div style={{ width:26, height:26, borderRadius:'50%', overflow:'hidden', border:`2px solid ${active ? C.teal : C.muted}`, opacity: active ? 1 : 0.55, transition:'all 0.2s', boxShadow: active ? `0 0 8px ${C.teal}` : 'none' }}>
@@ -2768,6 +3011,16 @@ function IcoMsgs({ active }: { active: boolean }) {
 function IcoAcct({ active }: { active: boolean }) {
   const c = active ? C.teal : C.muted
   return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8" fill={active?'rgba(77,214,200,0.1)':'none'}/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
+}
+function IcoWeather({ active }: { active: boolean }) {
+  const c = active ? C.teal : C.muted
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="10" r="3.5" stroke={c} strokeWidth="1.8" fill={active?'rgba(77,214,200,0.1)':'none'}/>
+      <path d="M12 3v1.5M12 15v1.5M5 10H3.5M20.5 10H19M7.22 5.22l-1.06-1.06M17.84 17.84l-1.06-1.06M7.22 14.78l-1.06 1.06M17.84 2.16l-1.06 1.06" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+      <path d="M6 19.5a3 3 0 0 1 0-6h.5A4.5 4.5 0 0 1 15 14a3.5 3.5 0 0 1 0 7H6" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill={active?'rgba(77,214,200,0.08)':'none'}/>
+    </svg>
+  )
 }
 
 // ─── Shared UI Primitives ──────────────────────────────────────────────────────
