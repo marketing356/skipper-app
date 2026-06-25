@@ -26,6 +26,7 @@ export interface AssetField {
   placeholder?: string
   hint?: string
   required?: boolean
+  requiredUnless?: { field: string; value: string }
   options?: FieldOption[]
   roles: 'all' | Role[]
 }

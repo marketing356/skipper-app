@@ -269,23 +269,24 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel }: Props
     const fd = new FormData(e.currentTarget)
     const payload = buildPayload(fd)
 
-    // 🔴 HARD STOP VALIDATION (vessel-spec.md — LOCKED 2026-06-24)
-    const isPWC = payload.asset_type === 'jet_ski'
-    if (!payload.name?.trim()) {
-      setError('Vessel name is required.')
-      setSaving(false)
-      return
-    }
-    if (!payload.asset_type) {
-      setError('Vessel type is required.')
-      setSaving(false)
-      return
-    }
-    if (!isPWC) {
-      if (!payload.length_ft) { setError('Length (LOA) is required — needed for slip matching.'); setSaving(false); return }
-      if (!payload.beam_ft)   { setError('Beam is required — needed for slip matching.');         setSaving(false); return }
-      if (!payload.draft_ft)  { setError('Draft is required — needed for slip matching.');        setSaving(false); return }
-      if (!payload.air_draft_ft) { setError('Air draft is required — needed for bridge clearance.'); setSaving(false); return }
+    // 🔴 SCHEMA-DRIVEN HARD STOP VALIDATION (vessel-spec.md — LOCKED 2026-06-24)
+    // All required rules come from the schema. Nothing hardcoded here.
+    const allFields = ASSET_FORM_SCHEMA.flatMap(s => s.rows.flatMap(r => r.fields.filter(Boolean))) as AssetField[]
+    for (const field of allFields) {
+      if (field.required && !payload[field.name as keyof typeof payload]) {
+        setError(`${field.label} is required.`)
+        setSaving(false)
+        return
+      }
+      if (field.requiredUnless) {
+        const exemptValue = field.requiredUnless.value
+        const watchField = field.requiredUnless.field as keyof typeof payload
+        if (payload[watchField] !== exemptValue && !payload[field.name as keyof typeof payload]) {
+          setError(`${field.label} is required.`)
+          setSaving(false)
+          return
+        }
+      }
     }
 
     if (isEdit) {
