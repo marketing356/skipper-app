@@ -5,7 +5,7 @@
  * ONE asset = ONE row in marina_assets. No ghost fields.
  * To add a field: edit lib/asset-form-schema.ts in OPS, redeploy all surfaces.
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import DocumentList from '@/components/DocumentList'
 import EngineList from '@/components/EngineList'
@@ -15,10 +15,12 @@ import NotesLog from '@/components/NotesLog'
 import TagInput from '@/components/TagInput'
 import {
   ASSET_FORM_SCHEMA,
+  fetchAssetFormSchema,
   sectionVisibleTo,
   fieldVisibleTo,
   type Role,
   type AssetField,
+  type AssetSection,
 } from '@/lib/asset-form-schema'
 
 const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
@@ -262,6 +264,11 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
   const role: Role = 'boater'
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [schema, setSchema] = useState<AssetSection[]>(ASSET_FORM_SCHEMA)
+
+  useEffect(() => {
+    fetchAssetFormSchema().then(setSchema)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -272,7 +279,7 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
 
     // 🔴 SCHEMA-DRIVEN HARD STOP VALIDATION (vessel-spec.md — LOCKED 2026-06-24)
     // All required rules come from the schema. Nothing hardcoded here.
-    const allFields = ASSET_FORM_SCHEMA.flatMap(s => s.rows.flatMap(r => r.fields.filter(Boolean))) as AssetField[]
+    const allFields = schema.flatMap(s => s.rows.flatMap(r => r.fields.filter(Boolean))) as AssetField[]
     for (const field of allFields) {
       if (field.required && !payload[field.name as keyof typeof payload]) {
         setError(`${field.label} is required.`)
@@ -345,7 +352,7 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
       {isEdit && <input type="hidden" name="id" value={a.id as string} />}
 
       {/* ── Schema-driven sections ─────────────────────────────────────── */}
-      {ASSET_FORM_SCHEMA
+      {schema
         .filter((section) => sectionVisibleTo(section, role))
         .map((section, sIdx) => (
           <Section key={section.id} title={section.title} defaultOpen={sIdx === 0}>

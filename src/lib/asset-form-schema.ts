@@ -54,6 +54,16 @@ export function fieldVisibleTo(field: AssetField | null, role: Role): boolean {
   return field.roles.includes(role)
 }
 
+export async function fetchAssetFormSchema(): Promise<AssetSection[]> {
+  try {
+    const res = await fetch('https://ops.ayeayeskipper.com/api/asset-form-schema', { cache: 'no-store' })
+    if (!res.ok) throw new Error('schema fetch failed')
+    return (await res.json()) as AssetSection[]
+  } catch {
+    return ASSET_FORM_SCHEMA
+  }
+}
+
 export const ASSET_FORM_SCHEMA: AssetSection[] = [
   // ══ 1. IDENTITY ══════════════════════════════════════════
   {
