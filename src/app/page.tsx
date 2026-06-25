@@ -1,5 +1,6 @@
 'use client'
 import AssetForm from '@/components/AssetForm'
+import OPSShell from '@/components/OPSShell'
 import React, { useState, useEffect, useRef } from 'react'
 import ContactForm from '@/components/ContactForm'
 import Image from 'next/image'
@@ -1082,18 +1083,20 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
 
   return (
     <OnboardingShell step={1} total={2} title="About you" subtitle="Your marina needs this on file. You\'ll only do this once.">
-      <ContactForm
-        userId={user.id}
-        contact={contact ?? {}}
-        submitLabel="Save & Continue →"
-        onSaved={(data) => {
-          supabase.from('contacts')
-            .update({ setup_complete: false })
-            .eq('auth_user_id', user.id).is('marina_id', null)
-            .then(() => {})
-          onComplete(contactToProfile(data as Record<string, unknown>))
-        }}
-      />
+      <OPSShell>
+        <ContactForm
+          userId={user.id}
+          contact={contact ?? {}}
+          submitLabel="Save & Continue →"
+          onSaved={(data) => {
+            supabase.from('contacts')
+              .update({ setup_complete: false })
+              .eq('auth_user_id', user.id).is('marina_id', null)
+              .then(() => {})
+            onComplete(contactToProfile(data as Record<string, unknown>))
+          }}
+        />
+      </OPSShell>
     </OnboardingShell>
   )
 }
@@ -1464,18 +1467,20 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
           {editingAsset ? 'Edit Vessel' : 'Add Vessel'}
         </h2>
       </div>
-      <AssetForm
-        asset={editingAsset ?? undefined}
-        contactId={profile?.contact_id ?? null}
-        refreshTrigger={realtimeVersion}
-        onSaved={(raw) => {
-          const v = assetRowToVessel(raw)
-          onVesselSaved(v, raw.id as string)
-          setShowForm(false)
-          setEditingAsset(null)
-        }}
-        onCancel={() => { setShowForm(false); setEditingAsset(null) }}
-      />
+      <OPSShell>
+        <AssetForm
+          asset={editingAsset ?? undefined}
+          contactId={profile?.contact_id ?? null}
+          refreshTrigger={realtimeVersion}
+          onSaved={(raw) => {
+            const v = assetRowToVessel(raw)
+            onVesselSaved(v, raw.id as string)
+            setShowForm(false)
+            setEditingAsset(null)
+          }}
+          onCancel={() => { setShowForm(false); setEditingAsset(null) }}
+        />
+      </OPSShell>
     </div>
   )
 
@@ -2654,18 +2659,20 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
             style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20, padding: '0 4px 0 0', fontFamily: FONT }}>←</button>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Edit Profile</h2>
         </div>
-        <ContactForm
-          userId={user.id}
-          contact={rawContact ?? {}}
-          submitLabel="Save Changes"
-          onSaved={(data) => {
-            const raw = data as Record<string, unknown>
-            setRawContact(raw)
-            onProfileUpdated(contactToProfile(raw))
-            setEditing(false)
-          }}
-          onCancel={() => setEditing(false)}
-        />
+        <OPSShell>
+          <ContactForm
+            userId={user.id}
+            contact={rawContact ?? {}}
+            submitLabel="Save Changes"
+            onSaved={(data) => {
+              const raw = data as Record<string, unknown>
+              setRawContact(raw)
+              onProfileUpdated(contactToProfile(raw))
+              setEditing(false)
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        </OPSShell>
       </div>
     )
   }
