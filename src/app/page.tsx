@@ -2167,7 +2167,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 
 // ─── Floating Skipper ──────────────────────────────────────────────────────
 const SKIPPER_ENGINE = 'https://skipper-engine-production.up.railway.app'
-const GREETING = `Aye aye! I'm Skipper — your personal marine intelligence. Ask me anything about your boat, your marina, the weather, or wherever you're headed.`
+const GREETING = `Welcome aboard — I'm Skipper, your personal boating assistant. You don't need to type a thing. Just talk to me and I'll record everything — boat specs, maintenance, anything. You can also upload documents right here (registration, insurance, whatever you have) so marinas always have them on file. Let's start: tell me your boat's name, make, length, and whatever specs you know. I'll build your first profile.`
 
 function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [open, setOpen] = useState(false)
@@ -2221,10 +2221,13 @@ function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|
 }
 
 function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: User; profile: Profile|null; vessel: Vessel|null; msgs: {role:string;text:string}[]; setMsgs: React.Dispatch<React.SetStateAction<{role:string;text:string}[]>>; onClose: () => void }) {
-  const [draft,   setDraft]   = useState('')
-  const [sending, setSending] = useState(false)
+  const [draft,      setDraft]      = useState('')
+  const [sending,    setSending]    = useState(false)
+  const [uploading,  setUploading]  = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [coupledMarinas, setCoupledMarinas] = useState<Marina[]>([])
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef  = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
@@ -2248,6 +2251,59 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
     }
     load()
   }, [user.id])
+
+  async function uploadFile(file: File) {
+    if (!file) return
+    const maxBytes = 10 * 1024 * 1024
+    if (file.size > maxBytes) {
+      setMsgs(m => [...m, { role:'skipper', text:`That file is over 10 MB — try a smaller version.` }])
+      return
+    }
+    setUploading(true)
+    setMsgs(m => [...m, { role:'user', text:`📎 ${file.name}` }])
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:'smooth' }), 50)
+
+    try {
+      const entityType = 'contact'
+      const entityId   = profile?.contact_id ?? user.id
+      const form = new FormData()
+      form.append('file', file)
+      form.append('entity_type', entityType)
+      form.append('entity_id', entityId)
+      form.append('doc_type', 'other')
+      form.append('doc_label', file.name)
+
+      const res  = await fetch('/api/documents/upload', { method:'POST', body: form })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setMsgs(m => [...m, { role:'skipper', text:`Couldn\'t save that file — ${data.error ?? 'upload failed'}. Try again.` }])
+      } else {
+        setMsgs(m => [...m, { role:'skipper', text:`Document saved ✅ — ${file.name} is on file. Marinas will have access to it when you check in.` }])
+      }
+    } catch {
+      setMsgs(m => [...m, { role:'skipper', text:`Upload hit a snag — check your connection and try again.` }])
+    } finally {
+      setUploading(false)
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:'smooth' }), 100)
+    }
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  function onDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false)
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) uploadFile(file)
+  }
 
   async function send() {
     if (!draft.trim() || sending) return
@@ -2310,7 +2366,22 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
   }
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', padding:'0 20px' }}>
+    <div
+      style={{ display:'flex', flexDirection:'column', height:'100%', padding:'0 20px', position:'relative' }}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {/* Drag-and-drop overlay */}
+      {isDragging && (
+        <div style={{ position:'absolute', inset:0, zIndex:500, background:'rgba(77,214,200,0.12)', border:`2px dashed ${C.teal}`, borderRadius:16, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Drop to upload</div>
+            <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>Registration, insurance, any document</div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{ padding:'env(safe-area-inset-top,16px) 0 10px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid rgba(255,255,255,0.08)`, marginBottom:14, flexShrink:0 }}>
         <button onClick={onClose} style={{ background:'none', border:'none', color:C.teal, fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1, flexShrink:0 }}>×</button>
@@ -2319,7 +2390,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
         </div>
         <div>
           <div style={{ fontSize:17, fontWeight:800, letterSpacing:-0.3 }}>Skipper</div>
-          <div style={{ fontSize:11, color:C.teal, fontWeight:600 }}>Marine Intelligence · Always On</div>
+          <div style={{ fontSize:11, color:C.teal, fontWeight:600 }}>Personal Boating Assistant · Always On</div>
         </div>
         {vessel && (
           <div style={{ marginLeft:'auto', fontSize:11, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px', flexShrink:0 }}>
@@ -2368,12 +2439,29 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
 
       {/* Input */}
       <div style={{ flexShrink:0, paddingBottom:8, paddingTop:4 }}>
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.heic"
+          style={{ display:'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) { uploadFile(f); e.target.value = '' } }}
+        />
         <div style={{ display:'flex', gap:8 }}>
+          {/* Attach button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            title="Upload a document"
+            style={{ width:46, height:46, flexShrink:0, background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:uploading ? C.muted2 : C.teal, cursor:uploading?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}
+          >
+            {uploading ? <Spinner size={16} color={C.teal} /> : '📎'}
+          </button>
           <input
             type="text" value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send() } }}
-            placeholder="Ask Skipper anything…"
+            placeholder="Ask or upload anything…"
             style={{ flex:1, padding:'13px 14px', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:C.white, fontSize:14, fontFamily:FONT, outline:'none' }}
             onFocus={e => e.currentTarget.style.borderColor=C.teal}
             onBlur={e => e.currentTarget.style.borderColor=C.inputBorder}
@@ -2383,6 +2471,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
         </div>
+        <div style={{ fontSize:10, color:C.muted2, textAlign:'center', marginTop:5 }}>Tap 📎 to upload · Desktop: drag &amp; drop files here</div>
       </div>
     </div>
   )
@@ -2705,7 +2794,7 @@ const PrimaryBtn = ({ children, loading, style, onClick, disabled }: { children:
     {loading ? <><Spinner/>Please wait…</> : children}
   </button>
 )
-const Spinner = () => <div style={{ width:16, height:16, border:`2px solid ${C.navy}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
+const Spinner = ({ size = 16, color = C.navy }: { size?: number; color?: string } = {}) => <div style={{ width:size, height:size, border:`2px solid ${color}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
 const SectionTitle = ({ children }: { children:React.ReactNode }) => (
   <h2 style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.8, margin:'0 0 14px' }}>{children}</h2>
 )
