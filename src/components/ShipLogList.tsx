@@ -42,14 +42,16 @@ interface LogRow {
 interface ShipLogListProps {
   assetId: string
   marinaId?: string | null
+  refreshTrigger?: number
 }
 
-export default function ShipLogList({ assetId, marinaId }: ShipLogListProps) {
+export default function ShipLogList({ assetId, marinaId, refreshTrigger }: ShipLogListProps) {
   const [rows, setRows] = useState<LogRow[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!assetId) return
+    setLoading(true)
     fetch(`/api/asset-ship-log?asset_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
@@ -74,7 +76,7 @@ export default function ShipLogList({ assetId, marinaId }: ShipLogListProps) {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [assetId])
+  }, [assetId, refreshTrigger])
 
   function addRow() {
     const today = new Date().toISOString().slice(0, 10)

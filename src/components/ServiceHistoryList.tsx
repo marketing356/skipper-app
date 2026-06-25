@@ -68,14 +68,16 @@ interface ServiceRow {
 interface ServiceHistoryListProps {
   assetId: string
   marinaId?: string | null
+  refreshTrigger?: number
 }
 
-export default function ServiceHistoryList({ assetId, marinaId }: ServiceHistoryListProps) {
+export default function ServiceHistoryList({ assetId, marinaId, refreshTrigger }: ServiceHistoryListProps) {
   const [rows, setRows] = useState<ServiceRow[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!assetId) return
+    setLoading(true)
     fetch(`/api/asset-service-history?asset_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
@@ -95,7 +97,7 @@ export default function ServiceHistoryList({ assetId, marinaId }: ServiceHistory
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [assetId])
+  }, [assetId, refreshTrigger])
 
   function addRow() {
     const today = new Date().toISOString().slice(0, 10)

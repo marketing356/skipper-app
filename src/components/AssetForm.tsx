@@ -54,6 +54,7 @@ interface Props {
   contactId: string | null
   onSaved: (asset: Record<string, any>) => void
   onCancel?: () => void
+  refreshTrigger?: number
 }
 
 // ─── FormData helpers (identical field mapping to actions.ts) ─────────────────
@@ -255,7 +256,7 @@ function BoolSel({ name, defaultValue }: { name: string; defaultValue?: boolean 
 const TEXTAREA_ROWS: Record<string, number> = { notes: 4, retired_reason: 2 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function AssetForm({ asset, contactId, onSaved, onCancel }: Props) {
+export default function AssetForm({ asset, contactId, onSaved, onCancel, refreshTrigger }: Props) {
   const a = asset ?? {}
   const isEdit = !!a.id
   const role: Role = 'boater'
@@ -392,14 +393,14 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel }: Props
       {/* ── Service History (edit only) ───────────────────────────────── */}
       {isEdit && a.id && (
         <Section title="Service History">
-          <ServiceHistoryList assetId={a.id as string} marinaId={(a.marina_id as string) ?? null} />
+          <ServiceHistoryList assetId={a.id as string} marinaId={(a.marina_id as string) ?? null} refreshTrigger={refreshTrigger} />
         </Section>
       )}
 
       {/* ── Ship's Log (edit only) ────────────────────────────────────── */}
       {isEdit && a.id && (
         <Section title="Ship's Log">
-          <ShipLogList assetId={a.id as string} marinaId={(a.marina_id as string) ?? null} />
+          <ShipLogList assetId={a.id as string} marinaId={(a.marina_id as string) ?? null} refreshTrigger={refreshTrigger} />
         </Section>
       )}
 

@@ -502,6 +502,7 @@ export default function SkipperApp() {
   const [user,           setUser]           = useState<User | null>(null)
   const [profile,        setProfile]        = useState<Profile | null>(null)
   const [vessel,         setVessel]         = useState<Vessel | null>(null)   // primary (top bar)
+  const [realtimeVersion, setRealtimeVersion] = useState(0)  // increments on any realtime event → triggers child refreshes
   const [vessels,        setVessels]        = useState<Vessel[]>([])
   const [vesselIds,      setVesselIds]      = useState<string[]>([])
   const [homeTab,        setHomeTab]        = useState<HomeTab>('vessel')
@@ -716,6 +717,7 @@ export default function SkipperApp() {
     onChange: () => {
       const u = userRef.current
       if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
+      setRealtimeVersion(v => v + 1)  // triggers ShipLogList/ServiceHistoryList/etc. to re-fetch
     },
   })
 
@@ -1457,6 +1459,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       <AssetForm
         asset={editingAsset ?? undefined}
         contactId={profile?.contact_id ?? null}
+        refreshTrigger={realtimeVersion}
         onSaved={(raw) => {
           const v = assetRowToVessel(raw)
           onVesselSaved(v, raw.id as string)
@@ -1912,6 +1915,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
             message: msg,
             marina_id: marina.id,
             identity: identityPackage,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             session: { marina_id: marina.id, boater_id: user.id, access_type: 'anonymous' },
           })
       })
@@ -2075,6 +2079,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
         if (activeThread) loadThread(activeThread.marina_id)
       }
       reload()
+      setRealtimeVersion(v => v + 1)
     },
   })
 
@@ -2406,6 +2411,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
           marina_id: null,
           identity: identityPackage,
           conversation_history: historyForEngine,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           session: { boater_id: user.id, access_type: 'tenant', context: 'global' },
         })
       })
