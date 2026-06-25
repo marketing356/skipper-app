@@ -2166,12 +2166,28 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 }
 
 // ─── Floating Skipper ──────────────────────────────────────────────────────
+const SKIPPER_ENGINE = 'https://skipper-engine-production.up.railway.app'
+const GREETING = `Aye aye! I'm Skipper — your personal marine intelligence. Ask me anything about your boat, your marina, the weather, or wherever you're headed.`
+
 function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [open, setOpen] = useState(false)
-  // msgs lives HERE so history survives open/close cycles
-  const [msgs, setMsgs] = useState<{role:string;text:string}[]>([
-    { role:'skipper', text:`Aye aye! I'm Skipper — your personal marine intelligence. I know your boat, I know the marinas, I know transient availability, the marketplace, everything. What do you need?` }
-  ])
+  const [msgs, setMsgs] = useState<{role:string;text:string}[]>([{ role:'skipper', text: GREETING }])
+  const [sessionLoaded, setSessionLoaded] = useState(false)
+
+  // On mount: try to restore last session from engine (< 24hrs old)
+  useEffect(() => {
+    if (sessionLoaded) return
+    setSessionLoaded(true)
+    fetch(`${SKIPPER_ENGINE}/session/${user.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.messages && Array.isArray(d.messages) && d.messages.length > 0) {
+          setMsgs(d.messages)
+        }
+      })
+      .catch(() => {/* silent — use greeting */})
+  }, [user.id, sessionLoaded])
+
   return (
     <>
       <style>{`
@@ -2277,7 +2293,15 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: 
         })
       })
       const d = await r.json()
-      setMsgs(m => [...m, { role:'skipper', text: d.reply || 'Let me look into that.' }])
+      const skipperReply = d.reply || 'Let me look into that.'
+      const updatedMsgs = [...msgs, { role:'user', text:msg }, { role:'skipper', text:skipperReply }]
+      setMsgs(updatedMsgs)
+      // Persist session to engine (fire-and-forget)
+      fetch(`${SKIPPER_ENGINE}/chat`, { method:'HEAD' }).catch(() => {})
+      fetch(`${SKIPPER_ENGINE}/session-save`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ boater_id: user.id, messages: updatedMsgs })
+      }).catch(() => {})
     } catch {
       setMsgs(m => [...m, { role:'skipper', text:'Rough seas on my end — try again in a moment.' }])
     }
