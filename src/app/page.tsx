@@ -1366,6 +1366,14 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   const [showForm,    setShowForm]    = useState(false)
   const [editingAsset,setEditingAsset]= useState<Record<string,unknown>|null>(null)
 
+  // ── Realtime version — triggers child list refreshes (ServiceHistory, ShipLog, etc.) ──
+  const [realtimeVersion, setRealtimeVersion] = useState(0)
+  useSkipperRealtime({
+    scope: { kind: 'boater', authUserId: user.id },
+    enabled: !!user.id,
+    onChange: () => setRealtimeVersion(v => v + 1),
+  })
+
   // ── Expand/collapse vessel card state ────────────────────────────────────────
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
   const toggleExpand = (id: string) => setExpandedIds(p => ({ ...p, [id]: !p[id] }))
@@ -2079,7 +2087,6 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
         if (activeThread) loadThread(activeThread.marina_id)
       }
       reload()
-      setRealtimeVersion(v => v + 1)
     },
   })
 
