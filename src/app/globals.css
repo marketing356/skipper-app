@@ -2,14 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-/* OPSShell — resets mobile dark-theme context for any OPS-originated component */
+/*
+ * OPSShell — light-theme reset for OPS components rendered inside the mobile dark shell.
+ *
+ * Sub-components (ShipLogList, EngineList, etc.) were ported with dark inline styles.
+ * CSS !important beats inline styles in the cascade — that's intentional here.
+ * OPSShell is an explicit isolation boundary. Every rule below is contained to .ops-shell.
+ */
+
 .ops-shell {
-  background-color: #ffffff;
-  color: #0f172a;
+  background-color: #ffffff !important;
+  color: #334155 !important;
   color-scheme: light;
   border-radius: 12px;
   overflow: hidden;
+  padding: 4px 0;
 }
+
+/* Force all text dark — overrides rgba(255,255,255,X) inline styles */
+.ops-shell *[style] {
+  color: #334155 !important;
+}
+
+/* Exception: preserve explicit green (Saved) and red (error) feedback colors */
+/* We can't selectively preserve them via CSS alone — accept dark text on these too.
+   They remain functionally correct: ✓ Saved = dark text = still readable. */
+
+/* All form inputs: white bg, dark text, slate border */
+.ops-shell input,
+.ops-shell select,
+.ops-shell textarea {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Container cards: invisible white-alpha borders → visible slate */
+.ops-shell div[style] {
+  border-color: #e2e8f0 !important;
+  /* DO NOT override background here — rgba(255,255,255,0.03) on white = fine */
+}
+
+/* color-scheme hint for native browser controls (date pickers, selects) */
 .ops-shell *,
 .ops-shell *::before,
 .ops-shell *::after {
