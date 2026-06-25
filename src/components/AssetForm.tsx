@@ -14,7 +14,6 @@ import ShipLogList from '@/components/ShipLogList'
 import NotesLog from '@/components/NotesLog'
 import TagInput from '@/components/TagInput'
 import {
-  ASSET_FORM_SCHEMA,
   fetchAssetFormSchema,
   sectionVisibleTo,
   fieldVisibleTo,
@@ -264,10 +263,13 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
   const role: Role = 'boater'
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [schema, setSchema] = useState<AssetSection[]>(ASSET_FORM_SCHEMA)
+  const [schema, setSchema] = useState<AssetSection[] | null>(null)
+  const [schemaError, setSchemaError] = useState(false)
 
   useEffect(() => {
-    fetchAssetFormSchema().then(setSchema)
+    fetchAssetFormSchema()
+      .then(setSchema)
+      .catch(() => setSchemaError(true))
   }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -279,7 +281,7 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
 
     // 🔴 SCHEMA-DRIVEN HARD STOP VALIDATION (vessel-spec.md — LOCKED 2026-06-24)
     // All required rules come from the schema. Nothing hardcoded here.
-    const allFields = schema.flatMap(s => s.rows.flatMap(r => r.fields.filter(Boolean))) as AssetField[]
+    const allFields = (schema ?? []).flatMap(s => s.rows.flatMap(r => r.fields.filter(Boolean))) as AssetField[]
     for (const field of allFields) {
       if (field.required && !payload[field.name as keyof typeof payload]) {
         setError(`${field.label} is required.`)
@@ -345,6 +347,22 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
           <Input name={field.name} type={field.type} placeholder={field.placeholder} defaultValue={a[field.name]} />
         )
     }
+  }
+
+  if (schemaError) {
+    return (
+      <div style={{ color: '#ff6b6b', fontSize: 14, fontFamily: FONT, padding: 16 }}>
+        Could not load vessel form. OPS is unreachable. Please try again.
+      </div>
+    )
+  }
+
+  if (!schema) {
+    return (
+      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, fontFamily: FONT, padding: 16 }}>
+        Loading form…
+      </div>
+    )
   }
 
   return (
