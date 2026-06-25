@@ -2168,6 +2168,10 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 // ─── Floating Skipper ──────────────────────────────────────────────────────
 function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [open, setOpen] = useState(false)
+  // msgs lives HERE so history survives open/close cycles
+  const [msgs, setMsgs] = useState<{role:string;text:string}[]>([
+    { role:'skipper', text:`Aye aye! I'm Skipper — your personal marine intelligence. I know your boat, I know the marinas, I know transient availability, the marketplace, everything. What do you need?` }
+  ])
   return (
     <>
       <style>{`
@@ -2176,12 +2180,10 @@ function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|
         @keyframes skipperPing    { 0%{transform:scale(1);opacity:0.7} 100%{transform:scale(1.6);opacity:0} }
       `}</style>
 
-      {/* Chat panel */}
-      {open && (
-        <div style={{ position:'fixed', inset:0, zIndex:400, display:'flex', flexDirection:'column', background:'rgba(3,14,25,0.97)', backdropFilter:'blur(16px)', animation:'skipperSlideUp 0.3s ease both' }}>
-          <SkipperChat user={user} profile={profile} vessel={vessel} onClose={() => setOpen(false)} />
-        </div>
-      )}
+      {/* Chat panel — always mounted to preserve scroll/state; hidden when closed */}
+      <div style={{ position:'fixed', inset:0, zIndex:400, display: open ? 'flex' : 'none', flexDirection:'column', background:'rgba(3,14,25,0.97)', backdropFilter:'blur(16px)', animation: open ? 'skipperSlideUp 0.3s ease both' : 'none' }}>
+        <SkipperChat user={user} profile={profile} vessel={vessel} msgs={msgs} setMsgs={setMsgs} onClose={() => setOpen(false)} />
+      </div>
 
       {/* Floating button */}
       <div style={{ position:'fixed', bottom:'calc(env(safe-area-inset-bottom,0px) + 78px)', right:18, zIndex:300 }}>
@@ -2202,10 +2204,7 @@ function SkipperFloat({ user, profile, vessel }: { user: User; profile: Profile|
   )
 }
 
-function SkipperChat({ user, profile, vessel, onClose }: { user: User; profile: Profile|null; vessel: Vessel|null; onClose: () => void }) {
-  const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([
-    { role:'skipper', text:`Aye aye! I'm Skipper — your personal marine intelligence. I know your boat, I know the marinas, I know transient availability, the marketplace, everything. What do you need?` }
-  ])
+function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose }: { user: User; profile: Profile|null; vessel: Vessel|null; msgs: {role:string;text:string}[]; setMsgs: React.Dispatch<React.SetStateAction<{role:string;text:string}[]>>; onClose: () => void }) {
   const [draft,   setDraft]   = useState('')
   const [sending, setSending] = useState(false)
   const [coupledMarinas, setCoupledMarinas] = useState<Marina[]>([])
@@ -2237,6 +2236,10 @@ function SkipperChat({ user, profile, vessel, onClose }: { user: User; profile: 
   async function send() {
     if (!draft.trim() || sending) return
     const msg = draft.trim(); setDraft('')
+    // Capture history BEFORE appending new user message
+    const historyForEngine = msgs
+      .filter(m => m.role !== 'error')
+      .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }))
     setMsgs(m => [...m, { role:'user', text:msg }])
     setSending(true)
 
@@ -2269,6 +2272,7 @@ function SkipperChat({ user, profile, vessel, onClose }: { user: User; profile: 
           message: msg,
           marina_id: null,
           identity: identityPackage,
+          conversation_history: historyForEngine,
           session: { boater_id: user.id, access_type: 'tenant', context: 'global' },
         })
       })
