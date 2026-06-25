@@ -1,25 +1,9 @@
 'use client'
 /**
- * NotesLog — Dark-themed notes log for Skipper mobile app.
- * Ported from OPS NotesLog. Same API routes, dark inline styles.
+ * NotesLog — light-themed (Tailwind). Renders correctly inside OPSShell.
  */
 
 import { useState, useEffect } from 'react'
-
-const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 10px',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.16)',
-  borderRadius: 8,
-  color: '#ffffff',
-  fontSize: 14,
-  fontFamily: FONT,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
 
 interface NoteRow {
   id?: string
@@ -104,39 +88,40 @@ export default function NotesLog({ assetId, marinaId }: NotesLogProps) {
     }
   }
 
-  if (loading) return <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT }}>Loading notes…</p>
+  if (loading) return <p className="text-sm text-slate-400">Loading notes…</p>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="flex flex-col gap-2.5">
       <button type="button" onClick={addRow}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#4dd6c8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT, padding: 0 }}>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> Add note
+        className="flex items-center gap-1.5 text-teal-500 text-sm font-semibold cursor-pointer bg-transparent border-none p-0 hover:text-teal-600">
+        <span className="text-lg leading-none">＋</span> Add note
       </button>
 
       {rows.map((row, idx) => (
-        <div key={idx} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: 12, background: 'rgba(255,255,255,0.03)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="date" value={row.note_date} onChange={(e) => updateRow(idx, { note_date: e.target.value })} style={{ ...inputStyle, width: 150 }} />
-            <div style={{ flex: 1 }} />
-            {row.status === 'saving' && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: FONT }}>saving…</span>}
-            {row.status === 'saved' && row.id && <span style={{ fontSize: 11, color: '#4ade80', fontFamily: FONT }}>✓ Saved</span>}
-            {row.status === 'error' && <span style={{ fontSize: 11, color: '#f87171', fontFamily: FONT }}>{row.errorMsg}</span>}
+        <div key={idx} className="border border-slate-200 rounded-xl p-3 flex flex-col gap-2 bg-white">
+          <div className="flex items-center gap-2">
+            <input type="date" value={row.note_date} onChange={(e) => updateRow(idx, { note_date: e.target.value })}
+              className="form-input" style={{ width: 150 }} />
+            <div className="flex-1" />
+            {row.status === 'saving' && <span className="text-xs text-slate-400">saving…</span>}
+            {row.status === 'saved' && row.id && <span className="text-xs text-green-500">✓ Saved</span>}
+            {row.status === 'error' && <span className="text-xs text-red-400">{row.errorMsg}</span>}
             <button type="button" onClick={() => saveRow(idx)} disabled={row.status === 'saving'}
-              style={{ padding: '4px 12px', background: '#4dd6c8', color: '#05111f', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: row.status === 'saving' ? 'not-allowed' : 'pointer', fontFamily: FONT, opacity: row.status === 'saving' ? 0.6 : 1 }}>
+              className="px-3 py-1 bg-teal-400 text-slate-900 border-none rounded text-xs font-bold cursor-pointer disabled:opacity-50">
               Save
             </button>
             <button type="button" onClick={() => deleteRow(idx)}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 0 }}>
+              className="bg-transparent border-none text-slate-400 text-xl cursor-pointer leading-none p-0 hover:text-slate-600">
               ×
             </button>
           </div>
           <textarea placeholder="Note…" value={row.note} onChange={(e) => updateRow(idx, { note: e.target.value })} rows={2}
-            style={{ ...inputStyle, resize: 'none' }} />
+            className="form-input resize-none" />
         </div>
       ))}
 
       {rows.length === 0 && (
-        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, fontFamily: FONT }}>No notes yet.</p>
+        <p className="text-sm text-slate-400">No notes yet.</p>
       )}
     </div>
   )

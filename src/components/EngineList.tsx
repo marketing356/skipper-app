@@ -1,41 +1,18 @@
 'use client'
 /**
- * EngineList — Dark-themed engine list for Skipper mobile app.
- * Ported from OPS EngineList. Same API routes, dark inline styles.
+ * EngineList — light-themed (Tailwind). Renders correctly inside OPSShell.
  */
 
 import { useState, useEffect } from 'react'
 
-const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 10px',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.16)',
-  borderRadius: 8,
-  color: '#ffffff',
-  fontSize: 14,
-  fontFamily: FONT,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  WebkitAppearance: 'auto',
-  appearance: 'auto',
-  colorScheme: 'dark',
-} as unknown as React.CSSProperties
-
 const ENGINE_TYPES = [
-  { value: '',            label: '— Type —' },
-  { value: 'inboard',    label: 'Inboard' },
-  { value: 'outboard',   label: 'Outboard' },
-  { value: 'stern_drive', label: 'Stern Drive' },
-  { value: 'jet',        label: 'Jet' },
-  { value: 'electric',   label: 'Electric' },
-  { value: 'sail',       label: 'Sail / None' },
+  { value: '',             label: '— Type —' },
+  { value: 'inboard',     label: 'Inboard' },
+  { value: 'outboard',    label: 'Outboard' },
+  { value: 'stern_drive',  label: 'Stern Drive' },
+  { value: 'jet',         label: 'Jet' },
+  { value: 'electric',    label: 'Electric' },
+  { value: 'sail',        label: 'Sail / None' },
 ]
 
 const FUEL_TYPES = [
@@ -155,63 +132,76 @@ export default function EngineList({ assetId, marinaId }: EngineListProps) {
     }
   }
 
-  if (loading) return <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT }}>Loading engines…</p>
+  if (loading) return <p className="text-sm text-slate-400">Loading engines…</p>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <style>{`.skipper-engines select option { background: #05111f; color: #fff; }`}</style>
-      <div className="skipper-engines" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {rows.map((row, idx) => (
-          <div key={idx} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: 12, background: 'rgba(255,255,255,0.03)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.8)', fontFamily: FONT }}>Engine {row.sort_order}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {row.status === 'saving' && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: FONT }}>saving…</span>}
-                {row.status === 'saved' && row.id && <span style={{ fontSize: 11, color: '#4ade80', fontFamily: FONT }}>✓ Saved</span>}
-                {row.status === 'error' && <span style={{ fontSize: 11, color: '#f87171', fontFamily: FONT }} title={row.errorMsg}>Save failed</span>}
-                <button type="button" onClick={() => saveRow(idx)} disabled={row.status === 'saving'}
-                  style={{ padding: '4px 12px', background: '#4dd6c8', color: '#05111f', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: row.status === 'saving' ? 'not-allowed' : 'pointer', fontFamily: FONT, opacity: row.status === 'saving' ? 0.6 : 1 }}>
-                  Save
-                </button>
-                <button type="button" onClick={() => deleteRow(idx)}
-                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 0 }}>
-                  ×
-                </button>
-              </div>
-            </div>
-
-            {/* Row 1: type, position, fuel */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <select value={row.engine_type} onChange={(e) => updateRow(idx, { engine_type: e.target.value })} style={{ ...selectStyle, width: 'auto' }}>
-                {ENGINE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <input type="text" placeholder="Position (Port / Stbd / Center)" value={row.position} onChange={(e) => updateRow(idx, { position: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 150 }} />
-              <select value={row.fuel_type} onChange={(e) => updateRow(idx, { fuel_type: e.target.value })} style={{ ...selectStyle, width: 'auto' }}>
-                {FUEL_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-
-            {/* Row 2: make, model, year, HP */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <input type="text" placeholder="Make (e.g. Yamaha)" value={row.make} onChange={(e) => updateRow(idx, { make: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 110 }} />
-              <input type="text" placeholder="Model (e.g. F300)" value={row.model} onChange={(e) => updateRow(idx, { model: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 90 }} />
-              <input type="number" placeholder="Year" value={row.year} onChange={(e) => updateRow(idx, { year: e.target.value })} style={{ ...inputStyle, width: 72 }} />
-              <input type="number" placeholder="HP" value={row.horsepower} onChange={(e) => updateRow(idx, { horsepower: e.target.value })} style={{ ...inputStyle, width: 64 }} />
-            </div>
-
-            {/* Row 3: serial, hours */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <input type="text" placeholder="Serial #" value={row.serial_number} onChange={(e) => updateRow(idx, { serial_number: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 130 }} />
-              <input type="number" placeholder="Current Hours" value={row.current_hours} onChange={(e) => updateRow(idx, { current_hours: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+    <div className="flex flex-col gap-2.5">
+      {rows.map((row, idx) => (
+        <div key={idx} className="border border-slate-200 rounded-xl p-3 flex flex-col gap-2 bg-white">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700">Engine {row.sort_order}</span>
+            <div className="flex items-center gap-2">
+              {row.status === 'saving' && <span className="text-xs text-slate-400">saving…</span>}
+              {row.status === 'saved' && row.id && <span className="text-xs text-green-500">✓ Saved</span>}
+              {row.status === 'error' && <span className="text-xs text-red-400" title={row.errorMsg}>Save failed</span>}
+              <button type="button" onClick={() => saveRow(idx)} disabled={row.status === 'saving'}
+                className="px-3 py-1 bg-teal-400 text-slate-900 border-none rounded text-xs font-bold cursor-pointer disabled:opacity-50">
+                Save
+              </button>
+              <button type="button" onClick={() => deleteRow(idx)}
+                className="bg-transparent border-none text-slate-400 text-xl cursor-pointer leading-none p-0 hover:text-slate-600">
+                ×
+              </button>
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Row 1: type, position, fuel */}
+          <div className="flex flex-wrap gap-2">
+            <select value={row.engine_type} onChange={(e) => updateRow(idx, { engine_type: e.target.value })}
+              className="form-input" style={{ width: 'auto' }}>
+              {ENGINE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <input type="text" placeholder="Position (Port / Stbd / Center)" value={row.position}
+              onChange={(e) => updateRow(idx, { position: e.target.value })}
+              className="form-input" style={{ flex: 1, minWidth: 150 }} />
+            <select value={row.fuel_type} onChange={(e) => updateRow(idx, { fuel_type: e.target.value })}
+              className="form-input" style={{ width: 'auto' }}>
+              {FUEL_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+
+          {/* Row 2: make, model, year, HP */}
+          <div className="flex flex-wrap gap-2">
+            <input type="text" placeholder="Make (e.g. Yamaha)" value={row.make}
+              onChange={(e) => updateRow(idx, { make: e.target.value })}
+              className="form-input" style={{ flex: 1, minWidth: 110 }} />
+            <input type="text" placeholder="Model (e.g. F300)" value={row.model}
+              onChange={(e) => updateRow(idx, { model: e.target.value })}
+              className="form-input" style={{ flex: 1, minWidth: 90 }} />
+            <input type="number" placeholder="Year" value={row.year}
+              onChange={(e) => updateRow(idx, { year: e.target.value })}
+              className="form-input" style={{ width: 72 }} />
+            <input type="number" placeholder="HP" value={row.horsepower}
+              onChange={(e) => updateRow(idx, { horsepower: e.target.value })}
+              className="form-input" style={{ width: 64 }} />
+          </div>
+
+          {/* Row 3: serial, hours */}
+          <div className="flex flex-wrap gap-2">
+            <input type="text" placeholder="Serial #" value={row.serial_number}
+              onChange={(e) => updateRow(idx, { serial_number: e.target.value })}
+              className="form-input" style={{ flex: 1, minWidth: 130 }} />
+            <input type="number" placeholder="Current Hours" value={row.current_hours}
+              onChange={(e) => updateRow(idx, { current_hours: e.target.value })}
+              className="form-input" style={{ width: 130 }} />
+          </div>
+        </div>
+      ))}
 
       <button type="button" onClick={addRow}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#4dd6c8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT, padding: 0 }}>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> Add engine
+        className="flex items-center gap-1.5 text-teal-500 text-sm font-semibold cursor-pointer bg-transparent border-none p-0 hover:text-teal-600">
+        <span className="text-lg leading-none">＋</span> Add engine
       </button>
     </div>
   )

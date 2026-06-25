@@ -1,33 +1,9 @@
 'use client'
 /**
- * DocumentList — Dark-themed document upload list for Skipper mobile app.
- * Ported from OPS DocumentList. Same API routes, dark inline styles.
- * entity_type='contact' | 'asset'
+ * DocumentList — light-themed (Tailwind). Renders correctly inside OPSShell.
  */
 
 import { useState, useRef, useEffect } from 'react'
-
-const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 10px',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.16)',
-  borderRadius: 8,
-  color: '#ffffff',
-  fontSize: 14,
-  fontFamily: FONT,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  WebkitAppearance: 'auto',
-  appearance: 'auto',
-  colorScheme: 'dark',
-} as unknown as React.CSSProperties
 
 const CONTACT_DOC_TYPES = [
   { value: '',                    label: '— Select type —' },
@@ -165,83 +141,81 @@ export default function DocumentList({
     }
   }
 
-  if (loading) {
-    return <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT }}>Loading documents…</p>
-  }
+  if (loading) return <p className="text-sm text-slate-400">Loading documents…</p>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <style>{`.skipper-doclist select option { background: #05111f; color: #fff; }`}</style>
-      <div className="skipper-doclist" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {rows.map((row, idx) => (
-          <div key={idx} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: 12, background: 'rgba(255,255,255,0.03)', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
-            {/* Type dropdown */}
-            <select
-              value={row.doc_type}
-              onChange={(e) => updateRow(idx, { doc_type: e.target.value })}
-              style={{ ...selectStyle, width: 'auto', flexShrink: 0 }}
+    <div className="flex flex-col gap-2.5">
+      {rows.map((row, idx) => (
+        <div key={idx} className="border border-slate-200 rounded-xl p-3 flex flex-wrap gap-2 items-start bg-white">
+          {/* Type dropdown */}
+          <select
+            value={row.doc_type}
+            onChange={(e) => updateRow(idx, { doc_type: e.target.value })}
+            className="form-input"
+            style={{ width: 'auto', flexShrink: 0 }}
+            disabled={row.status === 'uploading'}
+          >
+            {docTypes.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+
+          {/* Custom label for "other" */}
+          {row.doc_type === 'other' && (
+            <input
+              type="text"
+              placeholder="Describe document…"
+              value={row.doc_label}
+              onChange={(e) => updateRow(idx, { doc_label: e.target.value })}
+              className="form-input"
+              style={{ flex: 1, minWidth: 130 }}
               disabled={row.status === 'uploading'}
-            >
-              {docTypes.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            />
+          )}
 
-            {/* Custom label for "other" */}
-            {row.doc_type === 'other' && (
-              <input
-                type="text"
-                placeholder="Describe document…"
-                value={row.doc_label}
-                onChange={(e) => updateRow(idx, { doc_label: e.target.value })}
-                style={{ ...inputStyle, flex: 1, minWidth: 130 }}
-                disabled={row.status === 'uploading'}
-              />
-            )}
-
-            {/* File area */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 160 }}>
-              {row.file_url && row.status === 'saved' ? (
-                <>
-                  <a href={row.file_url} target="_blank" rel="noopener noreferrer"
-                    style={{ color: '#4dd6c8', fontSize: 13, textDecoration: 'underline', fontFamily: FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                    📄 {row.file_name || 'View document'}
-                  </a>
-                  <button type="button" onClick={() => fileInputRefs.current[idx]?.click()}
-                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 12, cursor: 'pointer', fontFamily: FONT, textDecoration: 'underline' }}>
-                    Replace
-                  </button>
-                </>
-              ) : row.status === 'uploading' ? (
-                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT }}>Uploading…</span>
-              ) : row.status === 'error' ? (
-                <span style={{ color: '#f87171', fontSize: 13, fontFamily: FONT }}>{row.errorMsg}</span>
-              ) : (
+          {/* File area */}
+          <div className="flex items-center gap-2" style={{ flex: 1, minWidth: 160 }}>
+            {row.file_url && row.status === 'saved' ? (
+              <>
+                <a href={row.file_url} target="_blank" rel="noopener noreferrer"
+                  className="text-teal-500 text-sm underline overflow-hidden text-ellipsis whitespace-nowrap"
+                  style={{ maxWidth: 160 }}>
+                  📄 {row.file_name || 'View document'}
+                </a>
                 <button type="button" onClick={() => fileInputRefs.current[idx]?.click()}
-                  disabled={!row.doc_type}
-                  style={{ background: 'none', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: 7, padding: '5px 12px', color: row.doc_type ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)', fontSize: 13, cursor: row.doc_type ? 'pointer' : 'not-allowed', fontFamily: FONT }}>
-                  📎 Choose file
+                  className="bg-transparent border-none text-slate-400 text-xs cursor-pointer underline hover:text-slate-600">
+                  Replace
                 </button>
-              )}
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                ref={(el) => { fileInputRefs.current[idx] = el }}
-                style={{ display: 'none' }}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileChange(idx, f); e.target.value = '' }}
-              />
-            </div>
-
-            {/* Delete */}
-            <button type="button" onClick={() => deleteRow(idx)} disabled={row.status === 'uploading'}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 0, alignSelf: 'center' }}>
-              ×
-            </button>
+              </>
+            ) : row.status === 'uploading' ? (
+              <span className="text-sm text-slate-400">Uploading…</span>
+            ) : row.status === 'error' ? (
+              <span className="text-sm text-red-400">{row.errorMsg}</span>
+            ) : (
+              <button type="button" onClick={() => fileInputRefs.current[idx]?.click()}
+                disabled={!row.doc_type}
+                className="bg-transparent border border-dashed border-slate-300 rounded px-3 py-1 text-slate-500 text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:border-slate-400">
+                📎 Choose file
+              </button>
+            )}
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              ref={(el) => { fileInputRefs.current[idx] = el }}
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileChange(idx, f); e.target.value = '' }}
+            />
           </div>
-        ))}
-      </div>
+
+          {/* Delete */}
+          <button type="button" onClick={() => deleteRow(idx)} disabled={row.status === 'uploading'}
+            className="bg-transparent border-none text-slate-400 text-xl cursor-pointer leading-none p-0 self-center hover:text-slate-600 disabled:opacity-40">
+            ×
+          </button>
+        </div>
+      ))}
 
       <button type="button" onClick={addRow}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#4dd6c8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT, padding: 0 }}>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> Add document
+        className="flex items-center gap-1.5 text-teal-500 text-sm font-semibold cursor-pointer bg-transparent border-none p-0 hover:text-teal-600">
+        <span className="text-lg leading-none">＋</span> Add document
       </button>
     </div>
   )
