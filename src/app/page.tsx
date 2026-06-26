@@ -1953,7 +1953,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
             identity: identityPackage,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             session: { marina_id: marina.id, boater_id: user.id, access_type: 'anonymous' },
-            history: msgs.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+            conversation_history: msgs.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
           })
       })
       const d = await r.json()
