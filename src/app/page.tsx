@@ -1856,9 +1856,23 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Load full persistent history on mount
+  // Load persistent history on mount — localStorage first (instant), DB as fallback
   useEffect(() => {
+    const cacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
     async function loadHistory() {
+      // 1. Try localStorage first — survives tab switches and in-app navigation
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMsgs(parsed)
+            setHistoryLoaded(true)
+            return
+          }
+        } catch { /* bad cache — fall through to DB */ }
+      }
+      // 2. Fall back to DB
       const { data } = await supabase
         .from('messages')
         .select('direction,body,inserted_at')
@@ -1867,10 +1881,12 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
         .eq('channel', 'skipper')
         .order('inserted_at', { ascending: true })
       if (data && data.length > 0) {
-        setMsgs(data.map((m: { direction: string; body: string }) => ({
+        const loaded = data.map((m: { direction: string; body: string }) => ({
           role: m.direction === 'inbound' ? 'user' : 'skipper',
           text: m.body,
-        })))
+        }))
+        setMsgs(loaded)
+        localStorage.setItem(cacheKey, JSON.stringify(loaded))
       } else {
         setMsgs([{ role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }])
       }
@@ -1958,7 +1974,11 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       })
       const d = await r.json()
       const reply = d.reply || 'Let me check on that.'
-      setMsgs(m => [...m, { role:'skipper', text:reply }])
+      const updatedMsgs = [...msgs, { role:'user', text:msg }, { role:'skipper', text:reply }]
+      setMsgs(updatedMsgs)
+      // Persist to localStorage so history survives tab switches
+      const cacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
+      localStorage.setItem(cacheKey, JSON.stringify(updatedMsgs))
       await supabase.from('messages').insert({
         marina_id:   marina.id,
         tenant_id:   user.id,
