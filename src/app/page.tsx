@@ -1974,7 +1974,8 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       })
       const d = await r.json()
       const reply = d.reply || 'Let me check on that.'
-      const updatedMsgs = [...msgs, { role:'user', text:msg }, { role:'skipper', text:reply }]
+      const checkoutUrl = d.checkout_url || null
+      const updatedMsgs = [...msgs, { role:'user', text:msg }, { role:'skipper', text:reply, checkout_url: checkoutUrl }]
       setMsgs(updatedMsgs)
       // Persist to localStorage so history survives tab switches
       const cacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
@@ -2015,8 +2016,16 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
                 <Image src="/skipper-avatar.jpg" alt="Skipper" width={30} height={30} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
               </div>
             )}
-            <div style={{ maxWidth:'78%', padding:'11px 14px', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, border:m.role==='skipper'?`1px solid ${C.cardBorder}`:'none', fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
-              {m.text}
+            <div style={{ maxWidth:'78%', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', overflow:'hidden', border:m.role==='skipper'?`1px solid ${C.cardBorder}`:'none' }}>
+              <div style={{ padding:'11px 14px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
+                {m.text}
+              </div>
+              {(m as any).checkout_url && (
+                <a href={(m as any).checkout_url} target="_blank" rel="noopener noreferrer"
+                  style={{ display:'block', padding:'12px 16px', background:'#0d9488', color:'#fff', textAlign:'center', fontWeight:700, fontSize:14, textDecoration:'none' }}>
+                  💳 Book &amp; Pay Now
+                </a>
+              )}
             </div>
           </div>
         ))}
