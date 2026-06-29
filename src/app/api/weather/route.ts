@@ -52,6 +52,19 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch all sources in parallel
+  // Reverse geocode for City, ST display
+  let locationName = ''
+  try {
+    const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'User-Agent': 'AyeAyeSkipper/1.0' }, next: { revalidate: 86400 } })
+    if (geoRes.ok) {
+      const geoJson = await geoRes.json()
+      const city = geoJson.address?.city || geoJson.address?.town || geoJson.address?.village || geoJson.address?.hamlet || ''
+      const state = geoJson.address?.state_code || geoJson.address?.state || ''
+      if (city && state) locationName = `${city}, ${state.toUpperCase().slice(0,2)}`
+      else if (city) locationName = city
+    }
+  } catch { /* silent */ }
+
   const [weatherResult, marineResult, stationsResult] = await Promise.allSettled([
     fetch(
       `https://api.open-meteo.com/v1/forecast` +
@@ -190,5 +203,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ current, forecast, marine, tides })
+  return NextResponse.json({ current, forecast, marine, tides, location_name: locationName })
 }

@@ -3136,10 +3136,15 @@ function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | nul
 
   return (
     <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.35s ease both' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: w.location_name ? 4 : 20 }}>
         <SectionTitle>Marine Weather</SectionTitle>
         <button onClick={onRefresh} style={{ background:'none', border:'none', color:C.teal, fontSize:11, fontFamily:FONT, cursor:'pointer', fontWeight:700 }}>Refresh ↻</button>
       </div>
+      {w.location_name && (
+        <div style={{ fontSize:13, color:C.muted, marginBottom:16, display:'flex', alignItems:'center', gap:6 }}>
+          <span style={{ fontSize:14 }}>📍</span>{w.location_name}
+        </div>
+      )}
 
       {/* Current conditions */}
       <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.16) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
