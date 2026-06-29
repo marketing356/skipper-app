@@ -1306,7 +1306,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   }, [])
 
   return (
-    <div style={{ minHeight:'100vh', maxHeight:'100vh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
+    <div style={{ height:'100dvh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
       <style>{GLOBAL_CSS}</style>
 
       {/* Top bar */}
