@@ -1281,6 +1281,19 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
   )
 }
 
+// ─── Responsive hook ────────────────────────────────────────────────────────────
+function useIsDesktop(breakpoint = 768) {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= breakpoint : false
+  )
+  useEffect(() => {
+    const fn = () => setIsDesktop(window.innerWidth >= breakpoint)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [breakpoint])
+  return isDesktop
+}
+
 // ─── Home ──────────────────────────────────────────────────────────────────────
 function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading, onRefreshVessels }: {
   user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
@@ -1289,6 +1302,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   vesselsLoading: boolean; onRefreshVessels: () => void
 }) {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
+  const isDesktop = useIsDesktop()
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
@@ -1305,55 +1319,135 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
     )
   }, [])
 
+  const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
+    ['vessel',   <IcoVessel  key='v' active={activeTab==='vessel'}  />, 'My Vessel'],
+    ['weather',  <IcoWeather key='w' active={activeTab==='weather'} />, 'Weather'],
+    ['marinas',  <IcoMarinas key='m' active={activeTab==='marinas'} />, 'Marinas'],
+    ['messages', <IcoMsgs   key='ms' active={activeTab==='messages'} />, 'Messages'],
+    ['account',  <IcoAcct   key='a' active={activeTab==='account'}  />, 'Account'],
+  ]
+
+  const TAB_LABELS: Record<HomeTab, string> = {
+    vessel: 'My Vessel', weather: 'Weather', marinas: 'Marinas', messages: 'Messages', account: 'Account',
+  }
+
   return (
-    <div style={{ height:'100dvh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection:'column' }}>
+    <div style={{ height:'100dvh', background:C.bgGrad, color:C.white, fontFamily:FONT, WebkitFontSmoothing:'antialiased', display:'flex', flexDirection: isDesktop ? 'row' : 'column', overflow:'hidden' }}>
       <style>{GLOBAL_CSS}</style>
 
-      {/* Top bar */}
-      <div style={{ padding:'env(safe-area-inset-top,16px) 20px 0', flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 10px', borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:'50%', overflow:'hidden', border:`1.5px solid ${C.teal}` }}>
-              <Image src="/skipper-avatar.jpg" alt="Skipper" width={32} height={32} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+      {/* ── Desktop sidebar ── */}
+      {isDesktop && (
+        <div style={{ width:224, flexShrink:0, height:'100%', background:'rgba(4,14,26,0.98)', borderRight:`1px solid rgba(255,255,255,0.07)`, display:'flex', flexDirection:'column' }}>
+          {/* Logo */}
+          <div style={{ padding:'24px 20px 20px', borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:36, height:36, borderRadius:'50%', overflow:'hidden', border:`2px solid ${C.teal}`, flexShrink:0 }}>
+                <Image src="/skipper-avatar.jpg" alt="Skipper" width={36} height={36} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+              </div>
+              <div>
+                <div style={{ fontSize:16, fontWeight:800, letterSpacing:-0.3 }}>Skipper</div>
+                <div style={{ fontSize:11, color:C.teal, fontWeight:600 }}>We run on Skipper.</div>
+              </div>
             </div>
-            <span style={{ fontSize:17, fontWeight:800, letterSpacing:-0.3 }}>Skipper</span>
+            {vessels.length > 0 && (
+              <div style={{ fontSize:11, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'3px 10px', marginTop:12, display:'inline-block' }}>
+                {vesselIcon(vessels[0]?.vessel_type)} {vessels.length === 1 ? vessels[0].name : `${vessels.length} vessels`}
+              </div>
+            )}
           </div>
-          {vessels.length > 0 && (
-            <div style={{ fontSize:12, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px' }}>
-              {vesselIcon(vessels[0]?.vessel_type)} {vessels.length === 1 ? vessels[0].name : `${vessels.length} assets`}
-            </div>
-          )}
+          {/* Nav items */}
+          <div style={{ flex:1, padding:'12px 10px', display:'flex', flexDirection:'column', gap:2 }}>
+            {NAV_ITEMS.map(([tab, icon, label]) => (
+              <button
+                key={tab}
+                onClick={() => onTabChange(tab)}
+                style={{
+                  display:'flex', alignItems:'center', gap:12,
+                  padding:'11px 12px', borderRadius:10, border:'none', cursor:'pointer',
+                  background: activeTab === tab ? C.tealDim : 'transparent',
+                  color: activeTab === tab ? C.teal : C.muted,
+                  fontFamily:FONT, fontSize:14, fontWeight: activeTab === tab ? 700 : 400,
+                  transition:'all 0.15s', textAlign:'left', width:'100%',
+                }}
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+          {/* Sign out */}
+          <div style={{ padding:'12px 10px', borderTop:`1px solid rgba(255,255,255,0.07)` }}>
+            <button
+              onClick={onSignOut}
+              style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:'none', border:'none', color:C.muted2, cursor:'pointer', fontFamily:FONT, fontSize:13, width:'100%', borderRadius:8, transition:'color 0.15s' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Sign out
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* ── Main content column ── */}
+      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
+
+        {/* Mobile top bar */}
+        {!isDesktop && (
+          <div style={{ padding:'env(safe-area-inset-top,16px) 20px 0', flexShrink:0 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 10px', borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:32, height:32, borderRadius:'50%', overflow:'hidden', border:`1.5px solid ${C.teal}` }}>
+                  <Image src="/skipper-avatar.jpg" alt="Skipper" width={32} height={32} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
+                </div>
+                <span style={{ fontSize:17, fontWeight:800, letterSpacing:-0.3 }}>Skipper</span>
+              </div>
+              {vessels.length > 0 && (
+                <div style={{ fontSize:12, color:C.teal, fontWeight:700, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'4px 10px' }}>
+                  {vesselIcon(vessels[0]?.vessel_type)} {vessels.length === 1 ? vessels[0].name : `${vessels.length} assets`}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Desktop content header */}
+        {isDesktop && (
+          <div style={{ padding:'20px 32px', flexShrink:0, borderBottom:`1px solid rgba(255,255,255,0.07)`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ fontSize:20, fontWeight:800, letterSpacing:-0.5 }}>{TAB_LABELS[activeTab]}</div>
+          </div>
+        )}
+
+        {/* Weather strip */}
+        <WeatherStrip data={weatherData} onTap={() => onTabChange('weather')} />
+
+        {/* Scrollable content */}
+        <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
+          {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
+          {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
+            if (typeof navigator === 'undefined' || !navigator.geolocation) return
+            navigator.geolocation.getCurrentPosition(pos => {
+              fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+                .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
+            }, () => {})
+          }} />}
+          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
+          {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
+          {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
+        </div>
+
+        {/* Mobile bottom nav */}
+        {!isDesktop && (
+          <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
+            <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="Vessel"   active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
+            <NavBtn icon={<IcoWeather active={activeTab==='weather'} />} label="Weather"  active={activeTab==='weather'} onClick={() => onTabChange('weather')} />
+            <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"  active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
+            <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
+            <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"  active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
+          </div>
+        )}
       </div>
 
-      {/* Weather strip */}
-      <WeatherStrip data={weatherData} onTap={() => onTabChange('weather')} />
-
-      {/* Scrollable content */}
-      <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-        {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
-        {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
-          if (typeof navigator === 'undefined' || !navigator.geolocation) return
-          navigator.geolocation.getCurrentPosition(pos => {
-            fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
-              .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
-          }, () => {})
-        }} />}
-        {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
-        {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
-        {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
-      </div>
-
-      {/* Bottom nav */}
-      <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
-        <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="Vessel"   active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
-        <NavBtn icon={<IcoWeather active={activeTab==='weather'} />} label="Weather"  active={activeTab==='weather'} onClick={() => onTabChange('weather')} />
-        <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"  active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
-        <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
-        <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"  active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
-      </div>
-
-      {/* Floating Skipper */}
+      {/* Floating Skipper — offset on desktop to clear sidebar */}
       <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} />
     </div>
   )
