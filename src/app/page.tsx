@@ -59,6 +59,7 @@ type WeatherData = {
   marine:   Record<string, any>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tides:    Record<string, any>
+  location_name?: string
 }
 type Marina = { id:string; name:string; city:string; state:string; total_slips:number; transient_available?:boolean; lat:number|null; lng:number|null }
 
