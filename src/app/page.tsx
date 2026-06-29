@@ -2,11 +2,14 @@
 import AssetForm from '@/components/AssetForm'
 import OPSShell from '@/components/OPSShell'
 import React, { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import ContactForm from '@/components/ContactForm'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
 import type { User } from '@supabase/supabase-js'
+
+const MarinaMap = dynamic(() => import('@/components/MarinaMap'), { ssr: false, loading: () => <div style={{ width:'100%', height:'100%', background:'#0d1f2d', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.4)', fontSize:13 }}>Loading map…</div> })
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -1667,6 +1670,7 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
   const [recentThreads,   setRecentThreads]   = useState<MsgRow[]>([])
   const [marinaMap,       setMarinaMap]       = useState<Record<string, Marina>>({})
   const [transientMarina, setTransientMarina] = useState<Marina|null>(null)
+  const [viewMode,        setViewMode]        = useState<'list'|'map'>('list')
 
   useEffect(() => {
     async function load() {
@@ -1773,7 +1777,13 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
           {toast}
         </div>
       )}
-      <SectionTitle>Marinas</SectionTitle>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <SectionTitle>Marinas</SectionTitle>
+        <div style={{ display:'flex', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, overflow:'hidden' }}>
+          <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='list' ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='list' ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>≡ List</button>
+          <button onClick={() => setViewMode('map')}  style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='map'  ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='map'  ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>🗺 Map</button>
+        </div>
+      </div>
       {/* Recent conversations — folded in from removed Messages tab */}
       {recentThreads.length > 0 && (
         <>
@@ -1805,11 +1815,22 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
       <div style={{ marginBottom:14 }}>
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or city…" />
       </div>
-      {loading && <div style={{ textAlign:'center', color:'rgba(255,255,255,0.55)', padding:'32px 0' }}>Loading…</div>}
-      {!loading && filtered.length === 0 && (
+      {/* Map view */}
+      {viewMode === 'map' && (
+        <div style={{ height:'calc(100vh - 240px)', borderRadius:16, overflow:'hidden', border:'1px solid rgba(255,255,255,0.1)' }}>
+          {loading
+            ? <div style={{ width:'100%', height:'100%', background:'#0d1f2d', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.4)', fontSize:13 }}>Loading marinas…</div>
+            : <MarinaMap marinas={filtered} onSelect={m => setTransientMarina(m)} />
+          }
+        </div>
+      )}
+
+      {/* List view */}
+      {viewMode === 'list' && loading && <div style={{ textAlign:'center', color:'rgba(255,255,255,0.55)', padding:'32px 0' }}>Loading…</div>}
+      {viewMode === 'list' && !loading && filtered.length === 0 && (
         <div style={{ textAlign:'center', color:'rgba(255,255,255,0.55)', padding:'32px 0', fontSize:14 }}>No marinas found</div>
       )}
-      {filtered.map((m, i) => {
+      {viewMode === 'list' && filtered.map((m, i) => {
         const coupled = coupledIds.has(m.id)
         const acting  = coupling === m.id
         return (
