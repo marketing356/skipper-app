@@ -60,7 +60,7 @@ type WeatherData = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tides:    Record<string, any>
 }
-type Marina = { id:string; name:string; city:string; state:string; total_slips:number }
+type Marina = { id:string; name:string; city:string; state:string; total_slips:number; transient_available?:boolean; lat:number|null; lng:number|null }
 
 type BerthData = {
   id: string
@@ -1675,7 +1675,7 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
   useEffect(() => {
     async function load() {
       const [{ data: marinaRows }, { data: couplingRows }, { data: msgRows }] = await Promise.all([
-        supabase.from('marinas').select('id,name,city,state,total_slips').order('name'),
+        supabase.from('marinas').select('id,name,city,state,total_slips,transient_available,lat,lng').order('name'),
         supabase.from('contacts').select('marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null),
         supabase.from('messages').select('id,body,direction,inserted_at,marina_id').eq('tenant_id', user.id).eq('channel', 'skipper').order('inserted_at', { ascending: false }),
       ])
