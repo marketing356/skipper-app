@@ -1657,15 +1657,16 @@ function StatTile({ label, value, danger, warn }: { label:string; value:string; 
 
 // ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
 function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
-  const [marinas,       setMarinas]       = useState<Marina[]>([])
-  const [loading,       setLoading]       = useState(true)
-  const [search,        setSearch]        = useState('')
-  const [selected,      setSelected]      = useState<Marina|null>(null)
-  const [coupledIds,    setCoupledIds]    = useState<Set<string>>(new Set())
-  const [coupling,      setCoupling]      = useState<string|null>(null)
-  const [toast,         setToast]         = useState<string|null>(null)
-  const [recentThreads, setRecentThreads] = useState<MsgRow[]>([])
-  const [marinaMap,     setMarinaMap]     = useState<Record<string, Marina>>({})
+  const [marinas,         setMarinas]         = useState<Marina[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [search,          setSearch]          = useState('')
+  const [selected,        setSelected]        = useState<Marina|null>(null)
+  const [coupledIds,      setCoupledIds]      = useState<Set<string>>(new Set())
+  const [coupling,        setCoupling]        = useState<string|null>(null)
+  const [toast,           setToast]           = useState<string|null>(null)
+  const [recentThreads,   setRecentThreads]   = useState<MsgRow[]>([])
+  const [marinaMap,       setMarinaMap]       = useState<Record<string, Marina>>({})
+  const [transientMarina, setTransientMarina] = useState<Marina|null>(null)
 
   useEffect(() => {
     async function load() {
@@ -1748,6 +1749,14 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
     m.city.toLowerCase().includes(search.toLowerCase())
   )
 
+  if (transientMarina) return (
+    <TransientRequestForm
+      marina={transientMarina} user={user} profile={profile} vessel={vessel}
+      onBack={() => setTransientMarina(null)}
+      onSuccess={() => { setTransientMarina(null); showToast('✅ Request sent! Marina will respond shortly.') }}
+    />
+  )
+
   if (selected) return (
     <MarinaChat
       marina={selected} user={user} profile={profile} vessel={vessel}
@@ -1825,29 +1834,199 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
               </div>
               <div style={{ fontSize:12, color:'#4dd6c8', fontWeight:700, flexShrink:0 }}>Message →</div>
             </button>
-            {/* Coupling action row — only when NOT connected */}
-            {!coupled && (
-              <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
-                <button
-                  onClick={e => handleRecouple(m.id, m.name, e)}
-                  disabled={acting}
-                  style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
-                  {acting ? '…' : '🔄 Recouple'}
-                </button>
-                <button
-                  onClick={e => handleRequestConnect(m.id, m.name, e)}
-                  disabled={acting}
-                  style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.55)', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
-                  {acting ? '…' : 'Request to Connect'}
-                </button>
-              </div>
-            )}
+            {/* Action row */}
+            <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
+              {/* Request a Slip — always visible */}
+              <button
+                onClick={e => { e.stopPropagation(); setTransientMarina(m) }}
+                style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#ffffff', background:'linear-gradient(135deg,rgba(77,214,200,0.25),rgba(77,214,200,0.15))', border:'1px solid rgba(77,214,200,0.4)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
+                🛥️ Request a Slip
+              </button>
+              {/* Coupling actions — only when NOT connected */}
+              {!coupled && (
+                <>
+                  <button
+                    onClick={e => handleRecouple(m.id, m.name, e)}
+                    disabled={acting}
+                    style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
+                    {acting ? '…' : '🔄 Recouple'}
+                  </button>
+                  <button
+                    onClick={e => handleRequestConnect(m.id, m.name, e)}
+                    disabled={acting}
+                    style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.55)', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
+                    {acting ? '…' : 'Connect'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )
       })}
     </div>
   )
 }
+// ─── Transient Request Form ─────────────────────────────────────────────────
+function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess }: {
+  marina: Marina; user: User; profile: Profile|null; vessel: Vessel|null
+  onBack: () => void; onSuccess: () => void
+}) {
+  const today = new Date().toISOString().split('T')[0]
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+
+  const [arrival,    setArrival]    = useState(today)
+  const [departure,  setDeparture]  = useState(tomorrow)
+  const [shorePower, setShorePower] = useState(false)
+  const [fuelType,   setFuelType]   = useState('')
+  const [notes,      setNotes]      = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error,      setError]      = useState<string|null>(null)
+
+  const displayName = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
+    : user.email
+
+  function calcNights() {
+    try {
+      const a = new Date(arrival), d = new Date(departure)
+      const n = Math.round((d.getTime() - a.getTime()) / 86400000)
+      return n > 0 ? n : 1
+    } catch { return 1 }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSubmitting(true); setError(null)
+    try {
+      const res = await fetch('/api/transient-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marina_id:     marina.id,
+          boater_id:     user.id,
+          contact_name:  displayName,
+          contact_email: user.email,
+          vessel_name:   vessel?.name || null,
+          vessel_type:   vessel?.vessel_type || null,
+          loa_ft:        vessel?.length_ft || null,
+          beam_ft:       vessel?.beam_ft || null,
+          draft_ft:      vessel?.draft_ft || null,
+          shore_power:   shorePower,
+          fuel_type:     fuelType || null,
+          arrival_date:  arrival,
+          departure_date: departure,
+          nights:        calcNights(),
+          notes:         notes || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Submission failed')
+      onSuccess()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const labelStyle: React.CSSProperties = { fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.6)', display:'block', marginBottom:5 }
+  const inputStyle: React.CSSProperties = { width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.16)', borderRadius:10, padding:'10px 12px', color:'#fff', fontSize:14, fontFamily:'inherit' }
+  const sectionStyle: React.CSSProperties = { marginBottom:16 }
+
+  return (
+    <div style={{ padding:'20px 20px 100px', animation:'fadeUp 0.3s ease both' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+        <button onClick={onBack} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, padding:'7px 12px', color:C.white, fontFamily:'inherit', cursor:'pointer', fontSize:13 }}>← Back</button>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700 }}>Request a Slip</div>
+          <div style={{ fontSize:12, color:C.muted }}>{marina.name} · {marina.city}, {marina.state}</div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        {/* Dates */}
+        <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+          <div style={{ flex:1 }}>
+            <label style={labelStyle}>Arrival Date</label>
+            <input type="date" value={arrival} min={today} onChange={e => setArrival(e.target.value)} required
+              style={inputStyle} />
+          </div>
+          <div style={{ flex:1 }}>
+            <label style={labelStyle}>Departure Date</label>
+            <input type="date" value={departure} min={arrival} onChange={e => setDeparture(e.target.value)}
+              style={inputStyle} />
+          </div>
+        </div>
+        <div style={{ marginBottom:16, fontSize:12, color:C.muted }}>
+          {calcNights()} night{calcNights() !== 1 ? 's' : ''}
+        </div>
+
+        {/* Vessel info — pre-filled, read-only */}
+        {vessel && (
+          <div style={{ ...sectionStyle, background:'rgba(77,214,200,0.07)', border:'1px solid rgba(77,214,200,0.18)', borderRadius:12, padding:'12px 14px' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.teal, textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Your Vessel</div>
+            <div style={{ fontSize:13, color:C.white, fontWeight:600 }}>{vessel.name || 'Unnamed Vessel'}</div>
+            <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
+              {[vessel.length_ft && `${vessel.length_ft}ft LOA`, vessel.beam_ft && `${vessel.beam_ft}ft beam`, vessel.draft_ft && `${vessel.draft_ft}ft draft`].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+        )}
+        {!vessel && (
+          <div style={{ ...sectionStyle, background:'rgba(248,113,113,0.07)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, padding:'12px 14px', fontSize:12, color:'#f87171' }}>
+            ⚠️ Add your vessel under My Vessel so the marina knows your specs
+          </div>
+        )}
+
+        {/* Shore power */}
+        <div style={sectionStyle}>
+          <label style={{ ...labelStyle, display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+            <input type="checkbox" checked={shorePower} onChange={e => setShorePower(e.target.checked)}
+              style={{ width:16, height:16, accentColor:C.teal }} />
+            <span>Shore power needed</span>
+          </label>
+        </div>
+
+        {/* Fuel type */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Fuel Type</label>
+          <select value={fuelType} onChange={e => setFuelType(e.target.value)} style={{ ...inputStyle, color: fuelType ? C.white : 'rgba(255,255,255,0.3)' }}>
+            <option value="">Not needed / unknown</option>
+            <option value="diesel">Diesel</option>
+            <option value="gasoline">Gasoline</option>
+            <option value="electric">Electric</option>
+          </select>
+        </div>
+
+        {/* Notes */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Notes for the marina (optional)</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Any special requests, preferred slip type, etc."
+            style={{ ...inputStyle, resize:'none' as const }} />
+        </div>
+
+        {/* Contact — read-only display */}
+        <div style={{ ...sectionStyle, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:'12px 14px' }}>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Sending As</div>
+          <div style={{ fontSize:13, color:C.white }}>{displayName}</div>
+          <div style={{ fontSize:12, color:C.muted }}>{user.email}</div>
+        </div>
+
+        {error && (
+          <div style={{ marginBottom:16, fontSize:13, color:C.danger, background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:10, padding:'10px 14px' }}>
+            {error}
+          </div>
+        )}
+
+        <button type="submit" disabled={submitting}
+          style={{ width:'100%', padding:'14px', fontSize:15, fontWeight:700, color:C.bg, background: submitting ? 'rgba(77,214,200,0.4)' : C.teal, border:'none', borderRadius:14, cursor: submitting ? 'default' : 'pointer', fontFamily:'inherit' }}>
+          {submitting ? 'Sending…' : 'Send Request'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
 // ─── Marina Chat ──────────────────────────────────────────────────────────────
 function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVessel }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; coupled?:boolean; onBack:()=>void; onAddVessel:()=>void }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([])
