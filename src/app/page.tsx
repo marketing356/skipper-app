@@ -48,7 +48,7 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
-type HomeTab = 'vessel' | 'weather' | 'marinas' | 'messages' | 'account'
+type HomeTab = 'vessel' | 'marinas' | 'messages' | 'log' | 'account'
 
 type WeatherData = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1322,14 +1322,14 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
   const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
     ['vessel',   <IcoVessel  key='v' active={activeTab==='vessel'}  />, 'My Vessel'],
-    ['weather',  <IcoWeather key='w' active={activeTab==='weather'} />, 'Weather'],
     ['marinas',  <IcoMarinas key='m' active={activeTab==='marinas'} />, 'Marinas'],
     ['messages', <IcoMsgs   key='ms' active={activeTab==='messages'} />, 'Messages'],
+    ['log',      <IcoLog    key='l'  active={activeTab==='log'}     />, 'Log'],
     ['account',  <IcoAcct   key='a' active={activeTab==='account'}  />, 'Account'],
   ]
 
   const TAB_LABELS: Record<HomeTab, string> = {
-    vessel: 'My Vessel', weather: 'Weather', marinas: 'Marinas', messages: 'Messages', account: 'Account',
+    vessel: 'My Vessel', marinas: 'Marinas', messages: 'Messages', log: "Ship's Log", account: 'Account',
   }
 
   return (
@@ -1419,20 +1419,14 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         )}
 
         {/* Weather strip */}
-        <WeatherStrip data={weatherData} onTap={() => onTabChange('weather')} />
+        <WeatherStrip data={weatherData} onTap={() => {}} />
 
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
           {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
-          {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
-            if (typeof navigator === 'undefined' || !navigator.geolocation) return
-            navigator.geolocation.getCurrentPosition(pos => {
-              fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
-                .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
-            }, () => {})
-          }} />}
           {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
+          {activeTab === 'log'      && <TabShipLog />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
         </div>
 
@@ -2348,6 +2342,22 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── TAB: Ship's Log (Coming Soon) ─────────────────────────────────────────────
+function TabShipLog() {
+  return (
+    <div style={{ padding:'60px 20px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', minHeight:300 }}>
+      <div style={{ fontSize:48, marginBottom:16 }}>📓</div>
+      <div style={{ fontSize:20, fontWeight:800, color:C.white, marginBottom:8, letterSpacing:-0.4 }}>Ship&apos;s Log</div>
+      <div style={{ fontSize:14, color:C.muted, lineHeight:1.65, maxWidth:280 }}>
+        Log trips, track engine hours, and record sea conditions. Coming soon.
+      </div>
+      <div style={{ marginTop:20, fontSize:11, fontWeight:700, color:C.teal, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'5px 14px' }}>
+        Coming soon
+      </div>
     </div>
   )
 }
@@ -3410,6 +3420,10 @@ function IcoMsgs({ active }: { active: boolean }) {
 function IcoAcct({ active }: { active: boolean }) {
   const c = active ? C.teal : C.muted
   return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8" fill={active?'rgba(77,214,200,0.1)':'none'}/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
+}
+function IcoLog({ active }: { active: boolean }) {
+  const c = active ? C.teal : C.muted
+  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" fill={active?'rgba(77,214,200,0.1)':'none'}/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke={c} strokeWidth="1.8" strokeLinecap="round"/></svg>
 }
 function IcoWeather({ active }: { active: boolean }) {
   const c = active ? C.teal : C.muted
