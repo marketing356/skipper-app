@@ -1426,7 +1426,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
           {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
           {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
-          {activeTab === 'log'      && <TabShipLog />}
+          {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
         </div>
 
@@ -2346,18 +2346,202 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
   )
 }
 
-// ─── TAB: Ship's Log (Coming Soon) ─────────────────────────────────────────────
-function TabShipLog() {
+// ─── TAB: Ship's Log ────────────────────────────────────────────────────────────
+type LogEntry = {
+  id: string
+  log_date: string
+  notes: string | null
+  departed_from: string | null
+  arrived_at: string | null
+  distance_nm: number | null
+  engine_hours_start: number | null
+  engine_hours_end: number | null
+  fuel_used_gallons: number | null
+  crew_count: number | null
+  weather: string | null
+  sea_conditions: string | null
+  source: string
+}
+
+const BLANK_FORM = { log_date: new Date().toISOString().slice(0,10), notes: '', departed_from: '', arrived_at: '', distance_nm: '', engine_hours_start: '', engine_hours_end: '', fuel_used_gallons: '', crew_count: '', weather: '' }
+
+function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Vessel[], vessel: Vessel | null, vesselIds: string[] }) {
+  const [activeVesselId, setActiveVesselId] = useState<string | null>(primaryVessel?.id ?? null)
+  const [entries, setEntries]               = useState<LogEntry[]>([])
+  const [loading, setLoading]               = useState(false)
+  const [showForm, setShowForm]             = useState(false)
+  const [form, setForm]                     = useState({ ...BLANK_FORM })
+  const [saving, setSaving]                 = useState(false)
+  const [saveErr, setSaveErr]               = useState('')
+
+  const activeVessel = vessels.find(v => v.id === activeVesselId) ?? primaryVessel
+
+  useEffect(() => {
+    if (!activeVesselId) return
+    setLoading(true)
+    fetch(`/api/asset-ship-log?asset_id=${activeVesselId}`)
+      .then(r => r.json())
+      .then(data => setEntries(Array.isArray(data) ? data : []))
+      .catch(() => setEntries([]))
+      .finally(() => setLoading(false))
+  }, [activeVesselId])
+
+  async function handleSave() {
+    if (!activeVesselId) return
+    setSaving(true); setSaveErr('')
+    try {
+      const res = await fetch('/api/asset-ship-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          asset_id:           activeVesselId,
+          log_date:           form.log_date || new Date().toISOString(),
+          notes:              form.notes || null,
+          departed_from:      form.departed_from || null,
+          arrived_at:         form.arrived_at || null,
+          distance_nm:        form.distance_nm ? parseFloat(form.distance_nm) : null,
+          engine_hours_start: form.engine_hours_start ? parseFloat(form.engine_hours_start) : null,
+          engine_hours_end:   form.engine_hours_end   ? parseFloat(form.engine_hours_end)   : null,
+          fuel_used_gallons:  form.fuel_used_gallons  ? parseFloat(form.fuel_used_gallons)  : null,
+          crew_count:         form.crew_count         ? parseInt(form.crew_count)           : null,
+          weather:            form.weather || null,
+          source:             'manual',
+        }),
+      })
+      if (!res.ok) { setSaveErr('Save failed'); return }
+      const newEntry = await res.json()
+      setEntries(prev => [newEntry, ...prev])
+      setForm({ ...BLANK_FORM })
+      setShowForm(false)
+    } catch { setSaveErr('Save failed') }
+    finally { setSaving(false) }
+  }
+
+  function fmtDate(d: string) {
+    return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+  }
+
+  function sourceBadge(source: string) {
+    const map: Record<string, { label: string; color: string }> = {
+      manual:      { label: 'You', color: C.teal },
+      skipper:     { label: '🤖 Skipper', color: '#a78bfa' },
+      helm_event:  { label: '⚓ Marina', color: '#60a5fa' },
+      fuel:        { label: '⛽ Fuel', color: '#fb923c' },
+      work_order:  { label: '🔧 Service', color: '#facc15' },
+    }
+    const b = map[source] ?? { label: source, color: C.muted }
+    return <span style={{ fontSize:10, fontWeight:700, color:b.color, background:'rgba(255,255,255,0.06)', borderRadius:10, padding:'2px 8px' }}>{b.label}</span>
+  }
+
+  const iStyle = { width:'100%', padding:'11px 13px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:8, color:C.white, fontSize:14, fontFamily:FONT, outline:'none' } as React.CSSProperties
+
   return (
-    <div style={{ padding:'60px 20px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', minHeight:300 }}>
-      <div style={{ fontSize:48, marginBottom:16 }}>📓</div>
-      <div style={{ fontSize:20, fontWeight:800, color:C.white, marginBottom:8, letterSpacing:-0.4 }}>Ship&apos;s Log</div>
-      <div style={{ fontSize:14, color:C.muted, lineHeight:1.65, maxWidth:280 }}>
-        Log trips, track engine hours, and record sea conditions. Coming soon.
+    <div style={{ padding:'0 0 80px' }}>
+
+      {/* ── Header ── */}
+      <div style={{ padding:'16px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ fontSize:18, fontWeight:800, color:C.white, letterSpacing:-0.4 }}>📓 Ship&apos;s Log</div>
+        {activeVesselId && (
+          <button onClick={() => { setShowForm(s => !s); setSaveErr('') }}
+            style={{ background:showForm ? 'rgba(255,255,255,0.08)' : C.teal, color:showForm ? C.white : '#0d2b4b', border:'none', borderRadius:8, padding:'8px 14px', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:FONT }}>
+            {showForm ? 'Cancel' : '+ New Entry'}
+          </button>
+        )}
       </div>
-      <div style={{ marginTop:20, fontSize:11, fontWeight:700, color:C.teal, background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:20, padding:'5px 14px' }}>
-        Coming soon
-      </div>
+
+      {/* ── Vessel selector (multiple vessels only) ── */}
+      {vessels.length > 1 && (
+        <div style={{ padding:'0 16px 12px', display:'flex', gap:8, overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
+          {vessels.map(v => (
+            <button key={v.id} onClick={() => setActiveVesselId(v.id)}
+              style={{ flexShrink:0, background: v.id === activeVesselId ? C.teal : C.inputBg, color: v.id === activeVesselId ? '#0d2b4b' : C.muted, border: `1px solid ${v.id === activeVesselId ? C.teal : C.inputBorder}`, borderRadius:20, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:FONT, whiteSpace:'nowrap' }}>
+              {v.name || `Vessel ${v.id.slice(0,4)}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── No vessels ── */}
+      {vessels.length === 0 && (
+        <div style={{ padding:'60px 20px', textAlign:'center' }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>⚓</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No vessel on file</div>
+          <div style={{ fontSize:13, color:C.muted, lineHeight:1.65 }}>Add your vessel in the Vessel tab first.</div>
+        </div>
+      )}
+
+      {/* ── Active vessel name ── */}
+      {activeVessel && vessels.length === 1 && (
+        <div style={{ padding:'0 16px 12px' }}>
+          <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>{activeVessel.name || 'My Vessel'}</span>
+        </div>
+      )}
+
+      {/* ── New entry form ── */}
+      {showForm && activeVesselId && (
+        <div style={{ margin:'0 16px 16px', background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, padding:18 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:C.white, marginBottom:14 }}>New Log Entry</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            <input type="date" value={form.log_date} onChange={e => setForm(f => ({ ...f, log_date: e.target.value }))} style={iStyle} />
+            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Trip notes…" rows={3}
+              style={{ ...iStyle, resize:'none' }} />
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <input placeholder="Departed from" value={form.departed_from} onChange={e => setForm(f => ({ ...f, departed_from: e.target.value }))} style={iStyle} />
+              <input placeholder="Arrived at" value={form.arrived_at} onChange={e => setForm(f => ({ ...f, arrived_at: e.target.value }))} style={iStyle} />
+              <input placeholder="Distance (nm)" type="number" value={form.distance_nm} onChange={e => setForm(f => ({ ...f, distance_nm: e.target.value }))} style={iStyle} />
+              <input placeholder="Fuel used (gal)" type="number" value={form.fuel_used_gallons} onChange={e => setForm(f => ({ ...f, fuel_used_gallons: e.target.value }))} style={iStyle} />
+              <input placeholder="Engine hrs start" type="number" value={form.engine_hours_start} onChange={e => setForm(f => ({ ...f, engine_hours_start: e.target.value }))} style={iStyle} />
+              <input placeholder="Engine hrs end" type="number" value={form.engine_hours_end} onChange={e => setForm(f => ({ ...f, engine_hours_end: e.target.value }))} style={iStyle} />
+              <input placeholder="Crew count" type="number" value={form.crew_count} onChange={e => setForm(f => ({ ...f, crew_count: e.target.value }))} style={iStyle} />
+              <input placeholder="Weather" value={form.weather} onChange={e => setForm(f => ({ ...f, weather: e.target.value }))} style={iStyle} />
+            </div>
+            {saveErr && <div style={{ fontSize:12, color:C.danger }}>{saveErr}</div>}
+            <button onClick={handleSave} disabled={saving}
+              style={{ background:C.teal, color:'#0d2b4b', border:'none', borderRadius:8, padding:'13px', fontSize:14, fontWeight:900, cursor:saving?'not-allowed':'pointer', fontFamily:FONT, opacity:saving?0.7:1 }}>
+              {saving ? 'Saving…' : 'Save Entry'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Entries list ── */}
+      {loading && (
+        <div style={{ padding:'40px 16px', textAlign:'center', color:C.muted, fontSize:13 }}>Loading…</div>
+      )}
+
+      {!loading && !showForm && entries.length === 0 && activeVesselId && (
+        <div style={{ padding:'60px 20px', textAlign:'center' }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>📓</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No log entries yet</div>
+          <div style={{ fontSize:13, color:C.muted, lineHeight:1.65, maxWidth:260, margin:'0 auto' }}>
+            Start the record. Every marina visit, fuel stop, and trip Skipper logs automatically.
+          </div>
+        </div>
+      )}
+
+      {!loading && entries.map((e, i) => (
+        <div key={e.id} style={{ margin:'0 16px', borderBottom: i < entries.length-1 ? `1px solid rgba(255,255,255,0.06)` : 'none', padding:'16px 0' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:C.white }}>{fmtDate(e.log_date)}</div>
+            {sourceBadge(e.source)}
+          </div>
+          {e.notes && <div style={{ fontSize:13, color:C.muted, lineHeight:1.65, marginBottom:8 }}>{e.notes}</div>}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {(e.departed_from || e.arrived_at) && (
+              <span style={{ fontSize:12, color:C.muted2 }}>
+                {[e.departed_from, e.arrived_at].filter(Boolean).join(' → ')}
+              </span>
+            )}
+            {e.distance_nm && <span style={{ fontSize:11, color:C.muted2 }}>📍 {e.distance_nm} nm</span>}
+            {(e.engine_hours_start != null || e.engine_hours_end != null) && (
+              <span style={{ fontSize:11, color:C.muted2 }}>⚙️ {e.engine_hours_start ?? '?'} → {e.engine_hours_end ?? '?'} hrs</span>
+            )}
+            {e.fuel_used_gallons && <span style={{ fontSize:11, color:C.muted2 }}>⛽ {e.fuel_used_gallons} gal</span>}
+            {e.crew_count && <span style={{ fontSize:11, color:C.muted2 }}>👥 {e.crew_count}</span>}
+            {e.weather && <span style={{ fontSize:11, color:C.muted2 }}>🌤 {e.weather}</span>}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
