@@ -48,7 +48,7 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
-type HomeTab = 'vessel' | 'marinas' | 'messages' | 'log' | 'account'
+type HomeTab = 'vessel' | 'weather' | 'marinas' | 'messages' | 'log' | 'account'
 
 type WeatherData = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1321,15 +1321,16 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   }, [])
 
   const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
-    ['vessel',   <IcoVessel  key='v' active={activeTab==='vessel'}  />, 'My Vessel'],
-    ['marinas',  <IcoMarinas key='m' active={activeTab==='marinas'} />, 'Marinas'],
+    ['vessel',   <IcoVessel  key='v'  active={activeTab==='vessel'}   />, 'My Vessel'],
+    ['weather',  <IcoWeather key='w'  active={activeTab==='weather'}  />, 'Weather'],
+    ['marinas',  <IcoMarinas key='m'  active={activeTab==='marinas'}  />, 'Marinas'],
     ['messages', <IcoMsgs   key='ms' active={activeTab==='messages'} />, 'Messages'],
-    ['log',      <IcoLog    key='l'  active={activeTab==='log'}     />, 'Log'],
-    ['account',  <IcoAcct   key='a' active={activeTab==='account'}  />, 'Account'],
+    ['log',      <IcoLog    key='l'  active={activeTab==='log'}      />, 'Log'],
+    ['account',  <IcoAcct   key='a'  active={activeTab==='account'}  />, 'Account'],
   ]
 
   const TAB_LABELS: Record<HomeTab, string> = {
-    vessel: 'My Vessel', marinas: 'Marinas', messages: 'Messages', log: "Ship's Log", account: 'Account',
+    vessel: 'My Vessel', weather: 'Weather', marinas: 'Marinas', messages: 'Messages', log: "Ship's Log", account: 'Account',
   }
 
   return (
@@ -1419,11 +1420,18 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         )}
 
         {/* Weather strip */}
-        <WeatherStrip data={weatherData} onTap={() => {}} />
+        <WeatherStrip data={weatherData} onTap={() => onTabChange('weather')} />
 
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
           {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
+          {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
+            if (typeof navigator === 'undefined' || !navigator.geolocation) return
+            navigator.geolocation.getCurrentPosition(pos => {
+              fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+                .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
+            }, () => {})
+          }} />}
           {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
@@ -1433,10 +1441,11 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         {/* Mobile bottom nav */}
         {!isDesktop && (
           <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
-            <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}  />} label="Vessel"   active={activeTab==='vessel'}  onClick={() => onTabChange('vessel')}  />
-            <NavBtn icon={<IcoWeather active={activeTab==='weather'} />} label="Weather"  active={activeTab==='weather'} onClick={() => onTabChange('weather')} />
-            <NavBtn icon={<IcoMarinas active={activeTab==='marinas'} />} label="Marinas"  active={activeTab==='marinas'} onClick={() => onTabChange('marinas')} />
+            <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}   />} label="Vessel"   active={activeTab==='vessel'}   onClick={() => onTabChange('vessel')}   />
+            <NavBtn icon={<IcoWeather active={activeTab==='weather'}  />} label="Weather"  active={activeTab==='weather'}  onClick={() => onTabChange('weather')}  />
+            <NavBtn icon={<IcoMarinas active={activeTab==='marinas'}  />} label="Marinas"  active={activeTab==='marinas'}  onClick={() => onTabChange('marinas')}  />
             <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
+            <NavBtn icon={<IcoLog    active={activeTab==='log'}      />} label="Log"      active={activeTab==='log'}      onClick={() => onTabChange('log')}      />
             <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"  active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
           </div>
         )}
