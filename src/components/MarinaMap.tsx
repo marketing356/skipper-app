@@ -26,7 +26,7 @@ export default function MarinaMap({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
       center:  [-98.35, 39.5],
       zoom:    3.5,
       attributionControl: false,
