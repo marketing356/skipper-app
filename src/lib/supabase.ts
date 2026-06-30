@@ -7,6 +7,13 @@ function getAdmin() {
     _admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        global: {
+          // Next.js 14 caches fetch() by default — bypass it entirely for server-side DB reads
+          fetch: (url: RequestInfo | URL, options?: RequestInit) =>
+            fetch(url, { ...options, cache: 'no-store' }),
+        },
+      }
     )
   }
   return _admin
