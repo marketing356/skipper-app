@@ -3384,7 +3384,22 @@ function FormSectionLabel({ children }: { children: React.ReactNode }) {
 // ─── Nav Icons ─────────────────────────────────────────────────────────────────
 // ── WEATHER STRIP ───────────────────────────────────────────────────────────────────────
 function WeatherStrip({ data, onTap }: { data: WeatherData | null; onTap: () => void }) {
-  if (!data?.current?.temp_f) return null
+  const stripBase: React.CSSProperties = {
+    width:'100%', background:'rgba(255,255,255,0.04)', border:'none',
+    borderBottom:'1px solid rgba(255,255,255,0.06)', padding:'7px 20px',
+    cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+    gap:14, fontFamily:FONT, flexShrink:0, minHeight:34,
+  }
+
+  // Always render — show subtle loading state until data arrives
+  if (!data?.current?.temp_f) {
+    return (
+      <button onClick={onTap} style={stripBase}>
+        <span style={{ fontSize:12, color:C.muted2, fontWeight:500 }}>📍 Tap for marine weather</span>
+      </button>
+    )
+  }
+
   const { current, tides } = data
   const nextTide = tides?.next
   const tideDir  = tides?.is_rising ? '↑' : '↓'
@@ -3392,10 +3407,7 @@ function WeatherStrip({ data, onTap }: { data: WeatherData | null; onTap: () => 
     ? new Date(nextTide.time).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true })
     : null
   return (
-    <button
-      onClick={onTap}
-      style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'none', borderBottom:'1px solid rgba(255,255,255,0.06)', padding:'6px 20px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:14, fontFamily:FONT, flexShrink:0 }}
-    >
+    <button onClick={onTap} style={stripBase}>
       <span style={{ fontSize:13, color:C.white, fontWeight:600 }}>
         {current.icon} {current.temp_f}° · {current.wind_dir} {current.wind_kts} kts
       </span>
