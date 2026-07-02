@@ -7,6 +7,9 @@
  *
  * Scales to 1M+ users via Supabase Broadcast from Database.
  * postgres_changes is DEPRECATED across the universe.
+ *
+ * 🔴 UPDATED 2026-07-02: Auth reconnect fix — channel re-authenticates
+ * automatically when login confirms. Universal fix across all surfaces.
  */
 
 import { useEffect, useRef } from 'react'
@@ -43,7 +46,11 @@ export function useSkipperRealtime(opts: UseSkipperRealtimeOptions) {
     const supabase = createClient()
     let channel: RealtimeChannel | null = null
 
-    ;(async () => {
+    async function connect() {
+      if (channel) {
+        await supabase.removeChannel(channel)
+        channel = null
+      }
       // Authorization required for private channels
       await supabase.realtime.setAuth()
       channel = supabase.channel(topic, { config: { private: true } })
@@ -51,9 +58,19 @@ export function useSkipperRealtime(opts: UseSkipperRealtimeOptions) {
         .on('broadcast', { event: 'UPDATE' }, ({ payload }) => onChangeRef.current({ table: payload.table, op: 'UPDATE', record: payload.record ?? null, old: payload.old_record ?? null }))
         .on('broadcast', { event: 'DELETE' }, ({ payload }) => onChangeRef.current({ table: payload.table, op: 'DELETE', record: null, old: payload.old_record ?? null }))
         .subscribe()
-    })()
+    }
+
+    // Initial connection
+    connect()
+
+    // Re-authenticate and reconnect when login confirms — fixes silent failure
+    // when hook mounts before auth session is established (PIN flow, SSO, etc.)
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) connect()
+    })
 
     return () => {
+      authSub.unsubscribe()
       if (channel) supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
