@@ -2564,7 +2564,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   type MyMarina = { marina_id: string; contact_id: string; marina_name: string }
   const [myMarinas,    setMyMarinas]    = useState<MyMarina[]>([])
   const [activeMarina, setActiveMarina] = useState<MyMarina | null>(null)
-  const [msgs,         setMsgs]         = useState<{ id:string; body:string; direction:string; inserted_at:string }[]>([])
+  const [msgs,         setMsgs]         = useState<{ id:string; body:string; direction:string; created_at:string }[]>([])
   const [draft,        setDraft]        = useState('')
   const [sending,      setSending]      = useState(false)
   const [loading,      setLoading]      = useState(true)
@@ -2605,10 +2605,10 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     if (!target) return
     const { data } = await supabase
       .from('messages')
-      .select('id,body,direction,inserted_at')
+      .select('id,body,direction,created_at')
       .eq('marina_id', target.marina_id)
       .eq('tenant_id', target.contact_id)
-      .order('inserted_at', { ascending: true })
+      .order('created_at', { ascending: true })
     setMsgs(data ?? [])
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2719,7 +2719,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
                 color: fromBoater ? C.navy : C.white,
                 fontSize:14, lineHeight:1.45, fontWeight: fromBoater ? 600 : 400,
               }}>{m.body}</div>
-              <div style={{ fontSize:10, color:C.muted2, marginTop:3, paddingInline:2 }}>{fmtTime(m.inserted_at)}</div>
+              <div style={{ fontSize:10, color:C.muted2, marginTop:3, paddingInline:2 }}>{fmtTime(m.created_at)}</div>
             </div>
           )
         })}
