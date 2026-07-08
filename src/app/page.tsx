@@ -2639,11 +2639,19 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 
   useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
 
-  useSkipperRealtime({
-    scope: { kind: 'marina', id: activeMarina?.marina_id ?? '' },
-    enabled: !!activeMarina,
-    onChange: () => { loadThread() },
-  })
+  // postgres_changes: fires on any INSERT to messages for this marina
+  useEffect(() => {
+    if (!activeMarina) return
+    const ch = supabase
+      .channel(`boater-messages-${activeMarina.marina_id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'messages',
+        filter: `marina_id=eq.${activeMarina.marina_id}`,
+      }, () => { loadThread() })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMarina?.marina_id])
 
   // ── Send ─────────────────────────────────────────────────────────────────
   async function send() {
