@@ -2569,20 +2569,44 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   const [draft,      setDraft]      = useState('')
   const [sending,    setSending]    = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // contact_id lookup: messages are keyed by contacts.id, NOT auth user UUID
+  const [allContactIds,    setAllContactIds]    = useState<string[]>([])
+  const [marinaContactMap, setMarinaContactMap] = useState<Record<string,string>>({})
+  const [nationalContactId,setNationalContactId]= useState<string|null>(null)
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
     : (user.email ?? 'Boater')
 
+  // ── Resolve all contact IDs for this auth user ─────────────────────────────
+  useEffect(() => {
+    supabase.from('contacts').select('id,marina_id').eq('auth_user_id', user.id)
+      .then(({ data }) => {
+        if (!data) return
+        const map: Record<string,string> = {}
+        let natId: string | null = null
+        const ids: string[] = []
+        for (const c of data) {
+          ids.push(c.id as string)
+          if (c.marina_id) map[c.marina_id as string] = c.id as string
+          else natId = c.id as string
+        }
+        setAllContactIds(ids)
+        setMarinaContactMap(map)
+        setNationalContactId(natId)
+      })
+  }, [user.id])
+
   // ── Load thread list ───────────────────────────────────────────────────────
   useEffect(() => {
+    if (allContactIds.length === 0) return
     async function load() {
       setLoading(true)
-      // Get all direct messages for this user
+      // Query by all contact IDs — messages are stored with contacts.id, not auth UUID
       const { data: msgRows } = await supabase
         .from('messages')
         .select('id,body,direction,inserted_at,marina_id')
-        .eq('tenant_id', user.id)
+        .in('tenant_id', allContactIds)
         .eq('channel', 'direct')
         .order('inserted_at', { ascending: false })
 
@@ -2616,17 +2640,19 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       setLoading(false)
     }
     load()
-  }, [user.id])
+  }, [allContactIds])
 
   // ── Realtime: new direct messages ─────────────────────────────────────────
   useSkipperRealtime({
     scope: { kind: 'boater', authUserId: user.id },
+    enabled: allContactIds.length > 0,
     onChange: () => {
+      if (allContactIds.length === 0) return
       async function reload() {
         const { data: msgRows } = await supabase
           .from('messages')
           .select('id,body,direction,inserted_at,marina_id')
-          .eq('tenant_id', user.id)
+          .in('tenant_id', allContactIds)
           .eq('channel', 'direct')
           .order('inserted_at', { ascending: false })
         if (!msgRows || msgRows.length === 0) return
@@ -2651,11 +2677,12 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 
   // ── Load single thread ────────────────────────────────────────────────────
   async function loadThread(marinaId: string) {
+    if (allContactIds.length === 0) return
     setMsgsLoading(true)
     const { data } = await supabase
       .from('messages')
       .select('id,body,direction,inserted_at')
-      .eq('tenant_id', user.id)
+      .in('tenant_id', allContactIds)
       .eq('marina_id', marinaId)
       .eq('channel', 'direct')
       .order('inserted_at', { ascending: true })
@@ -2675,9 +2702,11 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     setSending(true)
     const body = draft.trim()
     setDraft('')
+    // Use marina-scoped contact_id if available, else national-pool, else auth UUID
+    const sendTenantId = marinaContactMap[activeThread.marina_id] ?? nationalContactId ?? user.id
     await supabase.from('messages').insert({
       marina_id:   activeThread.marina_id,
-      tenant_id:   user.id,
+      tenant_id:   sendTenantId,
       direction:   'inbound',
       body,
       channel:     'direct',
