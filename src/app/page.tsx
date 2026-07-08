@@ -2561,7 +2561,7 @@ type DirectThread = { marina_id: string; marinaName: string; lastBody: string; l
 type DirectMsg    = { id: string; body: string; direction: string; inserted_at: string }
 
 function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
-  type MyMarina = { marina_id: string; contact_id: string; marina_name: string }
+  type MyMarina = { marina_id: string; contact_id: string; marina_name: string; tenantType: 'slip_holder' | 'transient' | 'external' }
   const [myMarinas,    setMyMarinas]    = useState<MyMarina[]>([])
   const [activeMarina, setActiveMarina] = useState<MyMarina | null>(null)
   const [msgs,         setMsgs]         = useState<{ id:string; body:string; direction:string; created_at:string }[]>([])
@@ -2587,10 +2587,33 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       const { data: mRows } = await supabase.from('marinas').select('id,name').in('id', ids)
       const nm: Record<string,string> = {}
       for (const m of (mRows ?? [])) nm[m.id] = m.name
+      // Determine tenant type for each marina — slip_holder, transient, or external
+      const contactIds = cRows.map((c: any) => c.id as string)
+      const { data: leaseRows } = await supabase
+        .from('leases')
+        .select('tenant_id')
+        .in('tenant_id', contactIds)
+        .eq('status', 'active')
+        .is('deleted_at', null)
+      const slipHolderSet = new Set((leaseRows ?? []).map((l: any) => l.tenant_id as string))
+
+      // Transient check for non-slip-holders
+      const nonSlipIds = contactIds.filter(id => !slipHolderSet.has(id))
+      let transientSet = new Set<string>()
+      if (nonSlipIds.length > 0) {
+        const { data: transRows } = await supabase
+          .from('transient_requests')
+          .select('tenant_id')
+          .in('tenant_id', nonSlipIds)
+          .eq('status', 'accepted')
+        transientSet = new Set((transRows ?? []).map((t: any) => t.tenant_id as string))
+      }
+
       const marinas: MyMarina[] = cRows.map((c: any) => ({
         marina_id:   c.marina_id as string,
         contact_id:  c.id as string,
         marina_name: nm[c.marina_id as string] ?? 'Marina',
+        tenantType:  slipHolderSet.has(c.id) ? 'slip_holder' : transientSet.has(c.id) ? 'transient' : 'external',
       }))
       setMyMarinas(marinas)
       if (marinas.length === 1) setActiveMarina(marinas[0])
@@ -2635,6 +2658,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       body,
       channel:     'in_app',
       sender_name: displayName ?? 'Boater',
+      tenant_type: activeMarina.tenantType,
     })
     setSending(false)
     loadThread()
