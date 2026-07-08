@@ -53,7 +53,10 @@ export function useSkipperRealtime(opts: UseSkipperRealtimeOptions) {
       }
       // Authorization required for private channels
       await supabase.realtime.setAuth()
-      channel = supabase.channel(topic, { config: { private: true } })
+      // Marina channels are non-private — marina UUID is the capability credential.
+      // Boater/system channels stay private (require Supabase JWT).
+      const isPrivate = scope.kind !== 'marina'
+      channel = supabase.channel(topic, { config: { private: isPrivate } })
         .on('broadcast', { event: 'INSERT' }, ({ payload }) => onChangeRef.current({ table: payload.table, op: 'INSERT', record: payload.record ?? null, old: null }))
         .on('broadcast', { event: 'UPDATE' }, ({ payload }) => onChangeRef.current({ table: payload.table, op: 'UPDATE', record: payload.record ?? null, old: payload.old_record ?? null }))
         .on('broadcast', { event: 'DELETE' }, ({ payload }) => onChangeRef.current({ table: payload.table, op: 'DELETE', record: null, old: payload.old_record ?? null }))

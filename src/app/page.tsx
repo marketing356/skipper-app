@@ -2640,7 +2640,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
 
   useSkipperRealtime({
-    scope: { kind: 'boater', authUserId: user.id },
+    scope: { kind: 'marina', id: activeMarina?.marina_id ?? '' },
     enabled: !!activeMarina,
     onChange: () => { loadThread() },
   })
