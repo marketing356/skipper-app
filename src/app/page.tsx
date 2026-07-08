@@ -2639,19 +2639,13 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 
   useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
 
-  // postgres_changes: fires on any INSERT to messages for this marina
-  useEffect(() => {
-    if (!activeMarina) return
-    const ch = supabase
-      .channel(`boater-messages-${activeMarina.marina_id}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'messages',
-        filter: `marina_id=eq.${activeMarina.marina_id}`,
-      }, () => { loadThread() })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMarina?.marina_id])
+  // Boater private channel — proven working for Helm→Boater direction.
+  // Boater IS authenticated with Supabase JWT so private channel subscription works.
+  useSkipperRealtime({
+    scope: { kind: 'boater', authUserId: user.id },
+    enabled: !!activeMarina,
+    onChange: () => { loadThread() },
+  })
 
   // ── Send ─────────────────────────────────────────────────────────────────
   async function send() {
