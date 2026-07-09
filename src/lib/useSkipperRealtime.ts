@@ -72,8 +72,25 @@ export function useSkipperRealtime(opts: UseSkipperRealtimeOptions) {
       if (session) connect()
     })
 
+    // Health check: reconnect every 30s if the channel silently dropped
+    const healthTimer = setInterval(async () => {
+      if (!channel || (channel as any).state !== 'joined') {
+        await connect()
+      }
+    }, 30_000)
+
+    // Visibility: when tab regains focus, trigger a refresh to catch any missed broadcasts
+    function onVisible() {
+      if (document.visibilityState === 'visible') {
+        onChangeRef.current({ table: '__visibility__', op: 'UPDATE', record: null, old: null })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
       authSub.unsubscribe()
+      clearInterval(healthTimer)
+      document.removeEventListener('visibilitychange', onVisible)
       if (channel) supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
