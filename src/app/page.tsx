@@ -1757,6 +1757,12 @@ function StatTile({ label, value, danger, warn }: { label:string; value:string; 
 }
 
 // ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
+type TransientReq = {
+  id: string; marina_id: string; status: string
+  arrival_date: string; departure_date: string | null
+  vessel_name: string | null; contact_name: string; created_at: string
+}
+
 function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
   const [marinas,         setMarinas]         = useState<Marina[]>([])
   const [loading,         setLoading]         = useState(true)
@@ -1769,13 +1775,22 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
   const [marinaMap,       setMarinaMap]       = useState<Record<string, Marina>>({})
   const [transientMarina, setTransientMarina] = useState<Marina|null>(null)
   const [viewMode,        setViewMode]        = useState<'list'|'map'>('list')
+  const [myRequests,      setMyRequests]      = useState<TransientReq[]>([])
 
   useEffect(() => {
     async function load() {
-      const [{ data: marinaRows }, { data: couplingRows }, { data: msgRows }] = await Promise.all([
+      const email = user.email
+      const [{ data: marinaRows }, { data: couplingRows }, { data: msgRows }, { data: reqRows }] = await Promise.all([
         supabase.from('marinas').select('id,name,city,state,total_slips,transient_available,lat,lng').order('name'),
         supabase.from('contacts').select('marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null),
         supabase.from('messages').select('id,body,direction,inserted_at,marina_id').eq('tenant_id', user.id).eq('channel', 'skipper').order('inserted_at', { ascending: false }),
+        email
+          ? supabase.from('transient_requests')
+              .select('id,marina_id,status,arrival_date,departure_date,vessel_name,contact_name,created_at')
+              .eq('contact_email', email)
+              .order('created_at', { ascending: false })
+              .limit(10)
+          : Promise.resolve({ data: [] }),
       ])
       const rows = marinaRows ?? []
       setMarinas(rows)
@@ -1791,10 +1806,11 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
         }
         setRecentThreads(grouped)
       }
+      setMyRequests((reqRows ?? []) as TransientReq[])
       setLoading(false)
     }
     load()
-  }, [user.id])
+  }, [user.id, user.email])
 
   function showToast(msg: string) {
     setToast(msg)
@@ -1904,6 +1920,39 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
           <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10, marginTop:20, paddingTop:12, borderTop:`1px solid rgba(255,255,255,0.06)` }}>All Marinas</div>
         </>
       )}
+      {/* My Slip Requests */}
+      {myRequests.length > 0 && (
+        <>
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10, marginTop: recentThreads.length > 0 ? 0 : 4 }}>My Slip Requests</div>
+          {myRequests.map((req, i) => {
+            const marina = marinaMap[req.marina_id]
+            const statusColor = req.status === 'accepted' ? '#4ade80' : req.status === 'declined' ? C.danger : '#f59e0b'
+            const statusLabel = req.status === 'accepted' ? '\u2705 Confirmed' : req.status === 'declined' ? '\u2717 Declined' : '\u23f3 Pending'
+            const arrFmt = req.arrival_date ? new Date(req.arrival_date).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : null
+            const depFmt = req.departure_date ? new Date(req.departure_date).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : null
+            return (
+              <div key={req.id}
+                style={{ background: req.status === 'accepted' ? 'rgba(74,222,128,0.06)' : C.card, border:`1px solid ${req.status === 'accepted' ? 'rgba(74,222,128,0.25)' : req.status === 'declined' ? 'rgba(248,113,113,0.2)' : C.cardBorder}`, borderRadius:14, padding:'12px 14px', marginBottom:8, animation:`fadeUp 0.3s ease ${i*0.05}s both` }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.white }}>{marina?.name ?? 'Marina'}</div>
+                  <span style={{ fontSize:11, fontWeight:700, color:statusColor, background:`${statusColor}18`, border:`1px solid ${statusColor}40`, borderRadius:20, padding:'2px 8px' }}>{statusLabel}</span>
+                </div>
+                <div style={{ fontSize:12, color:C.muted }}>
+                  {[arrFmt && depFmt ? `${arrFmt} → ${depFmt}` : arrFmt, req.vessel_name].filter(Boolean).join(' · ')}
+                </div>
+                {req.status === 'accepted' && (
+                  <div style={{ fontSize:11, color:'#4ade80', marginTop:4, fontWeight:600 }}>Marina confirmed — check your email for details</div>
+                )}
+                {req.status === 'pending' && (
+                  <div style={{ fontSize:11, color:'#f59e0b', marginTop:4 }}>Waiting for marina response</div>
+                )}
+              </div>
+            )
+          })}
+          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10, marginTop:16, paddingTop:12, borderTop:'1px solid rgba(255,255,255,0.06)' }}>All Marinas</div>
+        </>
+      )}
+
       {!vessel && (
         <div style={{ marginBottom:14, background:'rgba(77,214,200,0.07)', border:'1px solid rgba(77,214,200,0.2)', borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:16 }}>⛵</span>
