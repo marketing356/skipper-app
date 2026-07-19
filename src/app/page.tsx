@@ -1499,41 +1499,41 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
       const { data: leases } = await supabase
         .from('leases')
-        .select('id, tenant_id, slip_id, monthly_rate, lease_type, start_date, end_date')
+        .select('id, tenant_id, space_v2_id, monthly_rate, contract_type, start_date, end_date')
         .in('tenant_id', contactIds)
         .eq('status', 'active')
 
       if (!leases || leases.length === 0) { setBerthLoading(false); return }
 
-      const slipIds = leases.map((l: { slip_id: string }) => l.slip_id).filter(Boolean)
-      const [{ data: slips }, { data: marinas }] = await Promise.all([
-        slipIds.length > 0
-          ? supabase.from('slips').select('id, slip_number, dock').in('id', slipIds)
+      const spaceIds = leases.map((l: { space_v2_id: string }) => l.space_v2_id).filter(Boolean)
+      const [{ data: spaces }, { data: marinas }] = await Promise.all([
+        spaceIds.length > 0
+          ? supabase.from('spaces').select('id, label, dock').eq('space_type', 'slip').in('id', spaceIds)
           : Promise.resolve({ data: [] }),
         supabase.from('marinas').select('id, name').in('id', marinaIds),
       ])
 
-      const slipMap: Record<string, { slip_number: string; dock: string }> =
-        Object.fromEntries((slips ?? []).map((s: { id: string; slip_number: string; dock: string }) => [s.id, s]))
+      const spaceMap: Record<string, { label: string; dock: string }> =
+        Object.fromEntries((spaces ?? []).map((s: { id: string; label: string; dock: string }) => [s.id, s]))
       const marinaMap: Record<string, string> =
         Object.fromEntries((marinas ?? []).map((m: { id: string; name: string }) => [m.id, m.name]))
       const contactMarinaMap: Record<string, string> =
         Object.fromEntries(coupled.map((c: { id: string; marina_id: string }) => [c.id, c.marina_id]))
 
       const result: BerthData[] = leases.map((lease: {
-        id: string; tenant_id: string; slip_id: string;
-        monthly_rate: number | null; lease_type: string | null;
+        id: string; tenant_id: string; space_v2_id: string;
+        monthly_rate: number | null; contract_type: string | null;
         start_date: string | null; end_date: string | null;
       }) => {
         const marinaId = contactMarinaMap[lease.tenant_id]
-        const slip     = slipMap[lease.slip_id]
+        const space    = spaceMap[lease.space_v2_id]
         return {
           id:          lease.id,
           marinaName:  marinaMap[marinaId] ?? 'Marina',
-          slipNumber:  slip?.slip_number ?? null,
-          dock:        slip?.dock ?? null,
+          slipNumber:  space?.label ?? null,
+          dock:        space?.dock ?? null,
           monthlyRate: lease.monthly_rate,
-          leaseType:   lease.lease_type,
+          leaseType:   lease.contract_type,
           startDate:   lease.start_date,
           endDate:     lease.end_date,
         }
