@@ -1,28 +1,10 @@
-/**
- * GET /api/documents?entity_type=contact&entity_id=<uuid>
- * Returns all non-deleted documents for a given entity.
- */
-
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-
+export const dynamic = 'force-dynamic'
+const E = process.env.SKIPPER_ENGINE_URL || 'https://skipper-engine-production.up.railway.app'
+const K = process.env.SKIPPER_DATA_API_KEY || ''
+const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const entityType = searchParams.get('entity_type')
-  const entityId   = searchParams.get('entity_id')
-
-  if (!entityType || !entityId) {
-    return NextResponse.json({ error: 'entity_type and entity_id required' }, { status: 400 })
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('documents')
-    .select('id, doc_type, doc_label, file_name, filename, file_url, file_size, created_at')
-    .eq('entity_type', entityType)
-    .eq('entity_id', entityId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: true })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  const qs = new URL(req.url).searchParams.toString()
+  const res = await fetch(`${E}/api/v1/boater/documents${qs ? '?' + qs : ''}`, { headers: H() })
+  return NextResponse.json(await res.json(), { status: res.status })
 }

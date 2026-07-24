@@ -1,31 +1,13 @@
-/**
- * PATCH  /api/emergency-contacts/[id]  { name, phone, relationship, notes }
- * DELETE /api/emergency-contacts/[id]  → soft delete
- */
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-
+export const dynamic = 'force-dynamic'
+const E = process.env.SKIPPER_ENGINE_URL || 'https://skipper-engine-production.up.railway.app'
+const K = process.env.SKIPPER_DATA_API_KEY || ''
+const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const body = await req.json()
-  const { name, phone, relationship, notes } = body
-
-  const { data, error } = await supabaseAdmin
-    .from('contact_emergency_contacts')
-    .update({ name, phone, relationship, notes, updated_at: new Date().toISOString() })
-    .eq('id', params.id)
-    .select('id, name, phone, relationship, notes, sort_order')
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  const res = await fetch(`${E}/api/v1/boater/emergency-contacts/${params.id}`, { method: 'PATCH', headers: H(), body: JSON.stringify(await req.json()) })
+  return NextResponse.json(await res.json(), { status: res.status })
 }
-
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const { error } = await supabaseAdmin
-    .from('contact_emergency_contacts')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', params.id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const res = await fetch(`${E}/api/v1/boater/emergency-contacts/${params.id}`, { method: 'DELETE', headers: H() })
+  return NextResponse.json(await res.json(), { status: res.status })
 }

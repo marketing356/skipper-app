@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-
+export const dynamic = 'force-dynamic'
+const E = process.env.SKIPPER_ENGINE_URL || 'https://skipper-engine-production.up.railway.app'
+const K = process.env.SKIPPER_DATA_API_KEY || ''
+const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const body = await req.json()
-  const { log_date, notes, departed_from, arrived_at, distance_nm, engine_hours_start, engine_hours_end, fuel_used_gallons, crew_count, weather } = body
-
-  const { data, error } = await supabaseAdmin
-    .from('vessel_ship_logs')
-    .update({ log_date, notes, departed_from, arrived_at, distance_nm: distance_nm || null, engine_hours_start: engine_hours_start || null, engine_hours_end: engine_hours_end || null, fuel_used_gallons: fuel_used_gallons || null, crew_count: crew_count || null, weather, updated_at: new Date().toISOString() })
-    .eq('id', params.id)
-    .select('id, log_date, notes, departed_from, arrived_at, distance_nm, engine_hours_start, engine_hours_end, fuel_used_gallons, crew_count, weather')
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  const res = await fetch(`${E}/api/v1/boater/ship-log/${params.id}`, { method: 'PATCH', headers: H(), body: JSON.stringify(await req.json()) })
+  return NextResponse.json(await res.json(), { status: res.status })
 }
-
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const { error } = await supabaseAdmin
-    .from('vessel_ship_logs')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', params.id)
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const res = await fetch(`${E}/api/v1/boater/ship-log/${params.id}`, { method: 'DELETE', headers: H() })
+  return NextResponse.json(await res.json(), { status: res.status })
 }

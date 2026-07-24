@@ -1,23 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-
+export const dynamic = 'force-dynamic'
+const E = process.env.SKIPPER_ENGINE_URL || 'https://skipper-engine-production.up.railway.app'
+const K = process.env.SKIPPER_DATA_API_KEY || ''
+const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { note_date, note } = await req.json()
-  const { data, error } = await supabaseAdmin
-    .from('vessel_notes_log')
-    .update({ note_date, note, updated_at: new Date().toISOString() })
-    .eq('id', params.id)
-    .select('id, note_date, note')
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
-}
-
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const { error } = await supabaseAdmin
-    .from('vessel_notes_log')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', params.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  const res = await fetch(`${E}/api/v1/boater/asset-notes/${params.id}`, { method: 'PATCH', headers: H(), body: JSON.stringify(await req.json()) })
+  return NextResponse.json(await res.json(), { status: res.status })
 }
