@@ -8,7 +8,6 @@
  * To add a field: edit OPS lib/contact-form-schema.ts, redeploy. This form reflects automatically.
  */
 import { useRef, useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase-client'
 import DocumentList from '@/components/DocumentList'
 import ContactNotesLog from '@/components/ContactNotesLog'
 import MembershipList from '@/components/MembershipList'
@@ -216,17 +215,15 @@ export default function ContactForm({ userId, contact, onSaved, onCancel, submit
 
     const payload = buildContactPayload(fd)
 
-    const { data, error } = await supabase
-      .from('contacts')
-      .update(payload)
-      .eq('auth_user_id', userId)
-      .is('marina_id', null)
-      .select()
-      .maybeSingle()
-
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth_user_id: userId, ...payload }),
+    })
+    const result = await res.json()
     setBusy(false)
-    if (error || !data) { setErr(error?.message ?? 'Save failed — please try again'); return }
-    onSaved(data as Record<string, unknown>)
+    if (!res.ok || !result.contact) { setErr(result.error ?? 'Save failed — please try again'); return }
+    onSaved(result.contact)
   }
 
   return (

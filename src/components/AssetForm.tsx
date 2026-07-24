@@ -1,11 +1,10 @@
 'use client'
 /**
  * AssetForm — verbatim OPS code (doctrine §13/§21).
- * Two mobile-only changes: schema fetched live from OPS API, save via client-side Supabase.
+ * Two mobile-only changes: schema fetched live from OPS API, save via API routes (supabaseAdmin).
  * All field rendering logic is identical to OPS. No custom wrappers. No mobile-specific overrides.
  */
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase-client'
+import { useState, useEffect, useRef } from 'react'
 import DocumentList from '@/components/DocumentList'
 import EngineList from '@/components/EngineList'
 import ServiceHistoryList from '@/components/ServiceHistoryList'
@@ -187,32 +186,59 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [schema, setSchema] = useState<AssetSection[]>([])
+  const [photoUrl, setPhotoUrl] = useState<string>(a.photo_url ?? '')
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchAssetFormSchema().then(setSchema).catch(() => {})
   }, [])
+
+  async function handlePhotoUpload(file: File) {
+    if (!file) return
+    setPhotoUploading(true)
+    const form = new FormData()
+    form.append('file', file)
+    if (a.id) form.append('asset_id', a.id as string)
+    try {
+      const res = await fetch('/api/vessel-photo', { method: 'POST', body: form })
+      const result = await res.json()
+      if (res.ok && result.url) setPhotoUrl(result.url)
+      else setError(result.error || 'Photo upload failed')
+    } catch {
+      setError('Photo upload failed')
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setSaving(true)
     setError(null)
     const fd = new FormData(e.currentTarget)
-    const payload = buildPayload(fd)
+    const payload = { ...buildPayload(fd), photo_url: photoUrl || null }
 
     if (!payload.name) { setError('Vessel name is required.'); setSaving(false); return }
 
     if (isEdit) {
-      const { data, error: err } = await supabase
-        .from('marina_assets').update(payload).eq('id', a.id as string).select().single()
-      if (err) { setError(err.message); setSaving(false); return }
-      onSaved(data)
+      const res = await fetch(`/api/assets/${a.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const result = await res.json()
+      if (!res.ok) { setError(result.error || 'Save failed'); setSaving(false); return }
+      onSaved(result.asset)
     } else {
-      const { data, error: err } = await supabase
-        .from('marina_assets')
-        .insert({ ...payload, tenant_id: contactId, owner_type: payload.owner_type || 'customer' })
-        .select().single()
-      if (err) { setError(err.message); setSaving(false); return }
-      onSaved(data)
+      const res = await fetch('/api/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, tenant_id: contactId, owner_type: payload.owner_type || 'customer' }),
+      })
+      const result = await res.json()
+      if (!res.ok) { setError(result.error || 'Save failed'); setSaving(false); return }
+      onSaved(result.asset)
     }
     setSaving(false)
   }
@@ -245,6 +271,37 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       {isEdit && <input type="hidden" name="id" value={a.id as string} />}
+
+      {/* Vessel Photo Upload */}
+      <div className="border border-slate-200 rounded-lg p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Vessel Photo</p>
+        <div className="flex items-start gap-3">
+          {photoUrl && (
+            <img src={photoUrl} alt="Vessel" className="w-20 h-20 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+          )}
+          <div className="flex-1 space-y-2">
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photoUploading}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {photoUploading ? 'Uploading…' : photoUrl ? 'Change Photo' : 'Upload Photo'}
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f) }}
+            />
+            <p className="text-xs text-slate-400">JPEG · PNG · WEBP · HEIC · Max 10 MB</p>
+            {photoUrl && (
+              <input type="hidden" name="photo_url" value={photoUrl} />
+            )}
+          </div>
+        </div>
+      </div>
 
       {schema.filter((s) => sectionVisibleTo(s, role)).map((section, sIdx) => (
         <Section key={section.id} title={section.title} defaultOpen={sIdx === 0}>
