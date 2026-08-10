@@ -158,43 +158,54 @@ export default function EngineList({ assetId, marinaId }: EngineListProps) {
 
           {/* Row 1: type, position, fuel */}
           <div className="flex flex-wrap gap-2">
-            <select value={row.engine_type} onChange={(e) => updateRow(idx, { engine_type: e.target.value })}
-              className="form-input" style={{ width: 'auto' }}>
-              {ENGINE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <input type="text" placeholder="Position (Port / Stbd / Center)" value={row.position}
-              onChange={(e) => updateRow(idx, { position: e.target.value })}
-              className="form-input" style={{ flex: 1, minWidth: 150 }} />
-            <select value={row.fuel_type} onChange={(e) => updateRow(idx, { fuel_type: e.target.value })}
-              className="form-input" style={{ width: 'auto' }}>
-              {FUEL_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <div className="flex flex-col gap-1" style={{ minWidth: 120 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</label>
+              <select value={row.engine_type} onChange={(e) => updateRow(idx, { engine_type: e.target.value })} className="form-input">
+                {ENGINE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1" style={{ flex: 1, minWidth: 150 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Position</label>
+              <input type="text" placeholder="Port / Stbd / Center" value={row.position} onChange={(e) => updateRow(idx, { position: e.target.value })} className="form-input" />
+            </div>
+            <div className="flex flex-col gap-1" style={{ minWidth: 110 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Fuel</label>
+              <select value={row.fuel_type} onChange={(e) => updateRow(idx, { fuel_type: e.target.value })} className="form-input">
+                {FUEL_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* Row 2: make, model, year, HP */}
           <div className="flex flex-wrap gap-2">
-            <input type="text" placeholder="Make (e.g. Yamaha)" value={row.make}
-              onChange={(e) => updateRow(idx, { make: e.target.value })}
-              className="form-input" style={{ flex: 1, minWidth: 110 }} />
-            <input type="text" placeholder="Model (e.g. F300)" value={row.model}
-              onChange={(e) => updateRow(idx, { model: e.target.value })}
-              className="form-input" style={{ flex: 1, minWidth: 90 }} />
-            <input type="number" placeholder="Year" value={row.year}
-              onChange={(e) => updateRow(idx, { year: e.target.value })}
-              className="form-input" style={{ width: 72 }} />
-            <input type="number" placeholder="HP" value={row.horsepower}
-              onChange={(e) => updateRow(idx, { horsepower: e.target.value })}
-              className="form-input" style={{ width: 64 }} />
+            <div className="flex flex-col gap-1" style={{ flex: 1, minWidth: 110 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Make</label>
+              <input type="text" placeholder="e.g. Yamaha" value={row.make} onChange={(e) => updateRow(idx, { make: e.target.value })} className="form-input" />
+            </div>
+            <div className="flex flex-col gap-1" style={{ flex: 1, minWidth: 90 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Model</label>
+              <input type="text" placeholder="e.g. F300" value={row.model} onChange={(e) => updateRow(idx, { model: e.target.value })} className="form-input" />
+            </div>
+            <div className="flex flex-col gap-1" style={{ width: 72 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Year</label>
+              <input type="number" placeholder="2024" value={row.year} onChange={(e) => updateRow(idx, { year: e.target.value })} className="form-input" />
+            </div>
+            <div className="flex flex-col gap-1" style={{ width: 72 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">HP</label>
+              <input type="number" placeholder="300" value={row.horsepower} onChange={(e) => updateRow(idx, { horsepower: e.target.value })} className="form-input" />
+            </div>
           </div>
 
           {/* Row 3: serial, hours */}
           <div className="flex flex-wrap gap-2">
-            <input type="text" placeholder="Serial #" value={row.serial_number}
-              onChange={(e) => updateRow(idx, { serial_number: e.target.value })}
-              className="form-input" style={{ flex: 1, minWidth: 130 }} />
-            <input type="number" placeholder="Current Hours" value={row.current_hours}
-              onChange={(e) => updateRow(idx, { current_hours: e.target.value })}
-              className="form-input" style={{ width: 130 }} />
+            <div className="flex flex-col gap-1" style={{ flex: 1, minWidth: 130 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Serial #</label>
+              <input type="text" placeholder="Serial number" value={row.serial_number} onChange={(e) => updateRow(idx, { serial_number: e.target.value })} className="form-input" />
+            </div>
+            <div className="flex flex-col gap-1" style={{ width: 130 }}>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Current Hours</label>
+              <input type="number" placeholder="0" value={row.current_hours} onChange={(e) => updateRow(idx, { current_hours: e.target.value })} className="form-input" />
+            </div>
           </div>
         </div>
       ))}

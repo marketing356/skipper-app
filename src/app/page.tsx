@@ -65,6 +65,7 @@ type Marina = { id:string; name:string; city:string; state:string; total_slips:n
 
 type BerthData = {
   id: string
+  marinaId: string
   marinaName: string
   slipNumber: string | null
   dock: string | null
@@ -1498,6 +1499,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         const space    = spaceMap[lease.space_v2_id]
         return {
           id:          lease.id,
+          marinaId:    marinaId,
           marinaName:  marinaMap[marinaId] ?? 'Marina',
           slipNumber:  space?.label ?? null,
           dock:        space?.dock ?? null,
@@ -1973,12 +1975,21 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
             </button>
             {/* Action row */}
             <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
-              {/* Request a Slip — always visible */}
-              <button
-                onClick={e => { e.stopPropagation(); setTransientMarina(m) }}
-                style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#ffffff', background:'linear-gradient(135deg,rgba(77,214,200,0.25),rgba(77,214,200,0.15))', border:'1px solid rgba(77,214,200,0.4)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
-                🛥️ Request a Slip
-              </button>
+              {/* Show My Slip if already a berth holder, otherwise Request a Slip */}
+              {(() => {
+                const myBerth = berths.find(b => b.marinaId === m.id)
+                return myBerth ? (
+                  <div style={{ flex:1, padding:'7px 12px', fontSize:12, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:9, display:'flex', alignItems:'center', gap:6 }}>
+                    ⚓ {myBerth.slipNumber ? `Slip ${myBerth.slipNumber}` : 'Active Berth'}
+                  </div>
+                ) : (
+                  <button
+                    onClick={e => { e.stopPropagation(); setTransientMarina(m) }}
+                    style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#ffffff', background:'linear-gradient(135deg,rgba(77,214,200,0.25),rgba(77,214,200,0.15))', border:'1px solid rgba(77,214,200,0.4)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
+                    🛥️ Request a Slip
+                  </button>
+                )
+              })()}
               {/* Coupling actions — only when NOT connected */}
               {!coupled && (
                 <>
@@ -2170,7 +2181,18 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
   const [draft,   setDraft]   = useState('')
   const [sending, setSending] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [marinaContactId, setMarinaContactId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Resolve the marina-scoped contact ID for this marina — used as tenant_id in messages
+  // so messages appear in the Helm inbox (Helm uses contact row IDs, not auth UUIDs)
+  useEffect(() => {
+    supabase.from('contacts').select('id')
+      .eq('auth_user_id', user.id).eq('marina_id', marina.id)
+      .limit(1).maybeSingle()
+      .then(({ data }) => setMarinaContactId(data?.id ?? profile?.contact_id ?? null))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marina.id, user.id])
 
   // Load persistent history on mount — localStorage first (instant), DB as fallback
   useEffect(() => {
@@ -2188,11 +2210,12 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
           }
         } catch { /* bad cache — fall through to DB */ }
       }
-      // 2. Fall back to DB
+      // 2. Fall back to DB — query by marina-scoped contact ID or auth UUID
+      const tid = marinaContactId ?? user.id
       const { data } = await supabase
         .from('messages')
         .select('direction,body,inserted_at')
-        .eq('tenant_id', user.id)
+        .eq('tenant_id', tid)
         .eq('marina_id', marina.id)
         .eq('channel', 'skipper')
         .order('inserted_at', { ascending: true })
@@ -2225,10 +2248,10 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
     setMsgs(m => [...m, { role:'user', text:msg }])
     setSending(true)
 
-    // Save outbound to DB
+    // Save outbound to DB — use marina-scoped contact ID so message appears in Helm inbox
     await supabase.from('messages').insert({
       marina_id:   marina.id,
-      tenant_id:   user.id,
+      tenant_id:   marinaContactId ?? user.id,
       direction:   'inbound',
       body:        msg,
       channel:     'skipper',
@@ -2298,7 +2321,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       localStorage.setItem(cacheKey, JSON.stringify(updatedMsgs))
       await supabase.from('messages').insert({
         marina_id:   marina.id,
-        tenant_id:   user.id,
+        tenant_id:   marinaContactId ?? user.id,
         direction:   'outbound',
         body:        reply,
         channel:     'skipper',
@@ -2398,6 +2421,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
   const [loading, setLoading]               = useState(false)
   const [showForm, setShowForm]             = useState(false)
   const [form, setForm]                     = useState({ ...BLANK_FORM })
+  const [editingId, setEditingId]           = useState<string | null>(null)
   const [saving, setSaving]                 = useState(false)
   const [saveErr, setSaveErr]               = useState('')
 
@@ -2408,7 +2432,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
     setLoading(true)
     fetch(`/api/asset-ship-log?asset_id=${activeVesselId}`)
       .then(r => r.json())
-      .then(data => setEntries(Array.isArray(data) ? data : []))
+      .then(data => setEntries(Array.isArray(data) ? data : (data.logs ?? [])))
       .catch(() => setEntries([]))
       .finally(() => setLoading(false))
   }, [activeVesselId])
@@ -2417,12 +2441,9 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
     if (!activeVesselId) return
     setSaving(true); setSaveErr('')
     try {
-      const res = await fetch('/api/asset-ship-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const payload = {
           asset_id:           activeVesselId,
-          log_date:           form.log_date || new Date().toISOString(),
+          log_date:           form.log_date || new Date().toISOString().slice(0,10),
           notes:              form.notes || null,
           departed_from:      form.departed_from || null,
           arrived_at:         form.arrived_at || null,
@@ -2433,11 +2454,19 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
           crew_count:         form.crew_count         ? parseInt(form.crew_count)           : null,
           weather:            form.weather || null,
           source:             'manual',
-        }),
-      })
+        }
+      const url    = editingId ? `/api/asset-ship-log/${editingId}` : '/api/asset-ship-log'
+      const method = editingId ? 'PATCH' : 'POST'
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       if (!res.ok) { setSaveErr('Save failed'); return }
-      const newEntry = await res.json()
-      setEntries(prev => [newEntry.log ?? newEntry, ...prev])
+      if (editingId) {
+        const updated = await res.json()
+        setEntries(prev => prev.map(e => e.id === editingId ? (updated.log ?? updated) : e))
+        setEditingId(null)
+      } else {
+        const newEntry = await res.json()
+        setEntries(prev => [newEntry.log ?? newEntry, ...prev])
+      }
       setForm({ ...BLANK_FORM })
       setShowForm(false)
     } catch { setSaveErr('Save failed') }
@@ -2469,7 +2498,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
       <div style={{ padding:'16px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ fontSize:18, fontWeight:800, color:C.white, letterSpacing:-0.4 }}>📓 Ship&apos;s Log</div>
         {activeVesselId && (
-          <button onClick={() => { setShowForm(s => !s); setSaveErr('') }}
+          <button onClick={() => { setShowForm(s => !s); setSaveErr(''); if (showForm) { setEditingId(null); setForm({ ...BLANK_FORM }) } }}
             style={{ background:showForm ? 'rgba(255,255,255,0.08)' : C.teal, color:showForm ? C.white : '#0d2b4b', border:'none', borderRadius:8, padding:'8px 14px', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:FONT }}>
             {showForm ? 'Cancel' : '+ New Entry'}
           </button>
@@ -2550,7 +2579,25 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
         <div key={e.id} style={{ margin:'0 16px', borderBottom: i < entries.length-1 ? `1px solid rgba(255,255,255,0.06)` : 'none', padding:'16px 0' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
             <div style={{ fontSize:14, fontWeight:700, color:C.white }}>{fmtDate(e.log_date)}</div>
-            {sourceBadge(e.source)}
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {sourceBadge(e.source)}
+              <button onClick={() => {
+                setForm({
+                  log_date: e.log_date?.slice(0,10) ?? '',
+                  notes: e.notes ?? '',
+                  departed_from: e.departed_from ?? '',
+                  arrived_at: e.arrived_at ?? '',
+                  distance_nm: e.distance_nm != null ? String(e.distance_nm) : '',
+                  engine_hours_start: e.engine_hours_start != null ? String(e.engine_hours_start) : '',
+                  engine_hours_end: e.engine_hours_end != null ? String(e.engine_hours_end) : '',
+                  fuel_used_gallons: e.fuel_used_gallons != null ? String(e.fuel_used_gallons) : '',
+                  crew_count: e.crew_count != null ? String(e.crew_count) : '',
+                  weather: e.weather ?? '',
+                })
+                setEditingId(e.id)
+                setShowForm(true)
+              }} style={{ fontSize:11, color:C.teal, background:'transparent', border:`1px solid ${C.teal}`, borderRadius:6, padding:'2px 8px', cursor:'pointer', fontFamily:FONT }}>Edit</button>
+            </div>
           </div>
           {e.notes && <div style={{ fontSize:13, color:C.muted, lineHeight:1.65, marginBottom:8 }}>{e.notes}</div>}
           <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
