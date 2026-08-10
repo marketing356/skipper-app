@@ -1402,7 +1402,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
           }} />}
-          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} berths={berths} />}
+          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1734,7 +1734,30 @@ type TransientReq = {
   vessel_name: string | null; contact_name: string; created_at: string
 }
 
-function TabMarinas({ user, profile, vessel, berths }: { user: User; profile: Profile|null; vessel: Vessel|null; berths: BerthData[] }) {
+function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+  const [myBerthMap, setMyBerthMap] = useState<Record<string, string | null>>({}) // marina_id → slip label
+
+  useEffect(() => {
+    async function loadMyBerths() {
+      const { data: cRows } = await supabase.from('contacts').select('id, marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null)
+      if (!cRows || cRows.length === 0) return
+      const contactIds = cRows.map((c: any) => c.id as string)
+      const contactMarinaMap: Record<string, string> = Object.fromEntries(cRows.map((c: any) => [c.id, c.marina_id]))
+      const { data: leases } = await supabase.from('leases').select('tenant_id, space_v2_id').in('tenant_id', contactIds).eq('status', 'active')
+      if (!leases || leases.length === 0) return
+      const spaceIds = leases.map((l: any) => l.space_v2_id).filter(Boolean)
+      const { data: spaces } = spaceIds.length > 0 ? await supabase.from('spaces').select('id, label').in('id', spaceIds) : { data: [] }
+      const spaceMap: Record<string, string> = Object.fromEntries((spaces ?? []).map((s: any) => [s.id, s.label]))
+      const berthMap: Record<string, string | null> = {}
+      for (const lease of leases) {
+        const marinaId = contactMarinaMap[lease.tenant_id]
+        if (marinaId) berthMap[marinaId] = spaceMap[lease.space_v2_id] ?? null
+      }
+      setMyBerthMap(berthMap)
+    }
+    loadMyBerths()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id])
   const [marinas,         setMarinas]         = useState<Marina[]>([])
   const [loading,         setLoading]         = useState(true)
   const [search,          setSearch]          = useState('')
@@ -1975,21 +1998,17 @@ function TabMarinas({ user, profile, vessel, berths }: { user: User; profile: Pr
             </button>
             {/* Action row */}
             <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
-              {/* Show My Slip if already a berth holder, otherwise Request a Slip */}
-              {(() => {
-                const myBerth = berths.find(b => b.marinaId === m.id)
-                return myBerth ? (
-                  <div style={{ flex:1, padding:'7px 12px', fontSize:12, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:9, display:'flex', alignItems:'center', gap:6 }}>
-                    ⚓ {myBerth.slipNumber ? `Slip ${myBerth.slipNumber}` : 'Active Berth'}
-                  </div>
-                ) : (
-                  <button
-                    onClick={e => { e.stopPropagation(); setTransientMarina(m) }}
-                    style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#ffffff', background:'linear-gradient(135deg,rgba(77,214,200,0.25),rgba(77,214,200,0.15))', border:'1px solid rgba(77,214,200,0.4)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
-                    🛥️ Request a Slip
-                  </button>
-                )
-              })()}
+              {myBerthMap[m.id] !== undefined ? (
+                <div style={{ flex:1, padding:'7px 12px', fontSize:12, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:9, display:'flex', alignItems:'center', gap:6 }}>
+                  ⚓ {myBerthMap[m.id] ? `Slip ${myBerthMap[m.id]}` : 'Active Berth'}
+                </div>
+              ) : (
+                <button
+                  onClick={e => { e.stopPropagation(); setTransientMarina(m) }}
+                  style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#ffffff', background:'linear-gradient(135deg,rgba(77,214,200,0.25),rgba(77,214,200,0.15))', border:'1px solid rgba(77,214,200,0.4)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
+                  🛥️ Request a Slip
+                </button>
+              )}
               {/* Coupling actions — only when NOT connected */}
               {!coupled && (
                 <>
@@ -2690,20 +2709,14 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     load()
   }, [user.id])
 
-  // ── Load messages for active marina ─────────────────────────────────────
-  const loadThread = useCallback(async (m?: MyMarina) => {
-    const target = m ?? activeMarina
-    if (!target) return
-    const { data } = await supabase
-      .from('messages')
-      .select('id,body,direction,created_at')
-      .eq('marina_id', target.marina_id)
-      .eq('tenant_id', target.contact_id)
-      .order('created_at', { ascending: true })
-    setMsgs(data ?? [])
+  // ── Load messages for active marina via Railway (Rule 2 compliant) ────────
+  const loadThread = useCallback(async (_m?: MyMarina) => {
+    const res = await fetch(`/api/messages?auth_user_id=${user.id}`)
+    const data = await res.json().catch(() => ({}))
+    setMsgs(data.messages ?? [])
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMarina?.marina_id])
+  }, [user.id])
 
   useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
 
@@ -2721,14 +2734,13 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     setSending(true)
     const body = draft.trim()
     setDraft('')
-    await supabase.from('messages').insert({
-      marina_id:   activeMarina.marina_id,
-      tenant_id:   activeMarina.contact_id,
-      direction:   'inbound',
-      body,
-      channel:     'in_app',
-      sender_name: displayName ?? 'Boater',
-      tenant_type: activeMarina.tenantType,
+    await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        auth_user_id: user.id,
+        body,
+      }),
     })
     setSending(false)
     loadThread()
