@@ -1606,12 +1606,16 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                       const b = berths.find(b => b.assetId === vesselIds[idx] || b.assetId === v.id)
                       if (!b) return null
                       return (
-                        <div style={{ marginTop:4, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                          <span style={{ fontSize:11, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.12)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:6, padding:'2px 7px' }}>
-                            ⚓ {b.marinaName}{b.slipNumber ? ` · Slip ${b.slipNumber}` : ''}
-                          </span>
-                          {v.shore_power && <span style={{ fontSize:11, color:C.muted, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 7px' }}>⚡ {v.shore_power}</span>}
-                          {v.fuel_type && <span style={{ fontSize:11, color:C.muted, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 7px' }}>⛽ {v.fuel_type}</span>}
+                        <div style={{ marginTop:6 }}>
+                          <div style={{ fontSize:15, fontWeight:800, color:'#4dd6c8', letterSpacing:-0.2 }}>{b.marinaName}</div>
+                          <div style={{ fontSize:13, fontWeight:700, color:'#4ade80', marginTop:2 }}>
+                            {b.slipNumber ? `Slip ${b.slipNumber}` : b.leaseType ?? 'Active Berth'}
+                          </div>
+                          {(v.shore_power || v.fuel_type) && (
+                            <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
+                              {[v.shore_power && `⚡ ${v.shore_power}`, v.fuel_type && `⛽ ${v.fuel_type}`].filter(Boolean).join('  ')}
+                            </div>
+                          )}
                         </div>
                       )
                     })()}
@@ -2028,10 +2032,9 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
               {!coupled && (
                 <>
                   <button
-                    onClick={e => handleRecouple(m.id, m.name, e)}
-                    disabled={acting}
-                    style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:9, cursor:'pointer', fontFamily:'inherit', opacity: acting ? 0.5 : 1 }}>
-                    {acting ? '…' : '🔄 Recouple'}
+                    onClick={e => { e.stopPropagation(); setSelected(m) }}
+                    style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
+                    💬 Contact this marina
                   </button>
                   <button
                     onClick={e => handleRequestConnect(m.id, m.name, e)}
@@ -2735,11 +2738,11 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 
   useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
 
-  // Boater private channel — proven working for Helm→Boater direction.
-  // Boater IS authenticated with Supabase JWT so private channel subscription works.
+  // Marina channel — public, Railway already broadcasts here on message events.
+  // This is how Helm → Boater messages arrive in real-time.
   useSkipperRealtime({
-    scope: { kind: 'boater', authUserId: user.id },
-    enabled: !!activeMarina,
+    scope: { kind: 'marina', id: activeMarina?.marina_id ?? '' },
+    enabled: !!activeMarina?.marina_id,
     onChange: () => { loadThread() },
   })
 
