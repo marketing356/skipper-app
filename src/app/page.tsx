@@ -2474,7 +2474,10 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
   }
 
   function fmtDate(d: string) {
-    return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+    const s = (d || '').slice(0, 10)
+    const [y, m, day] = s.split('-').map(Number)
+    if (!y) return '—'
+    return new Date(y, m - 1, day).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
   }
 
   function sourceBadge(source: string) {
