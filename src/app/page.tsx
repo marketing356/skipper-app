@@ -1402,7 +1402,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
           }} />}
-          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
+          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} berths={berths} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1734,7 +1734,7 @@ type TransientReq = {
   vessel_name: string | null; contact_name: string; created_at: string
 }
 
-function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+function TabMarinas({ user, profile, vessel, berths }: { user: User; profile: Profile|null; vessel: Vessel|null; berths: BerthData[] }) {
   const [marinas,         setMarinas]         = useState<Marina[]>([])
   const [loading,         setLoading]         = useState(true)
   const [search,          setSearch]          = useState('')
