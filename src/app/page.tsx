@@ -73,6 +73,7 @@ type BerthData = {
   leaseType: string | null
   startDate: string | null
   endDate: string | null
+  assetId: string | null
 }
 
 type Profile = {
@@ -1469,7 +1470,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
       const { data: leases } = await supabase
         .from('leases')
-        .select('id, tenant_id, space_v2_id, monthly_rate, contract_type, start_date, end_date')
+        .select('id, tenant_id, space_v2_id, monthly_rate, contract_type, start_date, end_date, asset_id')
         .in('tenant_id', contactIds)
         .eq('status', 'active')
 
@@ -1491,7 +1492,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         Object.fromEntries(coupled.map((c: { id: string; marina_id: string }) => [c.id, c.marina_id]))
 
       const result: BerthData[] = leases.map((lease: {
-        id: string; tenant_id: string; space_v2_id: string;
+        id: string; tenant_id: string; space_v2_id: string; asset_id: string | null;
         monthly_rate: number | null; contract_type: string | null;
         start_date: string | null; end_date: string | null;
       }) => {
@@ -1500,6 +1501,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         return {
           id:          lease.id,
           marinaId:    marinaId,
+          assetId:     lease.asset_id ?? null,
           marinaName:  marinaMap[marinaId] ?? 'Marina',
           slipNumber:  space?.label ?? null,
           dock:        space?.dock ?? null,
@@ -1600,6 +1602,19 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                     <div style={{ fontSize:20, fontWeight:800, letterSpacing:-0.4 }}>{v.name}</div>
                     <div style={{ fontSize:13, color:C.muted }}>{v.vessel_type}{v.year ? ` · ${v.year}` : ''}</div>
                     {v.make && <div style={{ fontSize:13, color:C.muted }}>{v.make}{v.model ? ` ${v.model}` : ''}</div>}
+                    {(() => {
+                      const b = berths.find(b => b.assetId === vesselIds[idx] || b.assetId === v.id)
+                      if (!b) return null
+                      return (
+                        <div style={{ marginTop:4, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.12)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:6, padding:'2px 7px' }}>
+                            ⚓ {b.marinaName}{b.slipNumber ? ` · Slip ${b.slipNumber}` : ''}
+                          </span>
+                          {v.shore_power && <span style={{ fontSize:11, color:C.muted, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 7px' }}>⚡ {v.shore_power}</span>}
+                          {v.fuel_type && <span style={{ fontSize:11, color:C.muted, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 7px' }}>⛽ {v.fuel_type}</span>}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
