@@ -563,27 +563,27 @@ export default function SkipperApp() {
   async function loadUserData(u: User) {
     setVesselsLoading(true)
     try {
-      // Look up national-pool contacts row (marina_id IS NULL) — READ ONLY.
-      // Use order + limit(1) so multiple rows never throw. Never insert here.
-      const { data: contactRows } = await supabase
+      // Load ALL contacts for this user — national-pool + all marina-scoped.
+      // READ ONLY. Never insert here.
+      const { data: allContactRows } = await supabase
         .from('contacts')
         .select('*')
         .eq('auth_user_id', u.id)
-        .is('marina_id', null)
-        .order('created_at', { ascending: true })
-        .limit(1)
-      const contact = contactRows?.[0] ?? null
+      const allRows = (allContactRows ?? []) as any[]
 
-      // If no contact exists yet, profile is null — signup flow will create it.
-      // Do NOT insert here; this function is strictly read-only.
+      // Prefer marina-scoped contact with a name (pre-loaded by marina staff in OPS).
+      // This is the correct contact for profile data when a marina pre-loads slip holders.
+      // Fall back to national-pool contact (brand-new boaters not yet in any marina).
+      const marinaContact = allRows
+        .filter((c: any) => c.marina_id != null && c.first_name)
+        .sort((a: any, b: any) => new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime())[0] ?? null
+      const nationalContact = allRows
+        .filter((c: any) => c.marina_id == null)
+        .sort((a: any, b: any) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime())[0] ?? null
 
-      // Load ALL assets for this user across ALL their contact IDs (national-pool + marina-scoped)
-      // so assets added via Ops (which uses marina-scoped contact IDs) appear here too
-      const { data: allContactRows } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('auth_user_id', u.id)
-      const allContactIds = (allContactRows ?? []).map((c: any) => c.id as string)
+      // Profile source: marina contact (pre-loaded, has real name/data) or national-pool (new boater)
+      const contact = marinaContact ?? nationalContact
+      const allContactIds = allRows.map((c: any) => c.id as string)
 
       const { data: assetRows } = allContactIds.length > 0
         ? await supabase
@@ -605,7 +605,7 @@ export default function SkipperApp() {
       const prof = contact ? contactToProfile(contact) : null
       setProfile(prof)
 
-      return { contact, allContactIds, prof }
+      return { contact, nationalContact, allContactIds, prof }
     } finally {
       setVesselsLoading(false)
     }
@@ -617,73 +617,19 @@ export default function SkipperApp() {
     setVesselsLoading(true)
     try {
       // Load contact + vessels via shared function
-      const result = await loadUserData(u)
-      const contact = result?.contact
-      const prof    = result?.prof
+      const result        = await loadUserData(u)
+      const contact       = result?.contact         // primary contact (marina-scoped if pre-loaded, else national-pool)
+      const nationalContact = result?.nationalContact // national-pool contact (PIN + setup_complete store)
+      const prof          = result?.prof
 
-      // Auto-coupling: scan all marina contacts rows with matching email and no auth link
-      if (u.email) {
-        const { data: pendingLinks } = await supabase
-          .from('contacts')
-          .select('id')
-          .eq('email', u.email)
-          .not('marina_id', 'is', null)
-          .is('auth_user_id', null)
-        if (pendingLinks && pendingLinks.length > 0) {
-          await supabase
-            .from('contacts')
-            .update({ auth_user_id: u.id })
-            .in('id', pendingLinks.map((c: { id: string }) => c.id))
-          console.log(`[Skipper] Auto-coupled ${pendingLinks.length} marina(s) for ${u.email}`)
-        }
-      }
+      // Gate 1: onboarding form
+      // setup_complete = true  → marina pre-loaded this boater, skip form entirely
+      // setup_complete = false → brand-new boater, show simple 3-field form
+      const authContact = nationalContact ?? contact
+      if (!authContact?.setup_complete) { setScreen('contact_setup'); return }
 
-      // ── One-time fill: ONLY runs when national-pool row has no name yet.
-      // Never overwrites existing data. Login never touches data.
-      if (contact && !contact.first_name) {
-        const { data: marinaScopedRows } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('auth_user_id', u.id)
-          .not('marina_id', 'is', null)
-          .not('first_name', 'is', null)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-        const marinaContact = marinaScopedRows?.[0] ?? null
-        if (marinaContact) {
-          const syncFields = [
-            'first_name','last_name','phone','mobile',
-            'address','address_line2','address_city','address_state','address_zip','country',
-            'emergency_name','emergency_relationship','emergency_phone',
-            'emergency_name_2','emergency_phone_2',
-            'title','date_of_birth','driver_license_number','drivers_license_state','drivers_license_expiry',
-            'oupv_license_number','oupv_expiry',
-            'preferred_contact_method','language_preference',
-            'billing_name','billing_email','billing_address','billing_city','billing_state','billing_zip',
-            'company_organization','job_title','email_secondary','phone_work',
-          ] as const
-          const patch: Record<string, unknown> = {}
-          for (const f of syncFields) {
-            if ((marinaContact as any)[f] != null) patch[f] = (marinaContact as any)[f]
-          }
-          if (Object.keys(patch).length > 0) {
-            const { data: synced } = await supabase
-              .from('contacts')
-              .update(patch)
-              .eq('auth_user_id', u.id)
-              .is('marina_id', null)
-              .select()
-              .single()
-            if (synced) {
-              // Re-apply synced contact to profile
-              setProfile(contactToProfile(synced))
-            }
-          }
-        }
-      }
-
-      if (!prof?.first_name)  { setScreen('contact_setup'); return }
-      if (!contact?.pin_hash) { setScreen('pin_setup'); return }
+      // Gate 2: PIN setup (first-time only)
+      if (!authContact?.pin_hash) { setScreen('pin_setup'); return }
 
       const unlocked = localStorage.getItem(`skipper_unlocked_${u.id}`)
       if (unlocked) { setScreen('home'); return }
@@ -1069,38 +1015,61 @@ function OtpVerifyScreen({ email, onVerified, onBack }: {
 
 // ─── Contact Setup (Step 1 — new user) ────────────────────────────────────────
 function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: Profile) => void }) {
-  const [contact, setContact] = React.useState<Record<string, unknown> | null>(null)
-  const [loading, setLoading] = React.useState(true)
+  const [firstName, setFirstName] = React.useState('')
+  const [lastName,  setLastName]  = React.useState('')
+  const [phone,     setPhone]     = React.useState('')
+  const [saving,    setSaving]    = React.useState(false)
+  const [err,       setErr]       = React.useState('')
 
-  React.useEffect(() => {
-    supabase.from('contacts').select('*')
-      .eq('auth_user_id', user.id).is('marina_id', null)
-      .order('created_at', { ascending: true }).limit(1)
-      .then(({ data }) => { setContact(data?.[0] ?? {}); setLoading(false) })
-  }, [user.id])
+  const iStyle = {
+    width: '100%', padding: '13px 15px',
+    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10, color: '#fff', fontSize: 15,
+    fontFamily: FONT, outline: 'none', boxSizing: 'border-box' as const,
+  }
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#05111f' }}>
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontFamily: '"SF Pro Display", system-ui, sans-serif', fontSize: 15 }}>Loading…</div>
-    </div>
-  )
+  async function handleSave() {
+    if (!firstName.trim()) { setErr('First name is required'); return }
+    setSaving(true); setErr('')
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .update({ first_name: firstName.trim(), last_name: lastName.trim() || null, phone: phone.trim() || null })
+        .eq('auth_user_id', user.id)
+        .is('marina_id', null)
+        .select()
+        .single()
+      if (error) { setErr('Could not save — try again'); return }
+      onComplete(contactToProfile(data as Record<string, unknown>))
+    } catch { setErr('Something went wrong') } finally { setSaving(false) }
+  }
 
   return (
-    <OnboardingShell step={1} total={2} title="About you" subtitle="Your marina needs this on file. You\'ll only do this once.">
-      <OPSShell>
-        <ContactForm
-          userId={user.id}
-          contact={contact ?? {}}
-          submitLabel="Save & Continue →"
-          onSaved={(data) => {
-            supabase.from('contacts')
-              .update({ setup_complete: false })
-              .eq('auth_user_id', user.id).is('marina_id', null)
-              .then(() => {})
-            onComplete(contactToProfile(data as Record<string, unknown>))
-          }}
-        />
-      </OPSShell>
+    <OnboardingShell step={1} total={2} title="Welcome aboard" subtitle="Just a few details so your marina knows it\'s you.">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 4px' }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>First name *</div>
+          <input
+            style={iStyle} value={firstName} placeholder="e.g. Michael"
+            onChange={e => { setFirstName(e.target.value); setErr('') }}
+            autoFocus
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Last name</div>
+          <input style={iStyle} value={lastName} placeholder="e.g. Karas" onChange={e => setLastName(e.target.value)} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Phone</div>
+          <input style={iStyle} value={phone} placeholder="e.g. 555-123-4567" type="tel" onChange={e => setPhone(e.target.value)} />
+        </div>
+        {err && <div style={{ fontSize: 13, color: '#f87171' }}>{err}</div>}
+        <button
+          onClick={handleSave} disabled={saving}
+          style={{ background: '#2dd4bf', color: '#0d2b4b', border: 'none', borderRadius: 10, padding: '14px', fontSize: 15, fontWeight: 900, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: FONT, opacity: saving ? 0.7 : 1, marginTop: 6 }}>
+          {saving ? 'Saving…' : 'Continue →'}
+        </button>
+      </div>
     </OnboardingShell>
   )
 }
@@ -2468,7 +2437,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
       })
       if (!res.ok) { setSaveErr('Save failed'); return }
       const newEntry = await res.json()
-      setEntries(prev => [newEntry, ...prev])
+      setEntries(prev => [newEntry.log ?? newEntry, ...prev])
       setForm({ ...BLANK_FORM })
       setShowForm(false)
     } catch { setSaveErr('Save failed') }

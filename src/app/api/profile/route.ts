@@ -1,27 +1,19 @@
 /**
- * PATCH /api/profile — Update boater's own contact record (marina_id IS NULL)
- * Uses supabaseAdmin to bypass RLS — anon client was blocking writes.
- * Body: { auth_user_id: string, ...contactFields }
+ * PATCH /api/profile — Update boater contact record via Railway (Rule 2 compliant)
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+export const dynamic = 'force-dynamic'
+const E = process.env.SKIPPER_ENGINE_URL || 'https://skipper-engine-production.up.railway.app'
+const K = process.env.SKIPPER_DATA_API_KEY || ''
+const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
-    const { auth_user_id, ...payload } = body
-    if (!auth_user_id) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
-
-    const { data, error } = await supabaseAdmin
-      .from('contacts')
-      .update(payload)
-      .eq('auth_user_id', auth_user_id)
-      .is('marina_id', null)
-      .select()
-      .maybeSingle()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ contact: data })
+    if (!body.auth_user_id) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
+    const res = await fetch(`${E}/api/v1/boater/profile`, { method: 'PATCH', headers: H(), body: JSON.stringify(body) })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

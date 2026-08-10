@@ -6,19 +6,22 @@ export const dynamic = 'force-dynamic'
 /**
  * POST /api/auth/link-contact
  *
- * Called immediately after Supabase Auth OTP verification succeeds.
- * Links the boater's real Supabase Auth UUID to their national-pool contacts row.
+ * Called immediately after OTP verification. Handles two paths:
  *
- * Logic:
- *   1. Find national-pool contacts row (marina_id IS NULL) for this email
- *   2. If found: UPDATE auth_user_id = userId  (real Supabase Auth UUID)
- *   3. If not found: INSERT new row with auth_user_id + email
- *   4. Auto-couple: UPDATE any marina-scoped contacts rows with matching email
- *      that have no auth_user_id yet (silent coupling on first login)
+ * PATH A — Pre-loaded boater (marina staff already entered their data in OPS):
+ *   1. Find marina-scoped contact(s) for this email
+ *   2. Set auth_user_id + setup_complete = true on all of them
+ *   3. Create/update national-pool contact, sync name+phone from marina contact
+ *      and set setup_complete = true (skips onboarding form entirely)
+ *   4. Return { contact, preLoaded: true }
  *
- * Uses supabaseAdmin to bypass RLS - this is the one-time identity bridge.
- * Body: { email: string, userId: string }
- * Returns: { contact }
+ * PATH B — Brand-new boater (not in any marina system yet):
+ *   1. No marina-scoped contact found
+ *   2. Create/update national-pool contact with auth_user_id, setup_complete = false
+ *   3. Return { contact, preLoaded: false } → onboarding form shows (first name, last name, phone only)
+ *
+ * This architecture scales to any number of marinas and slip holders.
+ * National-pool contact is the auth + PIN store. Marina-scoped contacts hold slip/vessel data.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -35,8 +38,40 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = supabaseAdmin as any
 
-    // 1. Find existing national-pool contacts row
-    const { data: existing } = await admin
+    // ── Step 1: Find all marina-scoped contacts for this email ──────────────
+    const { data: marinaScopedRows } = await admin
+      .from('contacts')
+      .select('*')
+      .eq('email', clean)
+      .not('marina_id', 'is', null)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const marinaContacts: any[] = marinaScopedRows ?? []
+    const preLoaded = marinaContacts.length > 0
+
+    // ── Step 2: Link auth_user_id + mark setup_complete on marina contacts ──
+    if (preLoaded) {
+      await admin
+        .from('contacts')
+        .update({ auth_user_id: userId, setup_complete: true })
+        .in('id', marinaContacts.map((c: { id: string }) => c.id))
+    }
+
+    // ── Step 3: Build sync payload from best marina contact ─────────────────
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bestMarina: any = marinaContacts.find(c => c.first_name) ?? marinaContacts[0] ?? null
+    const syncPatch: Record<string, unknown> = {
+      auth_user_id:    userId,
+      setup_complete:  preLoaded,  // true = skip onboarding form, false = show it
+    }
+    if (bestMarina?.first_name) syncPatch.first_name = bestMarina.first_name
+    if (bestMarina?.last_name)  syncPatch.last_name  = bestMarina.last_name
+    if (bestMarina?.phone || bestMarina?.mobile) {
+      syncPatch.phone = bestMarina.phone ?? bestMarina.mobile
+    }
+
+    // ── Step 4: Find or create national-pool contact (auth + PIN store) ─────
+    const { data: existingPool } = await admin
       .from('contacts')
       .select('*')
       .eq('email', clean)
@@ -45,53 +80,28 @@ export async function POST(req: NextRequest) {
       .limit(1)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let contact: any = existing?.[0] ?? null
+    let contact: any = existingPool?.[0] ?? null
 
     if (contact) {
-      // 2. Update auth_user_id to real Supabase Auth UUID
       const { data: updated, error } = await admin
         .from('contacts')
-        .update({ auth_user_id: userId })
+        .update(syncPatch)
         .eq('id', contact.id)
         .select()
         .single()
-
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       contact = updated
     } else {
-      // 3. Brand-new boater - create national-pool row
       const { data: inserted, error } = await admin
         .from('contacts')
-        .insert({ auth_user_id: userId, email: clean })
+        .insert({ email: clean, ...syncPatch })
         .select()
         .single()
-
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       contact = inserted
     }
 
-    // 4. Auto-couple: link any marina-scoped contacts rows with this email.
-    // Covers boaters pre-loaded by marina staff before they signed up.
-    // Silent coupling - no user action required.
-    const { data: pendingLinks } = await admin
-      .from('contacts')
-      .select('id')
-      .eq('email', clean)
-      .not('marina_id', 'is', null)
-      .is('auth_user_id', null)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const links = pendingLinks as any[] | null
-    if (links && links.length > 0) {
-      await admin
-        .from('contacts')
-        .update({ auth_user_id: userId })
-        .in('id', links.map((c: { id: string }) => c.id))
-
-      console.log(`[link-contact] Auto-coupled ${links.length} marina row(s) for ${clean}`)
-    }
-
-    return NextResponse.json({ contact })
+    return NextResponse.json({ contact, preLoaded })
   } catch (err: unknown) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
