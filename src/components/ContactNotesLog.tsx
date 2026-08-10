@@ -44,8 +44,9 @@ export default function ContactNotesLog({ contactId }: ContactNotesLogProps) {
     fetch(`/api/contact-notes?contact_id=${contactId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setRows(data.map((d) => ({
+        const list = Array.isArray(data) ? data : (data.notes || [])
+        if (list.length >= 0) {
+          setRows(list.map((d: any) => ({
             id: d.id,
             note_date: d.note_date ? d.note_date.slice(0, 10) : '',
             note: d.note ?? '',
@@ -98,7 +99,7 @@ export default function ContactNotesLog({ contactId }: ContactNotesLogProps) {
         })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
-        updateRow(idx, { id: data.id, status: 'saved', expanded: false })
+        updateRow(idx, { id: data.note?.id || data.id, status: 'saved', expanded: false })
         return
       }
       updateRow(idx, { status: 'saved', expanded: false })

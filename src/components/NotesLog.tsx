@@ -27,8 +27,9 @@ export default function NotesLog({ assetId, marinaId }: NotesLogProps) {
     fetch(`/api/asset-notes-log?asset_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setRows(data.map((d) => ({
+        const list = Array.isArray(data) ? data : (data.notes || [])
+        if (list.length >= 0) {
+          setRows(list.map((d: any) => ({
             id: d.id,
             note_date: d.note_date ? d.note_date.slice(0, 10) : '',
             note: d.note ?? '',
@@ -68,7 +69,7 @@ export default function NotesLog({ assetId, marinaId }: NotesLogProps) {
         const res = await fetch('/api/asset-notes-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
-        updateRow(idx, { id: data.id, status: 'saved' })
+        updateRow(idx, { id: data.note?.id || data.id, status: 'saved' })
         return
       }
       updateRow(idx, { status: 'saved' })

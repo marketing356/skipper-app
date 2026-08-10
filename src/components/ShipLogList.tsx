@@ -40,8 +40,9 @@ export default function ShipLogList({ assetId, marinaId, refreshTrigger }: ShipL
     fetch(`/api/asset-ship-log?asset_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setRows(data.map((d) => ({
+        const list = Array.isArray(data) ? data : (data.logs || [])
+        if (list.length >= 0) {
+          setRows(list.map((d: any) => ({
             id: d.id,
             log_date: d.log_date ? d.log_date.slice(0, 10) : '',
             notes: d.notes ?? '',
@@ -100,7 +101,7 @@ export default function ShipLogList({ assetId, marinaId, refreshTrigger }: ShipL
         const res = await fetch('/api/asset-ship-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
-        updateRow(idx, { id: data.id, status: 'saved' })
+        updateRow(idx, { id: data.log?.id || data.id, status: 'saved' })
         return
       }
       updateRow(idx, { status: 'saved' })

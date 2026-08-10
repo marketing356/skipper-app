@@ -58,8 +58,9 @@ export default function ServiceHistoryList({ assetId, marinaId, refreshTrigger }
     fetch(`/api/asset-service-history?asset_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setRows(data.map((d) => ({
+        const list = Array.isArray(data) ? data : (data.records || data.history || [])
+        if (list.length >= 0) {
+          setRows(list.map((d: any) => ({
             id: d.id,
             service_date: d.service_date ? d.service_date.slice(0, 10) : '',
             service_type: d.service_type ?? '',
@@ -109,7 +110,7 @@ export default function ServiceHistoryList({ assetId, marinaId, refreshTrigger }
         const res = await fetch('/api/asset-service-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
-        updateRow(idx, { id: data.id, status: 'saved' })
+        updateRow(idx, { id: data.record?.id || data.id, status: 'saved' })
         return
       }
       updateRow(idx, { status: 'saved' })

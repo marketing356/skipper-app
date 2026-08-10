@@ -54,8 +54,9 @@ export default function EngineList({ assetId, marinaId }: EngineListProps) {
     fetch(`/api/asset-engines?asset_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setRows(data.map((d) => ({
+        const list = Array.isArray(data) ? data : (data.engines || [])
+        if (list.length >= 0) {
+          setRows(list.map((d: any) => ({
             id: d.id,
             sort_order: d.sort_order ?? 1,
             engine_type: d.engine_type ?? '',
@@ -110,9 +111,9 @@ export default function EngineList({ assetId, marinaId }: EngineListProps) {
         if (!res.ok) throw new Error('Save failed')
       } else {
         const res = await fetch('/api/asset-engines', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, engine_number: row.sort_order, ...payload }) })
-        if (!res.ok) throw new Error('Save failed')
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
-        updateRow(idx, { id: data.id, status: 'saved' })
+        updateRow(idx, { id: data.engine?.id || data.id, status: 'saved' })
         return
       }
       updateRow(idx, { status: 'saved' })
