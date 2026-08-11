@@ -9,7 +9,7 @@
 export type Role = 'ops' | 'helm' | 'boater' | 'crew' | 'contractor'
 export type FieldType =
   | 'text' | 'textarea' | 'number' | 'date' | 'tel' | 'email'
-  | 'select' | 'bool-select' | 'tag-input'
+  | 'select' | 'bool-select' | 'tag-input' | 'chip-select'
 
 export interface FieldOption { value: string; label: string }
 
