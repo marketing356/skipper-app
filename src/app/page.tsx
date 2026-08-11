@@ -1808,6 +1808,7 @@ function StatTile({ label, value, danger, warn }: { label:string; value:string; 
 function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
   vessel: Vessel; vesselId: string; onBack: () => void; onEdit: () => void
 }) {
+  // ── Ship's Log ──────────────────────────────────────────────────────────────
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [logLoading, setLogLoading] = useState(true)
   const [showLogForm, setShowLogForm] = useState(false)
@@ -1815,14 +1816,39 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
   const [logSaving, setLogSaving] = useState(false)
   const [logErr, setLogErr] = useState('')
 
-  // Load ship's log via Railway proxy — Rule 2 compliant
+  // ── Engines module ───────────────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [engines, setEngines] = useState<any[]>([])
+  const [enginesLoading, setEnginesLoading] = useState(true)
+
+  // ── Service History module ───────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [serviceRecords, setServiceRecords] = useState<any[]>([])
+  const [serviceLoading, setServiceLoading] = useState(true)
+
+  // ── Notes module ────────────────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [noteItems, setNoteItems] = useState<any[]>([])
+  const [notesLoading, setNotesLoading] = useState(true)
+
+  // Load all modules via Railway proxies — Rule 2 compliant
   useEffect(() => {
-    setLogLoading(true)
     fetch(`/api/asset-ship-log?asset_id=${vesselId}`)
-      .then(r => r.json())
-      .then(d => setLogEntries(Array.isArray(d) ? d : (d.logs ?? [])))
-      .catch(() => setLogEntries([]))
-      .finally(() => setLogLoading(false))
+      .then(r => r.json()).then(d => setLogEntries(Array.isArray(d) ? d : (d.logs ?? [])))
+      .catch(() => setLogEntries([])).finally(() => setLogLoading(false))
+
+    fetch(`/api/asset-engines?asset_id=${vesselId}`)
+      .then(r => r.json()).then(d => setEngines(d.engines ?? []))
+      .catch(() => setEngines([])).finally(() => setEnginesLoading(false))
+
+    fetch(`/api/asset-service-history?asset_id=${vesselId}`)
+      .then(r => r.json()).then(d => setServiceRecords(d.records ?? []))
+      .catch(() => setServiceRecords([])).finally(() => setServiceLoading(false))
+
+    fetch(`/api/asset-notes-log?asset_id=${vesselId}`)
+      .then(r => r.json()).then(d => setNoteItems(d.notes ?? []))
+      .catch(() => setNoteItems([])).finally(() => setNotesLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vesselId])
 
   async function saveLogEntry() {
@@ -1851,20 +1877,46 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
     } catch { setLogErr('Save failed') } finally { setLogSaving(false) }
   }
 
-  function VesselSection({ title, fields }: { title: string; fields: [string, string | null | undefined][] }) {
-    const nonEmpty = fields.filter(([, v]) => v != null && v !== '' && v !== 'false')
-    if (nonEmpty.length === 0) return null
+  // ── Collapsible bordered section card ────────────────────────────────────────
+  function DetailCard({ title, count, children, defaultOpen = true, action }: {
+    title: string; count?: number; children: React.ReactNode; defaultOpen?: boolean; action?: React.ReactNode
+  }) {
+    const [open, setOpen] = useState(defaultOpen)
     return (
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: 10 }}>{title}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {nonEmpty.map(([label, val]) => (
-            <div key={label} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 10, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: 0.9, marginBottom: 3 }}>{label}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.white, wordBreak: 'break-word' as const }}>{String(val)}</div>
-            </div>
-          ))}
-        </div>
+      <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, marginBottom: 10, overflow: 'hidden' }}>
+        <button onClick={() => setOpen(o => !o)}
+          style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.04)', border: 'none', cursor: 'pointer', fontFamily: FONT }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5 }}>{title}</span>
+            {count != null && <span style={{ fontSize: 10, fontWeight: 700, color: C.teal, background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 20, padding: '1px 8px' }}>{count}</span>}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {action}
+            <span style={{ color: C.muted2, fontSize: 18, fontWeight: 300, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
+          </div>
+        </button>
+        {open && <div style={{ padding: '4px 16px 16px' }}>{children}</div>}
+      </div>
+    )
+  }
+
+  // ── Field grid — filters nulls, converts booleans ─────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function VesselFields({ fields }: { fields: [string, any][] }) {
+    const processed = fields.map(([label, val]): [string, string | null] => {
+      if (val === true || val === 'true') return [label, 'Yes']
+      if (val === false || val === 'false' || val == null || val === '') return [label, null]
+      return [label, String(val)]
+    }).filter(([, v]) => v !== null) as [string, string][]
+    if (processed.length === 0) return null
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+        {processed.map(([label, val]) => (
+          <div key={label} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: 0.9, marginBottom: 3 }}>{label}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.white, wordBreak: 'break-word' as const }}>{val}</div>
+          </div>
+        ))}
       </div>
     )
   }
@@ -1872,9 +1924,9 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
   const iStyle = { width: '100%', padding: '10px 12px', background: C.inputBg, border: `1px solid ${C.inputBorder}`, borderRadius: 8, color: C.white, fontSize: 13, fontFamily: FONT, outline: 'none' } as React.CSSProperties
 
   return (
-    <div style={{ padding: '0 0 100px', animation: 'fadeUp 0.3s ease both', overflowY: 'auto' as const }}>
+    <div style={{ padding: '0 0 100px', animation: 'fadeUp 0.3s ease both' }}>
       {/* Header */}
-      <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid rgba(255,255,255,0.07)`, marginBottom: 4 }}>
+      <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid rgba(255,255,255,0.07)`, marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '7px 14px', color: C.white, fontFamily: FONT, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>← Back</button>
           <div>
@@ -1885,109 +1937,181 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
         <button onClick={onEdit} style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 10, padding: '8px 16px', color: C.teal, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
       </div>
 
-      <div style={{ padding: '16px 16px 0' }}>
-        {/* Vessel hero card */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, background: 'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, background: C.tealDim, border: `1px solid ${C.tealBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{vesselIcon(vessel.vessel_type)}</div>
+      <div style={{ padding: '0 12px' }}>
+
+        {/* Vessel hero */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, background: 'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: C.tealDim, border: `1px solid ${C.tealBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{vesselIcon(vessel.vessel_type)}</div>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: C.white }}>{vessel.name}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: C.white }}>{vessel.name}</div>
             <div style={{ fontSize: 13, color: C.muted }}>{vessel.vessel_type}{vessel.year ? ` · ${vessel.year}` : ''}</div>
-            {vessel.status && <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, marginTop: 4 }}>{vessel.status.toUpperCase()}</div>}
+            {vessel.status && <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, marginTop: 3 }}>{vessel.status.toUpperCase()}</div>}
           </div>
         </div>
 
-        <VesselSection title="Dimensions" fields={[
-          ['Length (LOA)', vessel.length_ft ? `${vessel.length_ft} ft` : null],
-          ['Beam', vessel.beam_ft ? `${vessel.beam_ft} ft` : null],
-          ['Draft', vessel.draft_ft ? `${vessel.draft_ft} ft` : null],
-          ['Air Draft', vessel.air_draft_ft ? `${vessel.air_draft_ft} ft` : null],
-          ['Weight', vessel.weight_lbs ? `${vessel.weight_lbs.toLocaleString()} lbs` : null],
-          ['Hull Material', vessel.hull_material],
-          ['Keel Type', vessel.keel_type],
-          ['Bottom Paint', vessel.bottom_paint_type],
-          ['Color', vessel.color],
-        ]} />
+        {/* Dimensions */}
+        <DetailCard title="Dimensions">
+          <VesselFields fields={[
+            ['Length (LOA)', vessel.length_ft ? `${vessel.length_ft} ft` : null],
+            ['Beam', vessel.beam_ft ? `${vessel.beam_ft} ft` : null],
+            ['Draft', vessel.draft_ft ? `${vessel.draft_ft} ft` : null],
+            ['Air Draft', vessel.air_draft_ft ? `${vessel.air_draft_ft} ft` : null],
+            ['Weight', vessel.weight_lbs ? `${vessel.weight_lbs.toLocaleString()} lbs` : null],
+            ['Hull Material', vessel.hull_material],
+            ['Keel Type', vessel.keel_type],
+            ['Bottom Paint', vessel.bottom_paint_type],
+            ['Color', vessel.color],
+          ]} />
+        </DetailCard>
 
-        <VesselSection title="Engine & Fuel" fields={[
-          ['Engine Count', vessel.engine_count ? String(vessel.engine_count) : null],
-          ['Engine Type', vessel.engine_type],
-          ['Engine Make', vessel.engine_make],
-          ['Engine Model', vessel.engine_model],
-          ['Engine Year', vessel.engine_year ? String(vessel.engine_year) : null],
-          ['Horsepower', vessel.horsepower_per_engine ? `${vessel.horsepower_per_engine} hp` : null],
-          ['Fuel Type', vessel.fuel_type],
-          ['Fuel Tank', vessel.fuel_tank_gallons ? `${vessel.fuel_tank_gallons} gal` : null],
-          ['Shore Power', vessel.shore_power],
-        ]} />
-
-        <VesselSection title="Registration & ID" fields={[
-          ['HIN', vessel.hin],
-          ['Registration #', vessel.registration_number],
-          ['Reg. State', vessel.registration_state],
-          ['Reg. Expiry', vessel.registration_expiry ? fmtDate(vessel.registration_expiry) : null],
-          ['Documentation #', vessel.documentation_number],
-          ['MMSI', vessel.mmsi_number],
-          ['Flag State', vessel.flag_state],
-        ]} />
-
-        <VesselSection title="Insurance" fields={[
-          ['Provider', vessel.insurance_provider],
-          ['Policy #', vessel.insurance_policy],
-          ['Expiry', vessel.insurance_expiry ? fmtDate(vessel.insurance_expiry) : null],
-          ['Agent', vessel.insurance_agent_name],
-          ['Agent Phone', vessel.insurance_agent_phone],
-          ['Coverage', vessel.insurance_coverage_amount ? `$${vessel.insurance_coverage_amount.toLocaleString()}` : null],
-        ]} />
-
-        <VesselSection title="Safety Equipment" fields={[
-          ['Life Raft', vessel.life_raft],
-          ['Life Jackets', vessel.life_jacket_count ? String(vessel.life_jacket_count) : null],
-          ['EPIRB Serial', vessel.epirb_serial],
-          ['EPIRB Expiry', vessel.epirb_expiry ? fmtDate(vessel.epirb_expiry) : null],
-          ['Flare Kit Expiry', vessel.flare_kit_expiry ? fmtDate(vessel.flare_kit_expiry) : null],
-          ['Fire Ext. Expiry', vessel.fire_extinguisher_expiry ? fmtDate(vessel.fire_extinguisher_expiry) : null],
-          ['Oil Placard', vessel.oil_placard ? 'Yes' : null],
-          ['Discharge Placard', vessel.discharge_placard ? 'Yes' : null],
-        ]} />
-
-        <VesselSection title="Security" fields={[
-          ['Alarm', vessel.alarm],
-          ['GPS Tracker', vessel.gps_tracker],
-          ['Lock Type', vessel.lock_type],
-          ['Lock Location', vessel.lock_location],
-          ['Authorized Operators', vessel.authorized_operators],
-        ]} />
-
-        <VesselSection title="Trailer" fields={[
-          ['Has Trailer', String(vessel.has_trailer) === 'true' ? 'Yes' : null],
-          ['Make', vessel.trailer_make],
-          ['Type', vessel.trailer_type],
-          ['Length', vessel.trailer_length_ft ? `${vessel.trailer_length_ft} ft` : null],
-          ['Width', vessel.trailer_width_ft ? `${vessel.trailer_width_ft} ft` : null],
-          ['Plate', vessel.trailer_plate],
-          ['VIN', vessel.trailer_vin],
-        ]} />
-
-        {vessel.notes && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: 10 }}>Notes</div>
-            <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: C.muted, lineHeight: 1.65 }}>{vessel.notes}</div>
-          </div>
+        {/* Shore Power — only if set */}
+        {vessel.shore_power && (
+          <DetailCard title="Shore Power">
+            <VesselFields fields={[['Shore Power', vessel.shore_power]]} />
+          </DetailCard>
         )}
 
-        {/* Ship's Log — Railway proxy, Rule 2 compliant */}
-        <div style={{ borderTop: `1px solid rgba(255,255,255,0.07)`, paddingTop: 20, marginTop: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5 }}>📓 Ship&apos;s Log</div>
-            <button
-              onClick={() => { setShowLogForm(s => !s); setLogErr('') }}
-              style={{ background: showLogForm ? 'rgba(255,255,255,0.08)' : C.teal, color: showLogForm ? C.white : '#0d2b4b', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: FONT }}>
-              {showLogForm ? 'Cancel' : '+ Add Entry'}
+        {/* Registration */}
+        <DetailCard title="Registration & ID">
+          <VesselFields fields={[
+            ['HIN', vessel.hin],
+            ['Registration #', vessel.registration_number],
+            ['Reg. State', vessel.registration_state],
+            ['Reg. Expiry', vessel.registration_expiry ? fmtDate(vessel.registration_expiry) : null],
+            ['Documentation #', vessel.documentation_number],
+            ['MMSI', vessel.mmsi_number],
+            ['Flag State', vessel.flag_state],
+          ]} />
+        </DetailCard>
+
+        {/* Insurance */}
+        <DetailCard title="Insurance">
+          <VesselFields fields={[
+            ['Provider', vessel.insurance_provider],
+            ['Policy #', vessel.insurance_policy],
+            ['Expiry', vessel.insurance_expiry ? fmtDate(vessel.insurance_expiry) : null],
+            ['Coverage', vessel.insurance_coverage_amount ? `$${vessel.insurance_coverage_amount.toLocaleString()}` : null],
+            ['Agent', vessel.insurance_agent_name],
+            ['Agent Phone', vessel.insurance_agent_phone],
+          ]} />
+        </DetailCard>
+
+        {/* Safety Equipment */}
+        <DetailCard title="Safety Equipment">
+          <VesselFields fields={[
+            ['Life Raft', vessel.life_raft ? 'Yes' : null],
+            ['Life Jackets', vessel.life_jacket_count ? String(vessel.life_jacket_count) : null],
+            ['EPIRB Serial', vessel.epirb_serial],
+            ['EPIRB Expiry', vessel.epirb_expiry ? fmtDate(vessel.epirb_expiry) : null],
+            ['Flare Kit Expiry', vessel.flare_kit_expiry ? fmtDate(vessel.flare_kit_expiry) : null],
+            ['Fire Ext. Expiry', vessel.fire_extinguisher_expiry ? fmtDate(vessel.fire_extinguisher_expiry) : null],
+            ['Oil Placard', vessel.oil_placard ? 'Yes' : null],
+            ['Discharge Placard', vessel.discharge_placard ? 'Yes' : null],
+          ]} />
+        </DetailCard>
+
+        {/* Security */}
+        <DetailCard title="Security">
+          <VesselFields fields={[
+            ['Alarm', vessel.alarm ? 'Yes' : null],
+            ['GPS Tracker', vessel.gps_tracker ? 'Yes' : null],
+            ['Lock Type', vessel.lock_type],
+            ['Lock Location', vessel.lock_location],
+            ['Authorized Operators', vessel.authorized_operators],
+          ]} />
+        </DetailCard>
+
+        {/* Vessel notes flat field */}
+        {vessel.notes && (
+          <DetailCard title="Vessel Notes">
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, marginTop: 8 }}>{vessel.notes}</div>
+          </DetailCard>
+        )}
+
+        {/* ── ENGINES MODULE ─────────────────────────────────────────────────────── */}
+        <DetailCard title="Engines" count={engines.length} defaultOpen={engines.length > 0}>
+          {enginesLoading
+            ? <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>Loading…</div>
+            : engines.length === 0
+              ? <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>No engines on record — add them in Edit mode.</div>
+              : engines.map((e, i) => (
+                <div key={e.id || i} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 14, marginTop: i === 0 ? 8 : 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.white, marginBottom: 8 }}>
+                    Engine {i + 1}{e.position ? ` · ${e.position}` : ''}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    {[
+                      ['Type', e.engine_type],
+                      ['Make', e.make],
+                      ['Model', e.model],
+                      ['Year', e.year ? String(e.year) : null],
+                      ['Horsepower', e.horsepower ? `${e.horsepower} hp` : null],
+                      ['Fuel', e.fuel_type],
+                      ['Serial #', e.serial_number],
+                      ['Hours', e.current_hours != null ? `${e.current_hours} hrs` : null],
+                    ].filter(([, v]) => v).map(([label, val]) => (
+                      <div key={String(label)} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: 0.9, marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.white }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {e.notes && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.6 }}>{e.notes}</div>}
+                </div>
+              ))
+          }
+        </DetailCard>
+
+        {/* ── SERVICE HISTORY MODULE ──────────────────────────────────────────────── */}
+        <DetailCard title="Service History" count={serviceRecords.length} defaultOpen={false}>
+          {serviceLoading
+            ? <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>Loading…</div>
+            : serviceRecords.length === 0
+              ? <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>No service records — add them in Edit mode.</div>
+              : serviceRecords.map((r, i) => (
+                <div key={r.id || i} style={{ borderBottom: i < serviceRecords.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', padding: '12px 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.white }}>{r.service_type || 'Service'}</div>
+                    <div style={{ fontSize: 11, color: C.muted2 }}>{r.service_date ? fmtDate(r.service_date) : ''}</div>
+                  </div>
+                  {r.component && <div style={{ fontSize: 12, color: C.teal, fontWeight: 600, marginBottom: 4 }}>{r.component}</div>}
+                  {r.description && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 4 }}>{r.description}</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    {r.performed_by && <span style={{ fontSize: 11, color: C.muted2 }}>By: {r.performed_by}</span>}
+                    {r.cost != null && <span style={{ fontSize: 11, color: C.muted2 }}>Cost: ${r.cost}</span>}
+                    {r.next_service_due && <span style={{ fontSize: 11, color: '#fbbf24' }}>Next: {fmtDate(r.next_service_due)}</span>}
+                  </div>
+                </div>
+              ))
+          }
+        </DetailCard>
+
+        {/* ── NOTES MODULE ────────────────────────────────────────────────────────── */}
+        <DetailCard title="Notes" count={noteItems.length} defaultOpen={false}>
+          {notesLoading
+            ? <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>Loading…</div>
+            : noteItems.length === 0
+              ? <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>No notes — add them in Edit mode.</div>
+              : noteItems.map((n, i) => (
+                <div key={n.id || i} style={{ borderBottom: i < noteItems.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', padding: '12px 0' }}>
+                  <div style={{ fontSize: 11, color: C.muted2, marginBottom: 4 }}>{n.note_date ? fmtDate(n.note_date) : ''}</div>
+                  <div style={{ fontSize: 13, color: C.white, lineHeight: 1.65 }}>{n.note}</div>
+                </div>
+              ))
+          }
+        </DetailCard>
+
+        {/* ── SHIP'S LOG MODULE ───────────────────────────────────────────────────── */}
+        <DetailCard title="Ship's Log" count={logEntries.length} defaultOpen={true}
+          action={
+            <button onClick={e => { e.stopPropagation(); setShowLogForm(s => !s); setLogErr('') }}
+              style={{ background: showLogForm ? 'rgba(255,255,255,0.08)' : C.teal, color: showLogForm ? C.white : '#0d2b4b', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: FONT }}>
+              {showLogForm ? 'Cancel' : '+ Entry'}
             </button>
-          </div>
+          }>
 
           {showLogForm && (
-            <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+            <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input type="date" value={logForm.log_date} onChange={e => setLogForm(f => ({ ...f, log_date: e.target.value }))} style={iStyle} />
                 <textarea value={logForm.notes} onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))} placeholder="Trip notes…" rows={3} style={{ ...iStyle, resize: 'none' as const }} />
@@ -2006,19 +2130,19 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
             </div>
           )}
 
-          {logLoading && <div style={{ textAlign: 'center', color: C.muted, fontSize: 13, padding: '20px 0' }}>Loading…</div>}
+          {logLoading && <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>Loading…</div>}
           {!logLoading && logEntries.length === 0 && !showLogForm && (
-            <div style={{ textAlign: 'center', color: C.muted, fontSize: 13, padding: '20px 0' }}>No log entries yet — tap Add Entry to start your log.</div>
+            <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>No log entries yet.</div>
           )}
-          {logEntries.slice(0, 10).map((e, i) => (
-            <div key={e.id} style={{ borderBottom: i < Math.min(logEntries.length, 10) - 1 ? `1px solid rgba(255,255,255,0.06)` : 'none', padding: '14px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+          {logEntries.slice(0, 20).map((e, i) => (
+            <div key={e.id} style={{ borderBottom: i < Math.min(logEntries.length, 20) - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', padding: '12px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.white }}>{fmtDate(e.log_date)}</div>
                 <span style={{ fontSize: 10, fontWeight: 700, color: C.teal, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '2px 8px' }}>
                   {e.source === 'skipper' ? '🤖 Skipper' : e.source === 'helm_event' ? '⚓ Marina' : 'You'}
                 </span>
               </div>
-              {e.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 6 }}>{e.notes}</div>}
+              {e.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 4 }}>{e.notes}</div>}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {(e.departed_from || e.arrived_at) && <span style={{ fontSize: 11, color: C.muted2 }}>{[e.departed_from, e.arrived_at].filter(Boolean).join(' → ')}</span>}
                 {e.distance_nm != null && <span style={{ fontSize: 11, color: C.muted2 }}>📍 {e.distance_nm} nm</span>}
@@ -2027,10 +2151,13 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
               </div>
             </div>
           ))}
-          {logEntries.length > 10 && (
-            <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 12, color: C.muted }}>Showing 10 of {logEntries.length} entries — see Ship&apos;s Log tab for full history</div>
+          {logEntries.length > 20 && (
+            <div style={{ fontSize: 12, color: C.muted, textAlign: 'center', padding: '8px 0' }}>
+              Showing 20 of {logEntries.length} — see Ship's Log tab for full history
+            </div>
           )}
-        </div>
+        </DetailCard>
+
       </div>
     </div>
   )
