@@ -48,7 +48,10 @@ const GLOBAL_CSS = `
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
-type HomeTab = 'vessel' | 'weather' | 'marinas' | 'messages' | 'log' | 'account'
+type HomeTab = 'home' | 'vessel' | 'weather' | 'marinas' | 'messages' | 'log' | 'account'
+type MarinaProfile = { id: string; name: string; address: string | null; phone: string | null; email: string | null }
+type SpaceProfile  = { id: string; label: string | null; dock: string | null; spaceType: string | null }
+type LeaseProfile  = { id: string; startDate: string | null; endDate: string | null; status: string; monthlyRate: number | null }
 
 type WeatherData = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -512,7 +515,11 @@ export default function SkipperApp() {
   const [realtimeVersion, setRealtimeVersion] = useState(0)  // increments on any realtime event → triggers child refreshes
   const [vessels,        setVessels]        = useState<Vessel[]>([])
   const [vesselIds,      setVesselIds]      = useState<string[]>([])
-  const [homeTab,        setHomeTab]        = useState<HomeTab>('vessel')
+  const [homeTab,        setHomeTab]        = useState<HomeTab>('home')
+  const [marinaProfile,  setMarinaProfile]  = useState<MarinaProfile | null>(null)
+  const [spaceProfile,   setSpaceProfile]   = useState<SpaceProfile | null>(null)
+  const [leaseProfile,   setLeaseProfile]   = useState<LeaseProfile | null>(null)
+  const [coupledMarinas, setCoupledMarinas] = useState<Marina[]>([])
   const [savedEmail,     setSavedEmail]     = useState('')
   const [otpEmail,       setOtpEmail]       = useState('')
   const [vesselId,       setVesselId]       = useState<string|null>(null)
@@ -561,53 +568,93 @@ export default function SkipperApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Shared data-load function — called by routeAfterAuth, realtime, and visibilitychange ──
+  // ── Shared data-load function — Rule 2 compliant: all data via Railway ──
   async function loadUserData(u: User) {
     setVesselsLoading(true)
     try {
-      // Load ALL contacts for this user — national-pool + all marina-scoped.
-      // READ ONLY. Never insert here.
-      const { data: allContactRows } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('auth_user_id', u.id)
-      const allRows = (allContactRows ?? []) as any[]
+      // Step 1: Profile from Railway (contact + marina + vessel + space + lease)
+      const profileRes = await fetch(`/api/profile?auth_user_id=${u.id}`)
+      const profileData = profileRes.ok ? await profileRes.json() : null
 
-      // Prefer marina-scoped contact with a name (pre-loaded by marina staff in OPS).
-      // This is the correct contact for profile data when a marina pre-loads slip holders.
-      // Fall back to national-pool contact (brand-new boaters not yet in any marina).
-      const marinaContact = allRows
-        .filter((c: any) => c.marina_id != null && c.first_name)
-        .sort((a: any, b: any) => new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime())[0] ?? null
-      const nationalContact = allRows
-        .filter((c: any) => c.marina_id == null)
-        .sort((a: any, b: any) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime())[0] ?? null
+      // Step 2: All vessels from Railway using marina-scoped contact ID
+      const contactId = profileData?.contact?.id ?? null
+      let loadedVessels: Vessel[] = []
+      let loadedIds: string[] = []
 
-      // Profile source: marina contact (pre-loaded, has real name/data) or national-pool (new boater)
-      const contact = marinaContact ?? nationalContact
-      const allContactIds = allRows.map((c: any) => c.id as string)
+      if (contactId) {
+        const assetsRes = await fetch(`/api/assets?tenant_id=${contactId}`)
+        if (assetsRes.ok) {
+          const assetsData = await assetsRes.json()
+          const assetRows: any[] = assetsData.assets ?? []
+          loadedVessels = assetRows.map((a: any) => assetRowToVessel(a, null))
+          loadedIds = assetRows.map((a: any) => a.id as string)
+        }
+      }
 
-      const { data: assetRows } = allContactIds.length > 0
-        ? await supabase
-            .from('marina_assets')
-            .select('*')
-            .in('tenant_id', allContactIds)
-            .order('created_at', { ascending: false })
-            .limit(50)
-        : { data: [] }
+      // Fallback: use vessel embedded in profile if assets list is empty
+      if (loadedVessels.length === 0 && profileData?.vessel) {
+        const v = profileData.vessel
+        loadedVessels = [assetRowToVessel({
+          id: v.id, name: v.name, asset_type: v.assetType,
+          make: v.make, model: v.model, year: v.year,
+          length_ft: v.lengthFt, beam_ft: v.beamFt, draft_ft: v.draftFt,
+          shore_power: v.shorePower, fuel_type: v.fuelType, color: v.color,
+          registration_number: v.registrationNumber,
+        } as any, null)]
+        loadedIds = [v.id]
+      }
 
-      const loadedVessels = (assetRows ?? []).map((a: any) => assetRowToVessel(a, contact))
-      const loadedIds     = (assetRows ?? []).map((a: any) => a.id as string)
       setVessels(loadedVessels)
       setVesselIds(loadedIds)
       setVessel(prev => loadedVessels.find(v => v.id === prev?.id) ?? loadedVessels[0] ?? null)
       setVesselId(prev => loadedIds.includes(prev ?? '') ? prev : (loadedIds[0] ?? null))
 
-      // Build profile from contact
-      const prof = contact ? contactToProfile(contact) : null
+      // Step 3: Build profile from Railway contact fields
+      const rc = profileData?.contact
+      const prof: Profile | null = rc ? {
+        id: u.id, contact_id: rc.id ?? null,
+        first_name: rc.firstName ?? null, last_name: rc.lastName ?? null,
+        email: rc.email ?? null, display_name: [rc.firstName, rc.lastName].filter(Boolean).join(' ') || null,
+        phone: rc.phone ?? null, mobile: null, avatar_url: null, pin_hash: null, onboarding_complete: true,
+        address: null, address_city: null, address_state: null, address_zip: null,
+        billing_address: null, billing_city: null, billing_state: null, billing_zip: null,
+        emergency_contact: null, emergency_phone: null, title: null, date_of_birth: null,
+        driver_license_number: null, preferred_contact_method: null, language_preference: null,
+        preferred_name: null, email_secondary: null, phone_work: null, company_organization: null,
+        job_title: null, address_line2: null, country: null, billing_name: null, billing_email: null,
+        tax_exempt: null, emergency_relationship: null, emergency_name_2: null, emergency_phone_2: null,
+        drivers_license_state: null, drivers_license_expiry: null, oupv_license_number: null, oupv_expiry: null,
+        contact_type: null, status: null, sms_opt_in: null, email_opt_in: null, liveaboard: null,
+        pet_on_board: null, parking_permit: null, notes: null, account_number: null, lead_source: null,
+        customer_since: null, waiver_signed: null, waiver_signed_date: null, internal_notes: null,
+        vip_flag: null, do_not_contact: null, fax: null, website: null, nationality: null,
+        passport_number: null, passport_country: null, passport_expiry: null, ssn_tax_id: null,
+        mmc_license_number: null, mmc_tonnage_rating: null, mmc_expiry: null, twic_number: null,
+        twic_expiry: null, stcw_certification: null, stcw_level: null, stcw_expiry: null,
+        fcc_license_number: null, fcc_expiry: null, cpr_certification: null, cpr_expiry: null,
+        abyc_certifications: null, engine_brand_certifications: null, trade_specialties: null,
+        dealer_license_number: null, dealer_license_state: null, broker_license_number: null,
+        broker_license_state: null, seatow_membership_number: null, boatus_membership_number: null,
+        employee_id: null, department: null, employment_type: null, tax_classification: null,
+        hire_date: null, hourly_rate: null, salary: null, access_card: null, locker_number: null,
+        parking_spot: null, shift_notes: null, doc_w2_on_file: null, doc_i9_on_file: null,
+        doc_direct_deposit: null, doc_signed_offer: null, doc_background_check: null, languages_spoken: null,
+      } : null
       setProfile(prof)
 
-      return { contact, nationalContact, allContactIds, prof }
+      // Step 4: Store marina + space + lease for home dashboard
+      setMarinaProfile(profileData?.marina ?? null)
+      setSpaceProfile(profileData?.space ?? null)
+      setLeaseProfile(profileData?.lease ?? null)
+
+      // Step 5: Load connected marinas for Skipper AI context
+      const marinasRes = await fetch(`/api/marinas?auth_user_id=${u.id}`)
+      if (marinasRes.ok) {
+        const marinasData = await marinasRes.json()
+        setCoupledMarinas(marinasData.marinas ?? [])
+      }
+
+      return { contact: rc ? { id: rc.id, auth_user_id: u.id, first_name: rc.firstName, last_name: rc.lastName } : null, nationalContact: null, allContactIds: rc ? [rc.id] : [], prof }
     } finally {
       setVesselsLoading(false)
     }
@@ -618,20 +665,17 @@ export default function SkipperApp() {
     localStorage.setItem('skipper_user_id', u.id)
     setVesselsLoading(true)
     try {
-      // Load contact + vessels via shared function
-      const result        = await loadUserData(u)
-      const contact       = result?.contact         // primary contact (marina-scoped if pre-loaded, else national-pool)
-      const nationalContact = result?.nationalContact // national-pool contact (PIN + setup_complete store)
-      const prof          = result?.prof
+      const result = await loadUserData(u)
+      const prof   = result?.prof
 
-      // Gate 1: onboarding form
-      // setup_complete = true  → marina pre-loaded this boater, skip form entirely
-      // setup_complete = false → brand-new boater, show simple 3-field form
-      const authContact = nationalContact ?? contact
-      if (!authContact?.setup_complete) { setScreen('contact_setup'); return }
+      // Gate 1: Onboarding — user is set up if Railway returned a name, or localStorage says so
+      const setupInStorage = localStorage.getItem(`skipper_setup_${u.id}`) === 'complete'
+      const hasProfile = !!(prof?.first_name)
+      if (!setupInStorage && !hasProfile) { setScreen('contact_setup'); return }
 
-      // Gate 2: PIN setup (first-time only)
-      if (!authContact?.pin_hash) { setScreen('pin_setup'); return }
+      // Gate 2: PIN setup (first-time only) — check localStorage
+      const localPin = localStorage.getItem(`skipper_pin_${u.id}`)
+      if (!localPin) { setScreen('pin_setup'); return }
 
       const unlocked = localStorage.getItem(`skipper_unlocked_${u.id}`)
       if (unlocked) { setScreen('home'); return }
@@ -640,7 +684,6 @@ export default function SkipperApp() {
     } catch(err) {
       console.error('[Skipper] routeAfterAuth failed:', err)
       setVesselsLoading(false)
-      // Fallback — always navigate somewhere, never leave user stuck on auth screen
       setScreen('contact_setup')
     }
   }
@@ -720,11 +763,16 @@ export default function SkipperApp() {
         // Persist user identity in a 1-year cookie so new browsers skip OTP and go straight to PIN
         document.cookie = `skipper_uid=${u.id}; max-age=${60 * 60 * 24 * 365}; path=/; SameSite=Lax`
         // Link contacts row on server (creates/updates national-pool row, auto-couples marinas)
-        await fetch('/api/auth/link-contact', {
+        const lcRes = await fetch('/api/auth/link-contact', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, userId: u.id }),
         })
+        const lcData = await lcRes.json().catch(() => ({}))
+        // Store setup status so routeAfterAuth doesn't show contact_setup for preloaded users
+        if (lcData.setup_complete || lcData.preLoaded) {
+          localStorage.setItem(`skipper_setup_${u.id}`, 'complete')
+        }
         await routeAfterAuth(u)
       }}
       onBack={() => setScreen('auth')}
@@ -837,6 +885,10 @@ export default function SkipperApp() {
       onProfileUpdated={(p) => setProfile(p)}
       vesselsLoading={vesselsLoading}
       onRefreshVessels={() => { if (userRef.current) loadUserData(userRef.current).catch(()=>{}) }}
+      marinaProfile={marinaProfile}
+      spaceProfile={spaceProfile}
+      leaseProfile={leaseProfile}
+      coupledMarinas={coupledMarinas}
     />
   )
 }
@@ -1034,15 +1086,21 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
     if (!firstName.trim()) { setErr('First name is required'); return }
     setSaving(true); setErr('')
     try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .update({ first_name: firstName.trim(), last_name: lastName.trim() || null, phone: phone.trim() || null })
-        .eq('auth_user_id', user.id)
-        .is('marina_id', null)
-        .select()
-        .single()
-      if (error) { setErr('Could not save — try again'); return }
-      onComplete(contactToProfile(data as Record<string, unknown>))
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_user_id: user.id,
+          first_name: firstName.trim() || null,
+          last_name: lastName.trim() || null,
+          phone: phone.trim() || null,
+        }),
+      })
+      if (!res.ok) { setErr('Could not save — try again'); return }
+      const saved = await res.json()
+      localStorage.setItem(`skipper_setup_${user.id}`, 'complete')
+      const contactRaw = saved.contact ?? {}
+      onComplete(contactToProfile(contactRaw as Record<string, unknown>))
     } catch { setErr('Something went wrong') } finally { setSaving(false) }
   }
 
@@ -1267,11 +1325,12 @@ function useIsDesktop(breakpoint = 768) {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading, onRefreshVessels }: {
+function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading, onRefreshVessels, marinaProfile, spaceProfile, leaseProfile, coupledMarinas }: {
   user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
   onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void; onProfileUpdated: (p: Profile) => void
   vesselsLoading: boolean; onRefreshVessels: () => void
+  marinaProfile: MarinaProfile | null; spaceProfile: SpaceProfile | null; leaseProfile: LeaseProfile | null; coupledMarinas: Marina[]
 }) {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
   const isDesktop = useIsDesktop()
@@ -1292,6 +1351,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   }, [])
 
   const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
+    ['home',     <IcoHome   key='h'  active={activeTab==='home'}    />, 'Home'],
     ['vessel',   <IcoVessel  key='v'  active={activeTab==='vessel'}   />, 'My Vessel'],
     ['weather',  <IcoWeather key='w'  active={activeTab==='weather'}  />, 'Weather'],
     ['marinas',  <IcoMarinas key='m'  active={activeTab==='marinas'}  />, 'Marinas'],
@@ -1301,7 +1361,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   ]
 
   const TAB_LABELS: Record<HomeTab, string> = {
-    vessel: 'My Vessel', weather: 'Weather', marinas: 'Marinas', messages: 'Messages', log: "Ship's Log", account: 'Account',
+    home: 'Home', vessel: 'My Vessel', weather: 'Weather', marinas: 'Marinas', messages: 'Messages', log: "Ship's Log", account: 'Account',
   }
 
   return (
@@ -1395,6 +1455,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
+          {activeTab === 'home'     && <TabHome user={user} profile={profile} vessel={vessel} marinaProfile={marinaProfile} spaceProfile={spaceProfile} leaseProfile={leaseProfile} weatherData={weatherData} onTabChange={onTabChange} />}
           {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
           {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
             if (typeof navigator === 'undefined' || !navigator.geolocation) return
@@ -1403,7 +1464,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
           }} />}
-          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} />}
+          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} spaceProfile={spaceProfile} leaseProfile={leaseProfile} marinaProfile={marinaProfile} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1412,8 +1473,8 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         {/* Mobile bottom nav */}
         {!isDesktop && (
           <div style={{ flexShrink:0, borderTop:`1px solid rgba(255,255,255,0.08)`, background:'rgba(5,17,31,0.95)', backdropFilter:'blur(12px)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'10px 0 env(safe-area-inset-bottom,10px)' }}>
+            <NavBtn icon={<IcoHome   active={activeTab==='home'}    />} label="Home"     active={activeTab==='home'}     onClick={() => onTabChange('home')}     />
             <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}   />} label="Vessel"   active={activeTab==='vessel'}   onClick={() => onTabChange('vessel')}   />
-            <NavBtn icon={<IcoWeather active={activeTab==='weather'}  />} label="Weather"  active={activeTab==='weather'}  onClick={() => onTabChange('weather')}  />
             <NavBtn icon={<IcoMarinas active={activeTab==='marinas'}  />} label="Marinas"  active={activeTab==='marinas'}  onClick={() => onTabChange('marinas')}  />
             <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
             <NavBtn icon={<IcoLog    active={activeTab==='log'}      />} label="Log"      active={activeTab==='log'}      onClick={() => onTabChange('log')}      />
@@ -1423,7 +1484,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       </div>
 
       {/* Floating Skipper — offset on desktop to clear sidebar */}
-      <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} />
+      <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} coupledMarinas={coupledMarinas} />
     </div>
   )
 }
@@ -1449,9 +1510,8 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
     onChange: () => setRealtimeVersion(v => v + 1),
   })
 
-  // ── Expand/collapse vessel card state ────────────────────────────────────────
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
-  const toggleExpand = (id: string) => setExpandedIds(p => ({ ...p, [id]: !p[id] }))
+  // ── Detail view state ────────────────────────────────────────────────────────
+  const [detailIdx, setDetailIdx] = useState<number | null>(null)
 
   // ── Load berths ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1530,6 +1590,20 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
     await supabase.from('marina_assets').delete().eq('id', id)
     onVesselDeleted(id)
   }
+
+  // ── Vessel Detail screen ─────────────────────────────────────────────────────
+  if (detailIdx !== null && vessels[detailIdx]) return (
+    <VesselDetailScreen
+      vessel={vessels[detailIdx]}
+      vesselId={vesselIds[detailIdx]}
+      onBack={() => setDetailIdx(null)}
+      onEdit={async () => {
+        const id = vesselIds[detailIdx]
+        const { data } = await supabase.from('marina_assets').select('*').eq('id', id).single()
+        if (data) { setEditingAsset(data); setDetailIdx(null); setShowForm(true) }
+      }}
+    />
+  )
 
   // ── AssetForm screen ──────────────────────────────────────────────────────────
   if (showForm) return (
@@ -1622,9 +1696,9 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={() => toggleExpand(vesselIds[idx])}
+                  <button onClick={() => setDetailIdx(idx)}
                     style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                    {expandedIds[vesselIds[idx]] ? '▼' : '▶'}
+                    View
                   </button>
                   <button onClick={() => openEdit(vesselIds[idx])}
                     style={{ background:C.tealDim, border:`1px solid ${C.tealBorder}`, borderRadius:10, padding:'6px 12px', color:C.teal, fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
@@ -1636,23 +1710,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </button>
                 </div>
               </div>
-              {expandedIds[vesselIds[idx]] && (
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                  {[
-                    v.length_ft && ['LOA', `${v.length_ft} ft`],
-                    v.beam_ft   && ['Beam', `${v.beam_ft} ft`],
-                    v.draft_ft  && ['Draft', `${v.draft_ft} ft`],
-                    v.air_draft_ft && ['Air Draft', `${v.air_draft_ft} ft`],
-                    v.weight_lbs && ['Weight', `${v.weight_lbs.toLocaleString()} lbs`],
-                    v.registration_number && ['Reg #', v.registration_number],
-                  ].filter(Boolean).map(([l, val]) => (
-                    <div key={String(l)} style={{ background:'rgba(0,0,0,0.25)', borderRadius:10, padding:'10px 12px' }}>
-                      <div style={{ fontSize:10, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:3 }}>{l}</div>
-                      <div style={{ fontSize:14, fontWeight:700 }}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
+
             </div>
           ))}
           <PrimaryBtn onClick={() => { setEditingAsset(null); setShowForm(true) }} style={{ marginTop:8 }}>
@@ -1746,6 +1804,238 @@ function StatTile({ label, value, danger, warn }: { label:string; value:string; 
   )
 }
 
+// ─── Vessel Detail Screen ───────────────────────────────────────────────────────
+function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
+  vessel: Vessel; vesselId: string; onBack: () => void; onEdit: () => void
+}) {
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([])
+  const [logLoading, setLogLoading] = useState(true)
+  const [showLogForm, setShowLogForm] = useState(false)
+  const [logForm, setLogForm] = useState({ ...BLANK_FORM })
+  const [logSaving, setLogSaving] = useState(false)
+  const [logErr, setLogErr] = useState('')
+
+  // Load ship's log via Railway proxy — Rule 2 compliant
+  useEffect(() => {
+    setLogLoading(true)
+    fetch(`/api/asset-ship-log?asset_id=${vesselId}`)
+      .then(r => r.json())
+      .then(d => setLogEntries(Array.isArray(d) ? d : (d.logs ?? [])))
+      .catch(() => setLogEntries([]))
+      .finally(() => setLogLoading(false))
+  }, [vesselId])
+
+  async function saveLogEntry() {
+    setLogSaving(true); setLogErr('')
+    try {
+      const payload = {
+        asset_id: vesselId,
+        log_date: logForm.log_date || new Date().toISOString().slice(0, 10),
+        notes: logForm.notes || null,
+        departed_from: logForm.departed_from || null,
+        arrived_at: logForm.arrived_at || null,
+        distance_nm: logForm.distance_nm ? parseFloat(logForm.distance_nm) : null,
+        engine_hours_start: logForm.engine_hours_start ? parseFloat(logForm.engine_hours_start) : null,
+        engine_hours_end: logForm.engine_hours_end ? parseFloat(logForm.engine_hours_end) : null,
+        fuel_used_gallons: logForm.fuel_used_gallons ? parseFloat(logForm.fuel_used_gallons) : null,
+        crew_count: logForm.crew_count ? parseInt(logForm.crew_count) : null,
+        weather: logForm.weather || null,
+        source: 'manual',
+      }
+      const res = await fetch('/api/asset-ship-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      if (!res.ok) { setLogErr('Save failed'); return }
+      const newEntry = await res.json()
+      setLogEntries(prev => [newEntry.log ?? newEntry, ...prev])
+      setLogForm({ ...BLANK_FORM })
+      setShowLogForm(false)
+    } catch { setLogErr('Save failed') } finally { setLogSaving(false) }
+  }
+
+  function VesselSection({ title, fields }: { title: string; fields: [string, string | null | undefined][] }) {
+    const nonEmpty = fields.filter(([, v]) => v != null && v !== '' && v !== 'false')
+    if (nonEmpty.length === 0) return null
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: 10 }}>{title}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {nonEmpty.map(([label, val]) => (
+            <div key={label} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: 0.9, marginBottom: 3 }}>{label}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.white, wordBreak: 'break-word' as const }}>{String(val)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const iStyle = { width: '100%', padding: '10px 12px', background: C.inputBg, border: `1px solid ${C.inputBorder}`, borderRadius: 8, color: C.white, fontSize: 13, fontFamily: FONT, outline: 'none' } as React.CSSProperties
+
+  return (
+    <div style={{ padding: '0 0 100px', animation: 'fadeUp 0.3s ease both', overflowY: 'auto' as const }}>
+      {/* Header */}
+      <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid rgba(255,255,255,0.07)`, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '7px 14px', color: C.white, fontFamily: FONT, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>← Back</button>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: C.white }}>{vessel.name}</div>
+            <div style={{ fontSize: 12, color: C.muted }}>{[vessel.make, vessel.model, vessel.year ? String(vessel.year) : null].filter(Boolean).join(' ')}</div>
+          </div>
+        </div>
+        <button onClick={onEdit} style={{ background: C.tealDim, border: `1px solid ${C.tealBorder}`, borderRadius: 10, padding: '8px 16px', color: C.teal, fontFamily: FONT, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+      </div>
+
+      <div style={{ padding: '16px 16px 0' }}>
+        {/* Vessel hero card */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, background: 'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: C.tealDim, border: `1px solid ${C.tealBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{vesselIcon(vessel.vessel_type)}</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: C.white }}>{vessel.name}</div>
+            <div style={{ fontSize: 13, color: C.muted }}>{vessel.vessel_type}{vessel.year ? ` · ${vessel.year}` : ''}</div>
+            {vessel.status && <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, marginTop: 4 }}>{vessel.status.toUpperCase()}</div>}
+          </div>
+        </div>
+
+        <VesselSection title="Dimensions" fields={[
+          ['Length (LOA)', vessel.length_ft ? `${vessel.length_ft} ft` : null],
+          ['Beam', vessel.beam_ft ? `${vessel.beam_ft} ft` : null],
+          ['Draft', vessel.draft_ft ? `${vessel.draft_ft} ft` : null],
+          ['Air Draft', vessel.air_draft_ft ? `${vessel.air_draft_ft} ft` : null],
+          ['Weight', vessel.weight_lbs ? `${vessel.weight_lbs.toLocaleString()} lbs` : null],
+          ['Hull Material', vessel.hull_material],
+          ['Keel Type', vessel.keel_type],
+          ['Bottom Paint', vessel.bottom_paint_type],
+          ['Color', vessel.color],
+        ]} />
+
+        <VesselSection title="Engine & Fuel" fields={[
+          ['Engine Count', vessel.engine_count ? String(vessel.engine_count) : null],
+          ['Engine Type', vessel.engine_type],
+          ['Engine Make', vessel.engine_make],
+          ['Engine Model', vessel.engine_model],
+          ['Engine Year', vessel.engine_year ? String(vessel.engine_year) : null],
+          ['Horsepower', vessel.horsepower_per_engine ? `${vessel.horsepower_per_engine} hp` : null],
+          ['Fuel Type', vessel.fuel_type],
+          ['Fuel Tank', vessel.fuel_tank_gallons ? `${vessel.fuel_tank_gallons} gal` : null],
+          ['Shore Power', vessel.shore_power],
+        ]} />
+
+        <VesselSection title="Registration & ID" fields={[
+          ['HIN', vessel.hin],
+          ['Registration #', vessel.registration_number],
+          ['Reg. State', vessel.registration_state],
+          ['Reg. Expiry', vessel.registration_expiry ? fmtDate(vessel.registration_expiry) : null],
+          ['Documentation #', vessel.documentation_number],
+          ['MMSI', vessel.mmsi_number],
+          ['Flag State', vessel.flag_state],
+        ]} />
+
+        <VesselSection title="Insurance" fields={[
+          ['Provider', vessel.insurance_provider],
+          ['Policy #', vessel.insurance_policy],
+          ['Expiry', vessel.insurance_expiry ? fmtDate(vessel.insurance_expiry) : null],
+          ['Agent', vessel.insurance_agent_name],
+          ['Agent Phone', vessel.insurance_agent_phone],
+          ['Coverage', vessel.insurance_coverage_amount ? `$${vessel.insurance_coverage_amount.toLocaleString()}` : null],
+        ]} />
+
+        <VesselSection title="Safety Equipment" fields={[
+          ['Life Raft', vessel.life_raft],
+          ['Life Jackets', vessel.life_jacket_count ? String(vessel.life_jacket_count) : null],
+          ['EPIRB Serial', vessel.epirb_serial],
+          ['EPIRB Expiry', vessel.epirb_expiry ? fmtDate(vessel.epirb_expiry) : null],
+          ['Flare Kit Expiry', vessel.flare_kit_expiry ? fmtDate(vessel.flare_kit_expiry) : null],
+          ['Fire Ext. Expiry', vessel.fire_extinguisher_expiry ? fmtDate(vessel.fire_extinguisher_expiry) : null],
+          ['Oil Placard', vessel.oil_placard ? 'Yes' : null],
+          ['Discharge Placard', vessel.discharge_placard ? 'Yes' : null],
+        ]} />
+
+        <VesselSection title="Security" fields={[
+          ['Alarm', vessel.alarm],
+          ['GPS Tracker', vessel.gps_tracker],
+          ['Lock Type', vessel.lock_type],
+          ['Lock Location', vessel.lock_location],
+          ['Authorized Operators', vessel.authorized_operators],
+        ]} />
+
+        <VesselSection title="Trailer" fields={[
+          ['Has Trailer', String(vessel.has_trailer) === 'true' ? 'Yes' : null],
+          ['Make', vessel.trailer_make],
+          ['Type', vessel.trailer_type],
+          ['Length', vessel.trailer_length_ft ? `${vessel.trailer_length_ft} ft` : null],
+          ['Width', vessel.trailer_width_ft ? `${vessel.trailer_width_ft} ft` : null],
+          ['Plate', vessel.trailer_plate],
+          ['VIN', vessel.trailer_vin],
+        ]} />
+
+        {vessel.notes && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: 10 }}>Notes</div>
+            <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: C.muted, lineHeight: 1.65 }}>{vessel.notes}</div>
+          </div>
+        )}
+
+        {/* Ship's Log — Railway proxy, Rule 2 compliant */}
+        <div style={{ borderTop: `1px solid rgba(255,255,255,0.07)`, paddingTop: 20, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.teal, textTransform: 'uppercase' as const, letterSpacing: 1.5 }}>📓 Ship&apos;s Log</div>
+            <button
+              onClick={() => { setShowLogForm(s => !s); setLogErr('') }}
+              style={{ background: showLogForm ? 'rgba(255,255,255,0.08)' : C.teal, color: showLogForm ? C.white : '#0d2b4b', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: FONT }}>
+              {showLogForm ? 'Cancel' : '+ Add Entry'}
+            </button>
+          </div>
+
+          {showLogForm && (
+            <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input type="date" value={logForm.log_date} onChange={e => setLogForm(f => ({ ...f, log_date: e.target.value }))} style={iStyle} />
+                <textarea value={logForm.notes} onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))} placeholder="Trip notes…" rows={3} style={{ ...iStyle, resize: 'none' as const }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <input placeholder="Departed from" value={logForm.departed_from} onChange={e => setLogForm(f => ({ ...f, departed_from: e.target.value }))} style={iStyle} />
+                  <input placeholder="Arrived at" value={logForm.arrived_at} onChange={e => setLogForm(f => ({ ...f, arrived_at: e.target.value }))} style={iStyle} />
+                  <input placeholder="Distance (nm)" type="number" value={logForm.distance_nm} onChange={e => setLogForm(f => ({ ...f, distance_nm: e.target.value }))} style={iStyle} />
+                  <input placeholder="Weather" value={logForm.weather} onChange={e => setLogForm(f => ({ ...f, weather: e.target.value }))} style={iStyle} />
+                </div>
+                {logErr && <div style={{ fontSize: 12, color: C.danger }}>{logErr}</div>}
+                <button onClick={saveLogEntry} disabled={logSaving}
+                  style={{ background: C.teal, color: '#0d2b4b', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, fontWeight: 900, cursor: logSaving ? 'not-allowed' : 'pointer', fontFamily: FONT, opacity: logSaving ? 0.7 : 1 }}>
+                  {logSaving ? 'Saving…' : 'Save Entry'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {logLoading && <div style={{ textAlign: 'center', color: C.muted, fontSize: 13, padding: '20px 0' }}>Loading…</div>}
+          {!logLoading && logEntries.length === 0 && !showLogForm && (
+            <div style={{ textAlign: 'center', color: C.muted, fontSize: 13, padding: '20px 0' }}>No log entries yet — tap Add Entry to start your log.</div>
+          )}
+          {logEntries.slice(0, 10).map((e, i) => (
+            <div key={e.id} style={{ borderBottom: i < Math.min(logEntries.length, 10) - 1 ? `1px solid rgba(255,255,255,0.06)` : 'none', padding: '14px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.white }}>{fmtDate(e.log_date)}</div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.teal, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '2px 8px' }}>
+                  {e.source === 'skipper' ? '🤖 Skipper' : e.source === 'helm_event' ? '⚓ Marina' : 'You'}
+                </span>
+              </div>
+              {e.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 6 }}>{e.notes}</div>}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(e.departed_from || e.arrived_at) && <span style={{ fontSize: 11, color: C.muted2 }}>{[e.departed_from, e.arrived_at].filter(Boolean).join(' → ')}</span>}
+                {e.distance_nm != null && <span style={{ fontSize: 11, color: C.muted2 }}>📍 {e.distance_nm} nm</span>}
+                {e.fuel_used_gallons != null && <span style={{ fontSize: 11, color: C.muted2 }}>⛽ {e.fuel_used_gallons} gal</span>}
+                {e.weather && <span style={{ fontSize: 11, color: C.muted2 }}>🌤 {e.weather}</span>}
+              </div>
+            </div>
+          ))}
+          {logEntries.length > 10 && (
+            <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 12, color: C.muted }}>Showing 10 of {logEntries.length} entries — see Ship&apos;s Log tab for full history</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
 type TransientReq = {
   id: string; marina_id: string; status: string
@@ -1753,7 +2043,7 @@ type TransientReq = {
   vessel_name: string | null; contact_name: string; created_at: string
 }
 
-function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|null; vessel: Vessel|null }) {
+function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaProfile }: { user: User; profile: Profile|null; vessel: Vessel|null; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null }) {
   const [myBerthMap, setMyBerthMap] = useState<Record<string, string | null>>({}) // marina_id → slip label
 
   useEffect(() => {
@@ -1894,6 +2184,9 @@ function TabMarinas({ user, profile, vessel }: { user: User; profile: Profile|nu
       coupled={coupledIds.has(selected.id)}
       onBack={() => setSelected(null)}
       onAddVessel={() => { setSelected(null) }}
+      spaceProfile={spaceProfile}
+      leaseProfile={leaseProfile}
+      marinaProfile={marinaProfile}
     />
   )
 
@@ -2213,7 +2506,7 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
 }
 
 // ─── Marina Chat ──────────────────────────────────────────────────────────────
-function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVessel }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; coupled?:boolean; onBack:()=>void; onAddVessel:()=>void }) {
+function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVessel, spaceProfile, leaseProfile, marinaProfile }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; coupled?:boolean; onBack:()=>void; onAddVessel:()=>void; spaceProfile?:SpaceProfile|null; leaseProfile?:LeaseProfile|null; marinaProfile?:MarinaProfile|null }) {
   const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([])
   const [draft,   setDraft]   = useState('')
   const [sending, setSending] = useState(false)
@@ -2295,7 +2588,9 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       sender_name: displayName ?? 'Boater',
     })
 
-    // Full identity package — all fields
+    // Full identity package — same as Global Skipper + marina-specific context
+    // Rule 2: spaceProfile/leaseProfile/marinaProfile come from Railway (profile endpoint)
+    const isTenant = coupled === true
     const identityPackage = {
       auth_user_id:  user.id,
       contact_id:    profile?.contact_id ?? null,
@@ -2304,6 +2599,10 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       display_name:  displayName,
       phone:         profile?.phone ?? null,
       email:         user.email ?? null,
+      // Marina-specific context — slip, lease, berth
+      slip:  spaceProfile  ? { label: spaceProfile.label, dock: spaceProfile.dock, type: spaceProfile.spaceType } : null,
+      lease: leaseProfile  ? { status: leaseProfile.status, startDate: leaseProfile.startDate, endDate: leaseProfile.endDate, monthlyRate: leaseProfile.monthlyRate } : null,
+      marina_name: marinaProfile?.name ?? marina.name,
       vessel: vessel ? {
         id:                   vessel.id,
         name:                 vessel.name,
@@ -2344,7 +2643,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
             marina_id: marina.id,
             identity: identityPackage,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            session: { marina_id: marina.id, boater_id: user.id, access_type: 'anonymous' },
+            session: { marina_id: marina.id, boater_id: user.id, access_type: isTenant ? 'tenant' : 'anonymous' },
             conversation_history: msgs.slice(-20).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
           })
       })
@@ -2872,10 +3171,268 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 }
 
 // ─── Floating Skipper ──────────────────────────────────────────────────────
+// ─── TAB: Home Dashboard ────────────────────────────────────────────────────────
+function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProfile, weatherData, onTabChange }: {
+  user: User; profile: Profile|null; vessel: Vessel|null
+  marinaProfile: MarinaProfile|null; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null
+  weatherData: WeatherData|null; onTabChange: (t: HomeTab) => void
+}) {
+  const [invoices,        setInvoices]        = useState<any[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [showInvoices,    setShowInvoices]    = useState(false)
+  const [paying,          setPaying]          = useState<string|null>(null) // invoice id being paid
+  const [payError,        setPayError]        = useState<string|null>(null)
+  const [expandedInv,     setExpandedInv]     = useState<string|null>(null)
+
+  useEffect(() => {
+    if (!user.id) return
+    setInvoicesLoading(true)
+    fetch(`/api/invoices?auth_user_id=${user.id}`)
+      .then(r => r.json())
+      .then(d => setInvoices(d.invoices ?? []))
+      .catch(() => {})
+      .finally(() => setInvoicesLoading(false))
+  }, [user.id])
+
+  const unpaidTotal = invoices
+    .filter(inv => ['unpaid', 'overdue', 'partial', 'sent'].includes(inv.status))
+    .reduce((sum, inv) => sum + ((inv.amountDue ?? 0) - (inv.amountPaid ?? 0)), 0)
+  const hasOverdue = invoices.some(inv => inv.status === 'overdue')
+  const firstName  = profile?.first_name ?? user.email?.split('@')[0] ?? 'Captain'
+
+  async function handlePayNow(invoiceId: string) {
+    setPaying(invoiceId); setPayError(null)
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.checkout_url) {
+        setPayError(data.error || 'Could not create payment session')
+        return
+      }
+      window.open(data.checkout_url, '_blank')
+    } catch {
+      setPayError('Something went wrong — try again')
+    } finally {
+      setPaying(null)
+    }
+  }
+
+  function statusBadge(status: string) {
+    const map: Record<string,{label:string;color:string;bg:string;border:string}> = {
+      paid:     { label:'Paid',     color:'#4ade80', bg:'rgba(74,222,128,0.1)',  border:'rgba(74,222,128,0.3)' },
+      overdue:  { label:'Overdue', color:'#f87171', bg:'rgba(248,113,113,0.1)', border:'rgba(248,113,113,0.3)' },
+      unpaid:   { label:'Unpaid',  color:'#facc15', bg:'rgba(250,204,21,0.1)',  border:'rgba(250,204,21,0.3)' },
+      partial:  { label:'Partial', color:'#fb923c', bg:'rgba(251,146,60,0.1)',  border:'rgba(251,146,60,0.3)' },
+      sent:     { label:'Sent',    color:'#60a5fa', bg:'rgba(96,165,250,0.1)',  border:'rgba(96,165,250,0.3)' },
+      void:     { label:'Void',    color:C.muted2,  bg:'rgba(255,255,255,0.05)',border:'rgba(255,255,255,0.1)' },
+    }
+    const s = map[status] ?? { label: status, color: C.muted, bg: C.card, border: C.cardBorder }
+    return (
+      <span style={{ fontSize:10, fontWeight:800, color:s.color, background:s.bg, border:`1px solid ${s.border}`, borderRadius:20, padding:'3px 9px', textTransform:'uppercase', letterSpacing:0.5 }}>{s.label}</span>
+    )
+  }
+
+  function fmtDate(d: string|null) {
+    if (!d) return '—'
+    const [y,m,day] = d.slice(0,10).split('-').map(Number)
+    return new Date(y, m-1, day).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+  }
+
+  // ── Invoice History View ──────────────────────────────────────────────────
+  if (showInvoices) {
+    return (
+      <div style={{ padding:'0 0 100px' }}>
+        {/* Header */}
+        <div style={{ padding:'16px 16px 12px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid rgba(255,255,255,0.07)`, marginBottom:4 }}>
+          <button onClick={() => { setShowInvoices(false); setPayError(null) }}
+            style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, padding:'7px 14px', color:C.white, fontFamily:FONT, cursor:'pointer', fontSize:13, fontWeight:600 }}>← Back</button>
+          <div>
+            <div style={{ fontSize:17, fontWeight:800, color:C.white }}>Invoices & Payments</div>
+            <div style={{ fontSize:11, color:C.muted }}>{marinaProfile?.name}</div>
+          </div>
+        </div>
+
+        {payError && (
+          <div style={{ margin:'0 16px 12px', padding:'10px 14px', background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.25)', borderRadius:12, fontSize:13, color:'#f87171' }}>{payError}</div>
+        )}
+
+        {invoicesLoading && (
+          <div style={{ padding:'40px 16px', textAlign:'center', color:C.muted, fontSize:13 }}>Loading…</div>
+        )}
+
+        {!invoicesLoading && invoices.length === 0 && (
+          <div style={{ padding:'60px 20px', textAlign:'center' }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+            <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No invoices yet</div>
+            <div style={{ fontSize:13, color:C.muted }}>Invoices from your marina will appear here.</div>
+          </div>
+        )}
+
+        {!invoicesLoading && invoices.map((inv, i) => {
+          const payable = ['unpaid','overdue','partial','sent'].includes(inv.status)
+          const owed    = Math.max(0, (inv.amountDue ?? 0) - (inv.amountPaid ?? 0))
+          const isExpanded = expandedInv === inv.id
+          return (
+            <div key={inv.id} style={{ margin:'0 16px', borderBottom: i < invoices.length-1 ? `1px solid rgba(255,255,255,0.06)` : 'none', padding:'16px 0' }}>
+              {/* Invoice row header */}
+              <button onClick={() => setExpandedInv(isExpanded ? null : inv.id)}
+                style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', fontFamily:FONT }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:700, color:C.white, marginBottom:4 }}>{inv.invoiceNumber ?? 'Invoice'}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      {statusBadge(inv.status)}
+                      {inv.dueDate && <span style={{ fontSize:11, color:C.muted }}>Due {fmtDate(inv.dueDate)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+                    <div style={{ fontSize:20, fontWeight:900, letterSpacing:-0.5, color: inv.status==='paid' ? '#4ade80' : inv.status==='overdue' ? '#f87171' : C.white }}>${(inv.totalAmount ?? 0).toFixed(2)}</div>
+                    {inv.amountPaid > 0 && inv.status !== 'paid' && (
+                      <div style={{ fontSize:10, color:C.muted }}>Paid ${inv.amountPaid.toFixed(2)}</div>
+                    )}
+                  </div>
+                </div>
+                {inv.notes && <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>{inv.notes}</div>}
+              </button>
+
+              {/* Expanded line items */}
+              {isExpanded && inv.lineItems?.length > 0 && (
+                <div style={{ background:'rgba(255,255,255,0.04)', borderRadius:10, padding:'10px 12px', marginBottom:10 }}>
+                  {inv.lineItems.map((li: any) => (
+                    <div key={li.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+                      <div>
+                        <div style={{ fontSize:12, color:C.white, fontWeight:600 }}>{li.description}</div>
+                        {li.quantity > 1 && <div style={{ fontSize:11, color:C.muted }}>{li.quantity} × ${li.unit_price?.toFixed(2)}</div>}
+                      </div>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.white, flexShrink:0, marginLeft:12 }}>${li.total?.toFixed(2)}</div>
+                    </div>
+                  ))}
+                  <div style={{ display:'flex', justifyContent:'space-between', paddingTop:8, marginTop:4 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.muted }}>Total</div>
+                    <div style={{ fontSize:13, fontWeight:900, color:C.white }}>${(inv.totalAmount ?? 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pay Now button */}
+              {payable && owed > 0 && (
+                <button
+                  onClick={() => handlePayNow(inv.id)}
+                  disabled={paying === inv.id}
+                  style={{ width:'100%', padding:'13px', background: paying===inv.id ? 'rgba(77,214,200,0.3)' : `linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:12, color:'#0d2b4b', fontSize:14, fontWeight:900, cursor: paying===inv.id ? 'default':'pointer', fontFamily:FONT, marginTop:4 }}>
+                  {paying === inv.id ? 'Opening payment…' : `Pay Now — $${owed.toFixed(2)}`}
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // ── Dashboard View ────────────────────────────────────────────────────────
+  return (
+    <div style={{ padding: '16px 16px 100px' }}>
+
+      {/* Greeting */}
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: C.white, letterSpacing: -0.5, marginBottom: 2 }}>Hey, {firstName} 👋</div>
+        <div style={{ fontSize: 13, color: C.muted }}>{marinaProfile?.name ?? 'Your marina'}</div>
+      </div>
+
+      {/* Vessel + Slip — boarding pass */}
+      <div style={{ background: 'linear-gradient(135deg,rgba(77,214,200,0.18) 0%,rgba(77,214,200,0.06) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 20, padding: '20px', marginBottom: 14, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position:'absolute', right:-30, top:-30, width:140, height:140, borderRadius:'50%', background:'rgba(77,214,200,0.05)' }} />
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 12 }}>Your Berth</div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.white, letterSpacing: -0.3 }}>{vessel?.name ?? 'No vessel yet'}</div>
+            {vessel && <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{[vessel.length_ft && `${vessel.length_ft}ft`, vessel.vessel_type].filter(Boolean).join(' · ')}</div>}
+          </div>
+          {spaceProfile?.label && (
+            <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: C.teal, letterSpacing: -1 }}>{spaceProfile.label}</div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{spaceProfile.dock ? `Dock ${spaceProfile.dock}` : 'Slip'}</div>
+            </div>
+          )}
+        </div>
+        {leaseProfile?.status === 'active' && (
+          <div style={{ marginTop: 14, display:'flex', alignItems:'center', gap:6 }}>
+            <div style={{ width:6, height:6, borderRadius:'50%', background:'#4ade80' }} />
+            <div style={{ fontSize: 11, color:'#4ade80', fontWeight:700 }}>Active Lease</div>
+            {leaseProfile.monthlyRate && <div style={{ fontSize:11, color:C.muted }}>· ${leaseProfile.monthlyRate}/mo</div>}
+          </div>
+        )}
+      </div>
+
+      {/* Balance — tappable → invoice history */}
+      <button onClick={() => setShowInvoices(true)} style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', marginBottom:14 }}>
+        <div style={{ background: C.card, border: `1px solid ${hasOverdue ? 'rgba(248,113,113,0.35)' : unpaidTotal > 0 ? 'rgba(250,204,21,0.35)' : 'rgba(74,222,128,0.3)'}`, borderRadius: 20, padding: '18px 20px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:2, marginBottom:8 }}>Balance Due</div>
+              {invoicesLoading
+                ? <div style={{ fontSize:13, color:C.muted }}>Loading…</div>
+                : <div style={{ fontSize:32, fontWeight:900, letterSpacing:-1.5, color: hasOverdue ? '#f87171' : unpaidTotal > 0 ? '#facc15' : '#4ade80' }}>${unpaidTotal.toFixed(2)}</div>}
+              {!invoicesLoading && hasOverdue && <div style={{ fontSize:11, color:'#f87171', fontWeight:700, marginTop:4 }}>Overdue — tap to pay</div>}
+              {!invoicesLoading && !hasOverdue && unpaidTotal > 0 && <div style={{ fontSize:11, color:'#facc15', fontWeight:600, marginTop:4 }}>Tap to view & pay</div>}
+              {!invoicesLoading && !hasOverdue && unpaidTotal <= 0 && <div style={{ fontSize:11, color:'#4ade80', fontWeight:600, marginTop:4 }}>All paid up — tap for history</div>}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+              <div style={{ fontSize:32 }}>{hasOverdue ? '⚠️' : unpaidTotal > 0 ? '📋' : '✅'}</div>
+              <div style={{ fontSize:10, color:C.muted2, fontWeight:600 }}>View all →</div>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      {/* Quick actions */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+        {(['messages','log','vessel','weather'] as HomeTab[]).map(tab => {
+          const info: Record<string,[string,string,string]> = {
+            messages: ['💬','Messages','Marina team'],
+            log:      ['📓',"Ship's Log",'Add entry'],
+            vessel:   ['⚓','My Vessel','Details & docs'],
+            weather:  ['🌊','Weather','Marine forecast'],
+          }
+          const [emoji, label, sub] = info[tab] ?? ['','','']
+          return (
+            <button key={tab} onClick={() => onTabChange(tab)}
+              style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:'16px 14px', textAlign:'left', cursor:'pointer', fontFamily:FONT }}>
+              <div style={{ fontSize:22, marginBottom:6 }}>{emoji}</div>
+              <div style={{ fontSize:14, fontWeight:700, color:C.white }}>{label}</div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{sub}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Marina contact */}
+      {marinaProfile && (
+        <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:20, padding:'16px 18px' }}>
+          <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:2, marginBottom:10 }}>Your Marina</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:4 }}>⚓ {marinaProfile.name}</div>
+          {marinaProfile.address && <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>{marinaProfile.address}</div>}
+          <div style={{ display:'flex', gap:8 }}>
+            {marinaProfile.phone && (
+              <a href={`tel:${marinaProfile.phone}`} style={{ flex:1, textAlign:'center', padding:'8px', background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontSize:12, fontWeight:700, textDecoration:'none', display:'block' }}>📞 Call</a>
+            )}
+            <button onClick={() => onTabChange('messages')} style={{ flex:1, padding:'8px', background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:FONT }}>💬 Message</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const SKIPPER_ENGINE = 'https://skipper-engine-production.up.railway.app'
 const GREETING = `Welcome aboard — I'm Skipper, your personal boating assistant. You don't need to type a thing. Just talk to me and I'll record everything — boat specs, maintenance, anything. You can also upload documents right here (registration, insurance, whatever you have) so marinas always have them on file. Let's start: tell me your boat's name, make, length, and whatever specs you know. I'll build your first profile.`
 
-function SkipperFloat({ user, profile, vessel, onRefreshVessels }: { user: User; profile: Profile|null; vessel: Vessel|null; onRefreshVessels: () => void }) {
+function SkipperFloat({ user, profile, vessel, onRefreshVessels, coupledMarinas }: { user: User; profile: Profile|null; vessel: Vessel|null; onRefreshVessels: () => void; coupledMarinas: Marina[] }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<{role:string;text:string}[]>([{ role:'skipper', text: GREETING }])
   const [sessionLoaded, setSessionLoaded] = useState(false)
@@ -2904,7 +3461,7 @@ function SkipperFloat({ user, profile, vessel, onRefreshVessels }: { user: User;
 
       {/* Chat panel — always mounted to preserve scroll/state; hidden when closed */}
       <div style={{ position:'fixed', inset:0, zIndex:400, display: open ? 'flex' : 'none', flexDirection:'column', background:'rgba(3,14,25,0.97)', backdropFilter:'blur(16px)', animation: open ? 'skipperSlideUp 0.3s ease both' : 'none' }}>
-        <SkipperChat user={user} profile={profile} vessel={vessel} msgs={msgs} setMsgs={setMsgs} onClose={() => setOpen(false)} onRefreshVessels={onRefreshVessels} />
+        <SkipperChat user={user} profile={profile} vessel={vessel} msgs={msgs} setMsgs={setMsgs} onClose={() => setOpen(false)} onRefreshVessels={onRefreshVessels} coupledMarinas={coupledMarinas} />
       </div>
 
       {/* Floating button */}
@@ -2926,37 +3483,17 @@ function SkipperFloat({ user, profile, vessel, onRefreshVessels }: { user: User;
   )
 }
 
-function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshVessels }: { user: User; profile: Profile|null; vessel: Vessel|null; msgs: {role:string;text:string}[]; setMsgs: React.Dispatch<React.SetStateAction<{role:string;text:string}[]>>; onClose: () => void; onRefreshVessels: () => void }) {
+function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshVessels, coupledMarinas }: { user: User; profile: Profile|null; vessel: Vessel|null; msgs: {role:string;text:string}[]; setMsgs: React.Dispatch<React.SetStateAction<{role:string;text:string}[]>>; onClose: () => void; onRefreshVessels: () => void; coupledMarinas: Marina[] }) {
   const [draft,      setDraft]      = useState('')
   const [sending,    setSending]    = useState(false)
   const [uploading,  setUploading]  = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [coupledMarinas, setCoupledMarinas] = useState<Marina[]>([])
   const bottomRef  = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
     : user.email
-
-  // Load coupled marinas for context
-  useEffect(() => {
-    async function load() {
-      const { data: links } = await supabase
-        .from('contacts')
-        .select('marina_id')
-        .eq('auth_user_id', user.id)
-        .not('marina_id', 'is', null)
-      if (!links || links.length === 0) return
-      const ids = links.map((l: {marina_id:string}) => l.marina_id)
-      const { data: marinas } = await supabase
-        .from('marinas')
-        .select('id,name,city,state,total_slips')
-        .in('id', ids)
-      setCoupledMarinas(marinas ?? [])
-    }
-    load()
-  }, [user.id])
 
   async function uploadFile(file: File) {
     if (!file) return
@@ -3683,6 +4220,15 @@ function IcoSkipper({ active }: { active: boolean }) {
     <div style={{ width:26, height:26, borderRadius:'50%', overflow:'hidden', border:`2px solid ${active ? C.teal : C.muted}`, opacity: active ? 1 : 0.55, transition:'all 0.2s', boxShadow: active ? `0 0 8px ${C.teal}` : 'none' }}>
       <Image src="/skipper-avatar.jpg" alt="Skipper" width={26} height={26} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
     </div>
+  )
+}
+function IcoHome({ active }: { active: boolean }) {
+  const col = active ? '#4dd6c8' : 'rgba(255,255,255,0.55)'
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M9 21V12h6v9" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
   )
 }
 function IcoVessel({ active }: { active: boolean }) {

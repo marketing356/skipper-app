@@ -101,7 +101,12 @@ export async function POST(req: NextRequest) {
       contact = inserted
     }
 
-    return NextResponse.json({ contact, preLoaded })
+    return NextResponse.json({
+      contact,
+      preLoaded,
+      setup_complete: contact?.setup_complete ?? false,
+      pin_hash_exists: !!(contact?.pin_hash),
+    })
   } catch (err: unknown) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
