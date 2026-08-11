@@ -125,6 +125,40 @@ function tags(fd: FormData, key: string): string[] {
   catch { return [] }
 }
 
+// ChipSelectField — interactive chip buttons with useState so visual state responds to clicks
+function ChipSelectField({ name, options, defaultValue }: {
+  name: string
+  options: { value: string; label: string }[]
+  defaultValue: string
+}) {
+  const [selected, setSelected] = useState(() =>
+    defaultValue.split(',').map(v => v.trim()).filter(Boolean)
+  )
+  function toggle(value: string) {
+    setSelected(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }
+  return (
+    <>
+      <input type="hidden" name={name} value={selected.join(',')} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
+        {options.map(opt => {
+          const on = selected.includes(opt.value)
+          return (
+            <button key={opt.value} type="button" onClick={() => toggle(opt.value)} style={{
+              display: 'inline-flex', alignItems: 'center', cursor: 'pointer',
+              background: on ? 'rgba(45,212,191,0.15)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${on ? '#2dd4bf' : 'rgba(255,255,255,0.15)'}`,
+              borderRadius: 20, padding: '7px 14px', fontSize: 13,
+              fontWeight: on ? 700 : 400, color: on ? '#2dd4bf' : '#9ca3af',
+              transition: 'all 0.15s',
+            }}>{opt.value}</button>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 function buildPayload(fd: FormData) {
   return {
     name:           str(fd, 'name'),
@@ -246,32 +280,8 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
 
   function renderControl(field: AssetField) {
     switch (field.type) {
-      case 'chip-select': {
-        const opts = field.options?.filter(o => o.value) ?? []
-        const currentVals = ((a[field.name] as string) || '').split(',').map((v: string) => v.trim()).filter(Boolean)
-        return (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
-            {opts.map(opt => {
-              const checked = currentVals.includes(opt.value)
-              return (
-                <label key={opt.value} style={{
-                  display: 'inline-flex', alignItems: 'center', cursor: 'pointer',
-                  background: checked ? 'rgba(45,212,191,0.15)' : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${checked ? '#2dd4bf' : 'rgba(255,255,255,0.15)'}`,
-                  borderRadius: 20, padding: '7px 14px',
-                  fontSize: 13, fontWeight: checked ? 700 : 400,
-                  color: checked ? '#2dd4bf' : '#9ca3af',
-                  transition: 'all 0.15s',
-                }}>
-                  <input type="checkbox" name={field.name} value={opt.value}
-                    defaultChecked={checked} style={{ display: 'none' }} />
-                  {opt.value}
-                </label>
-              )
-            })}
-          </div>
-        )
-      }
+      case 'chip-select':
+        return <ChipSelectField name={field.name} options={field.options?.filter(o => o.value) ?? []} defaultValue={(a[field.name] as string) || ''} />
       case 'textarea':
         return (
           <textarea name={field.name} rows={TEXTAREA_ROWS[field.name] ?? 3}
