@@ -173,8 +173,28 @@ function buildPayload(fd: FormData) {
     lock_location:        str(fd, 'lock_location'),
     lock_combination:     str(fd, 'lock_combination'),
     authorized_operators: tags(fd, 'authorized_operators'),
-    owner_type: str(fd, 'owner_type') || 'customer',
-    notes: str(fd, 'notes'),
+    fuel_type:              str(fd, 'fuel_type'),
+    shore_power:            ((fd.getAll('shore_power') as string[]).filter(Boolean).join(',')) || null,
+    // Engine fields
+    engine_count:           int(fd, 'engine_count'),
+    engine_type:            str(fd, 'engine_type'),
+    engine_make:            str(fd, 'engine_make'),
+    engine_model:           str(fd, 'engine_model'),
+    engine_year:            int(fd, 'engine_year'),
+    engine_serial:          str(fd, 'engine_serial'),
+    horsepower_per_engine:  num(fd, 'horsepower_per_engine'),
+    fuel_tank_gallons:      num(fd, 'fuel_tank_gallons'),
+    // Trailer fields
+    has_trailer:            str(fd, 'has_trailer'),
+    trailer_make:           str(fd, 'trailer_make'),
+    trailer_type:           str(fd, 'trailer_type'),
+    trailer_axle_count:     int(fd, 'trailer_axle_count'),
+    trailer_length_ft:      num(fd, 'trailer_length_ft'),
+    trailer_width_ft:       num(fd, 'trailer_width_ft'),
+    trailer_plate:          str(fd, 'trailer_plate'),
+    trailer_vin:            str(fd, 'trailer_vin'),
+    owner_type:             str(fd, 'owner_type') || 'customer',
+    notes:                  str(fd, 'notes'),
   }
 }
 
@@ -244,6 +264,27 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
   }
 
   function renderControl(field: AssetField) {
+    // Shore power — multi-select checkboxes using schema options (vessel may have multiple connections)
+    if (field.name === 'shore_power') {
+      const opts = field.options?.filter(o => o.value) ?? []
+      const currentVals = ((a['shore_power'] as string) || '').split(',').map((v: string) => v.trim()).filter(Boolean)
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, paddingTop: 4 }}>
+          {opts.map(opt => (
+            <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#374151', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                name="shore_power"
+                value={opt.value}
+                defaultChecked={currentVals.includes(opt.value)}
+                style={{ width: 16, height: 16, accentColor: '#2dd4bf' }}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      )
+    }
     switch (field.type) {
       case 'textarea':
         return (
