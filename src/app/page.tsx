@@ -193,8 +193,8 @@ type Vessel = {
   name: string
   vessel_type: string
   // Identity
-  asset_category: string | null
-  asset_subtype: string | null
+  vessel_category: string | null
+  vessel_subtype: string | null
   status: string | null
   // Basic info
   make: string | null
@@ -427,7 +427,7 @@ function assetRowToVessel(a: Record<string, any>, contact?: Record<string, any> 
   return {
     id: a.id as string,
     name: a.name ?? '',
-    vessel_type: a.asset_type ?? '',
+    vessel_type: a.vessel_type ?? '',
     length_ft: a.length_ft ?? null,
     beam_ft: a.beam_ft ?? null,
     draft_ft: a.draft_ft ?? null,
@@ -491,8 +491,8 @@ function assetRowToVessel(a: Record<string, any>, contact?: Record<string, any> 
     trailer_width_ft: a.trailer_width_ft ?? null,
     trailer_plate: a.trailer_plate ?? null,
     trailer_vin: a.trailer_vin ?? null,
-    asset_category: a.asset_category ?? null,
-    asset_subtype: a.asset_subtype ?? null,
+    vessel_category: a.vessel_category ?? null,
+    vessel_subtype: a.vessel_subtype ?? null,
     status: a.status ?? null,
     engine_hp: a.engine_hp ?? null,
     // doc/flag fields remain on contacts
@@ -595,7 +595,7 @@ export default function SkipperApp() {
       if (loadedVessels.length === 0 && profileData?.vessel) {
         const v = profileData.vessel
         loadedVessels = [assetRowToVessel({
-          id: v.id, name: v.name, asset_type: v.assetType,
+          id: v.id, name: v.name, vessel_type: v.assetType,
           make: v.make, model: v.model, year: v.year,
           length_ft: v.lengthFt, beam_ft: v.beamFt, draft_ft: v.draftFt,
           shore_power: v.shorePower, fuel_type: v.fuelType, color: v.color,
@@ -1530,7 +1530,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
       const { data: leases } = await supabase
         .from('leases')
-        .select('id, tenant_id, space_v2_id, monthly_rate, contract_type, start_date, end_date, asset_id')
+        .select('id, tenant_id, space_v2_id, monthly_rate, contract_type, start_date, end_date, vessel_id')
         .in('tenant_id', contactIds)
         .eq('status', 'active')
 
@@ -1552,7 +1552,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         Object.fromEntries(coupled.map((c: { id: string; marina_id: string }) => [c.id, c.marina_id]))
 
       const result: BerthData[] = leases.map((lease: {
-        id: string; tenant_id: string; space_v2_id: string; asset_id: string | null;
+        id: string; tenant_id: string; space_v2_id: string; vessel_id: string | null;
         monthly_rate: number | null; contract_type: string | null;
         start_date: string | null; end_date: string | null;
       }) => {
@@ -1561,7 +1561,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         return {
           id:          lease.id,
           marinaId:    marinaId,
-          assetId:     lease.asset_id ?? null,
+          assetId:     lease.vessel_id ?? null,
           marinaName:  marinaMap[marinaId] ?? 'Marina',
           slipNumber:  space?.label ?? null,
           dock:        space?.dock ?? null,
@@ -1580,14 +1580,14 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
   // ── Open edit: fetch raw row from DB ─────────────────────────────────────────
   async function openEdit(id: string) {
-    const { data } = await supabase.from('marina_assets').select('*').eq('id', id).single()
+    const { data } = await supabase.from('vessels').select('*').eq('id', id).single()
     if (data) { setEditingAsset(data); setShowForm(true) }
   }
 
   // ── Delete vessel ─────────────────────────────────────────────────────────────
   async function deleteVessel(id: string) {
     if (!confirm('Delete this vessel? This cannot be undone.')) return
-    await supabase.from('marina_assets').delete().eq('id', id)
+    await supabase.from('vessels').delete().eq('id', id)
     onVesselDeleted(id)
   }
 
@@ -1599,7 +1599,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       onBack={() => setDetailIdx(null)}
       onEdit={async () => {
         const id = vesselIds[detailIdx]
-        const { data } = await supabase.from('marina_assets').select('*').eq('id', id).single()
+        const { data } = await supabase.from('vessels').select('*').eq('id', id).single()
         if (data) { setEditingAsset(data); setDetailIdx(null); setShowForm(true) }
       }}
     />
@@ -1833,19 +1833,19 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
 
   // Load all modules via Railway proxies — Rule 2 compliant
   useEffect(() => {
-    fetch(`/api/asset-ship-log?asset_id=${vesselId}`)
+    fetch(`/api/asset-ship-log?vessel_id=${vesselId}`)
       .then(r => r.json()).then(d => setLogEntries(Array.isArray(d) ? d : (d.logs ?? [])))
       .catch(() => setLogEntries([])).finally(() => setLogLoading(false))
 
-    fetch(`/api/asset-engines?asset_id=${vesselId}`)
+    fetch(`/api/asset-engines?vessel_id=${vesselId}`)
       .then(r => r.json()).then(d => setEngines(d.engines ?? []))
       .catch(() => setEngines([])).finally(() => setEnginesLoading(false))
 
-    fetch(`/api/asset-service-history?asset_id=${vesselId}`)
+    fetch(`/api/asset-service-history?vessel_id=${vesselId}`)
       .then(r => r.json()).then(d => setServiceRecords(d.records ?? []))
       .catch(() => setServiceRecords([])).finally(() => setServiceLoading(false))
 
-    fetch(`/api/asset-notes-log?asset_id=${vesselId}`)
+    fetch(`/api/asset-notes-log?vessel_id=${vesselId}`)
       .then(r => r.json()).then(d => setNoteItems(d.notes ?? []))
       .catch(() => setNoteItems([])).finally(() => setNotesLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1855,7 +1855,7 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
     setLogSaving(true); setLogErr('')
     try {
       const payload = {
-        asset_id: vesselId,
+        vessel_id: vesselId,
         log_date: logForm.log_date || new Date().toISOString().slice(0, 10),
         notes: logForm.notes || null,
         departed_from: logForm.departed_from || null,
@@ -2893,7 +2893,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
   useEffect(() => {
     if (!activeVesselId) return
     setLoading(true)
-    fetch(`/api/asset-ship-log?asset_id=${activeVesselId}`)
+    fetch(`/api/asset-ship-log?vessel_id=${activeVesselId}`)
       .then(r => r.json())
       .then(data => setEntries(Array.isArray(data) ? data : (data.logs ?? [])))
       .catch(() => setEntries([]))
@@ -2905,7 +2905,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
     setSaving(true); setSaveErr('')
     try {
       const payload = {
-          asset_id:           activeVesselId,
+          vessel_id:           activeVesselId,
           log_date:           form.log_date || new Date().toISOString().slice(0,10),
           notes:              form.notes || null,
           departed_from:      form.departed_from || null,

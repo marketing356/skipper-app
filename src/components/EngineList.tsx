@@ -51,7 +51,7 @@ export default function EngineList({ assetId, marinaId }: EngineListProps) {
 
   useEffect(() => {
     if (!assetId) return
-    fetch(`/api/asset-engines?asset_id=${assetId}`)
+    fetch(`/api/asset-engines?vessel_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.engines || [])
@@ -110,7 +110,7 @@ export default function EngineList({ assetId, marinaId }: EngineListProps) {
         const res = await fetch(`/api/asset-engines/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         if (!res.ok) throw new Error('Save failed')
       } else {
-        const res = await fetch('/api/asset-engines', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, engine_number: row.sort_order, ...payload }) })
+        const res = await fetch('/api/asset-engines', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vessel_id: assetId, marina_id: marinaId, engine_number: row.sort_order, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
         updateRow(idx, { id: data.engine?.id || data.id, status: 'saved' })

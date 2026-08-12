@@ -55,7 +55,7 @@ export default function ServiceHistoryList({ assetId, marinaId, refreshTrigger }
   useEffect(() => {
     if (!assetId) return
     setLoading(true)
-    fetch(`/api/asset-service-history?asset_id=${assetId}`)
+    fetch(`/api/asset-service-history?vessel_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.records || data.history || [])
@@ -107,7 +107,7 @@ export default function ServiceHistoryList({ assetId, marinaId, refreshTrigger }
         const res = await fetch(`/api/asset-service-history/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
       } else {
-        const res = await fetch('/api/asset-service-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, ...payload }) })
+        const res = await fetch('/api/asset-service-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vessel_id: assetId, marina_id: marinaId, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
         updateRow(idx, { id: data.record?.id || data.id, status: 'saved' })

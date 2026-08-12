@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const body = await req.json()
-  if (!body.asset_id) return NextResponse.json({ error: 'asset_id required' }, { status: 400 })
+  if (!body.vessel_id) return NextResponse.json({ error: 'vessel_id required' }, { status: 400 })
   if (!body.notes) return NextResponse.json({ error: 'notes required' }, { status: 400 })
   if (!ALLOWED_SOURCES.includes(body.source)) {
     return NextResponse.json({ error: `source must be one of: ${ALLOWED_SOURCES.join(', ')}` }, { status: 400 })

@@ -1,7 +1,7 @@
 /**
  * POST /api/vessel-photo — Upload vessel photo to Supabase Storage
  * Returns { url } — caller sets photo_url on the asset form.
- * FormData: { file, asset_id }
+ * FormData: { file, vessel_id }
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData()
     const file = form.get('file') as File | null
-    const assetId = form.get('asset_id') as string | null
+    const assetId = form.get('vessel_id') as string | null
 
     if (!file) return NextResponse.json({ error: 'file required' }, { status: 400 })
     if (!ALLOWED.includes(file.type)) return NextResponse.json({ error: 'Invalid file type — use JPEG, PNG, WEBP, GIF, or HEIC' }, { status: 400 })

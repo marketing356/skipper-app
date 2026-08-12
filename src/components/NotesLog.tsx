@@ -24,7 +24,7 @@ export default function NotesLog({ assetId, marinaId }: NotesLogProps) {
 
   useEffect(() => {
     if (!assetId) return
-    fetch(`/api/asset-notes-log?asset_id=${assetId}`)
+    fetch(`/api/asset-notes-log?vessel_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.notes || [])
@@ -66,7 +66,7 @@ export default function NotesLog({ assetId, marinaId }: NotesLogProps) {
         const res = await fetch(`/api/asset-notes-log/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
       } else {
-        const res = await fetch('/api/asset-notes-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, ...payload }) })
+        const res = await fetch('/api/asset-notes-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vessel_id: assetId, marina_id: marinaId, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
         updateRow(idx, { id: data.note?.id || data.id, status: 'saved' })

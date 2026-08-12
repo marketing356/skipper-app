@@ -37,7 +37,7 @@ export default function ShipLogList({ assetId, marinaId, refreshTrigger }: ShipL
   useEffect(() => {
     if (!assetId) return
     setLoading(true)
-    fetch(`/api/asset-ship-log?asset_id=${assetId}`)
+    fetch(`/api/asset-ship-log?vessel_id=${assetId}`)
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.logs || [])
@@ -98,7 +98,7 @@ export default function ShipLogList({ assetId, marinaId, refreshTrigger }: ShipL
         const res = await fetch(`/api/asset-ship-log/${row.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
       } else {
-        const res = await fetch('/api/asset-ship-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: assetId, marina_id: marinaId, ...payload }) })
+        const res = await fetch('/api/asset-ship-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vessel_id: assetId, marina_id: marinaId, ...payload }) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Save failed') }
         const data = await res.json()
         updateRow(idx, { id: data.log?.id || data.id, status: 'saved' })

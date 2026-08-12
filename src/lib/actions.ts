@@ -216,9 +216,9 @@ function assetPayload(fd: FormData) {
     name:           str(fd, 'name'),
     photo_url:      str(fd, 'photo_url'),
     status:         str(fd, 'status') || 'active',
-    asset_category: str(fd, 'asset_category'),
-    asset_type:     str(fd, 'asset_type') || 'powerboat',
-    asset_subtype:  str(fd, 'asset_subtype'),
+    vessel_category: str(fd, 'vessel_category'),
+    vessel_type:     str(fd, 'vessel_type') || 'powerboat',
+    vessel_subtype:  str(fd, 'vessel_subtype'),
     make:           str(fd, 'make'),
     model:          str(fd, 'model'),
     year:           int(fd, 'year'),
@@ -328,7 +328,7 @@ export async function createAsset(formData: FormData) {
   const data = assetPayload(formData)
   if (!data.name) throw new Error('Vessel name is required')
 
-  const { error } = await supabaseAdmin.from('marina_assets').insert(data)
+  const { error } = await supabaseAdmin.from('vessels').insert(data)
   if (error) throw new Error(error.message)
 
   revalidatePath('/assets')
@@ -341,7 +341,7 @@ export async function updateAsset(formData: FormData) {
 
   const payload = assetPayload(formData)
 
-  const { error } = await supabaseAdmin.from('marina_assets').update(payload).eq('id', id)
+  const { error } = await supabaseAdmin.from('vessels').update(payload).eq('id', id)
   if (error) throw new Error(error.message)
 
   revalidatePath('/assets')
@@ -350,7 +350,7 @@ export async function updateAsset(formData: FormData) {
 
 export async function deleteAsset(id: string) {
   if (!id) throw new Error('Missing asset ID')
-  const { error } = await supabaseAdmin.from('marina_assets').delete().eq('id', id)
+  const { error } = await supabaseAdmin.from('vessels').delete().eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath('/assets')
   redirect('/assets')

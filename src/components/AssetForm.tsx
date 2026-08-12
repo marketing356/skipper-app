@@ -164,9 +164,9 @@ function buildPayload(fd: FormData) {
     name:           str(fd, 'name'),
     photo_url:      str(fd, 'photo_url'),
     status:         str(fd, 'status') || 'active',
-    asset_category: str(fd, 'asset_category'),
-    asset_type:     str(fd, 'asset_type') || 'powerboat',
-    asset_subtype:  str(fd, 'asset_subtype'),
+    vessel_category: str(fd, 'vessel_category'),
+    vessel_type:     str(fd, 'vessel_type') || 'powerboat',
+    vessel_subtype:  str(fd, 'vessel_subtype'),
     make:           str(fd, 'make'),
     model:          str(fd, 'model'),
     year:           int(fd, 'year'),
@@ -234,7 +234,7 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
     setPhotoUploading(true)
     const form = new FormData()
     form.append('file', file)
-    if (a.id) form.append('asset_id', a.id as string)
+    if (a.id) form.append('vessel_id', a.id as string)
     try {
       const res = await fetch('/api/vessel-photo', { method: 'POST', body: form })
       const result = await res.json()
