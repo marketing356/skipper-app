@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
     if (!body.auth_user_id) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
-    const res = await fetch(`${E}/api/v1/boater/profile`, { method: 'PATCH', headers: H(), body: JSON.stringify(body) })
+    const res = await fetch(`${E}/api/v1/boater/profile`, { method: 'PATCH', headers: { ...H(), 'x-boater-auth': body.auth_user_id }, body: JSON.stringify(body) })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (err) {
