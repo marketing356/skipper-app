@@ -21,6 +21,21 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+// Fallback full-name -> USPS abbreviation map, used only if Nominatim doesn't
+// return an ISO3166-2-lvl4 code (rare, but keeps us from ever guessing again).
+const US_STATE_ABBR: Record<string, string> = {
+  'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO',
+  'Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA','Hawaii':'HI','Idaho':'ID',
+  'Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY','Louisiana':'LA',
+  'Maine':'ME','Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN',
+  'Mississippi':'MS','Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV',
+  'New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY',
+  'North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK','Oregon':'OR',
+  'Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',
+  'Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA',
+  'West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY','District of Columbia':'DC',
+}
+
 function degToCompass(deg: number): string {
   const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
   return dirs[Math.round(deg / 22.5) % 16]
@@ -59,7 +74,12 @@ export async function GET(req: NextRequest) {
     if (geoRes.ok) {
       const geoJson = await geoRes.json()
       const city = geoJson.address?.city || geoJson.address?.town || geoJson.address?.village || geoJson.address?.hamlet || ''
-      const state = geoJson.address?.state_code || geoJson.address?.state || ''
+      // Nominatim gives a real ISO code like "US-NY" in ISO3166-2-lvl4 — use that instead of
+      // guessing an abbreviation from the first two letters of the full state name (that guess
+      // broke "New York" -> "NE", the same first two letters as Nebraska).
+      const iso = geoJson.address?.['ISO3166-2-lvl4'] || ''
+      const isoAbbr = iso.includes('-') ? iso.split('-')[1] : ''
+      const state = isoAbbr || US_STATE_ABBR[geoJson.address?.state || ''] || geoJson.address?.state_code || ''
       if (city && state) locationName = `${city}, ${state.toUpperCase().slice(0,2)}`
       else if (city) locationName = city
     }
