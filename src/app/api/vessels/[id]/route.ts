@@ -8,6 +8,20 @@ export const dynamic = 'force-dynamic'
 const E = process.env.SKIPPER_ENGINE_URL || 'https://skipper-engine-production.up.railway.app'
 const K = process.env.SKIPPER_DATA_API_KEY || ''
 
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const authUserId = new URL(req.url).searchParams.get('auth_user_id')
+    if (!authUserId) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
+    const res = await fetch(`${E}/api/v1/boater/vessels/${params.id}`, {
+      headers: { 'Content-Type': 'application/json', 'x-skipper-api-key': K, 'x-boater-auth': authUserId },
+    })
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = await req.json()
