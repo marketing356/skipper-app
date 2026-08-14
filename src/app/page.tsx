@@ -64,7 +64,20 @@ type WeatherData = {
   tides:    Record<string, any>
   location_name?: string
 }
-type Marina = { id:string; name:string; city:string; state:string; total_slips:number; transient_available?:boolean; lat:number|null; lng:number|null }
+type Marina = { id:string; name:string; city:string; state:string; total_slips:number; transient_available?:boolean; lat:number|null; lng:number|null; amenities?: Record<string, boolean|string|null> }
+type MarinaPhoto = { id:string; url:string; caption:string|null; is_hero:boolean }
+type MarinaStorefront = {
+  marina: {
+    id:string; name:string; slug:string|null; address:string|null; city:string|null; state:string|null; zip:string|null
+    phone:string|null; email:string|null; website:string|null; description:string|null; lat:number|null; lng:number|null
+    total_slips:number|null; transient_available:boolean|null; transient_daily_rate:number|null
+    max_vessel_loa_ft:number|null; max_slip_length_ft:number|null; max_slip_width_ft:number|null; max_draft_ft:number|null
+    vhf_channel:string|null; winter_storage_count:number|null; season_start:string|null; season_end:string|null
+    fuel_types:string[]|null; shore_power_30a:boolean|null; shore_power_50a:boolean|null; shore_power_100a:boolean|null
+  }
+  amenities: Record<string, boolean|string|null>
+  photos: MarinaPhoto[]
+}
 
 type BerthData = {
   id: string
@@ -2206,6 +2219,9 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
   const [transientMarina, setTransientMarina] = useState<Marina|null>(null)
   const [viewMode,        setViewMode]        = useState<'list'|'map'>('list')
   const [myRequests,      setMyRequests]      = useState<TransientReq[]>([])
+  const [profileMarina,   setProfileMarina]   = useState<Marina|null>(null)
+  const [filterTransientOnly, setFilterTransientOnly] = useState(false)
+  const [showFilters,     setShowFilters]     = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -2291,11 +2307,13 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
     setCoupling(null)
   }
 
-  const filtered = marinas.filter(m =>
-    !search.trim() ||
-    m.name.toLowerCase().includes(search.toLowerCase()) ||
-    m.city.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = marinas.filter(m => {
+    const matchesSearch = !search.trim() ||
+      m.name.toLowerCase().includes(search.toLowerCase()) ||
+      m.city.toLowerCase().includes(search.toLowerCase())
+    const matchesTransient = !filterTransientOnly || m.transient_available
+    return matchesSearch && matchesTransient
+  })
 
   if (transientMarina) return (
     <TransientRequestForm
@@ -2314,6 +2332,19 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
       spaceProfile={spaceProfile}
       leaseProfile={leaseProfile}
       marinaProfile={marinaProfile}
+    />
+  )
+
+  if (profileMarina) return (
+    <MarinaProfileScreen
+      marina={profileMarina}
+      coupled={coupledIds.has(profileMarina.id)}
+      berth={myBerthMap[profileMarina.id]}
+      onBack={() => setProfileMarina(null)}
+      onMessage={() => { setSelected(profileMarina); setProfileMarina(null) }}
+      onRequestSlip={() => { setTransientMarina(profileMarina); setProfileMarina(null) }}
+      onConnect={(e) => handleRequestConnect(profileMarina.id, profileMarina.name, e)}
+      connecting={coupling === profileMarina.id}
     />
   )
 
@@ -2392,8 +2423,17 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
           <span style={{ fontSize:12, color:'#4dd6c8', lineHeight:1.5 }}>Add your vessel under <strong>My Vessel</strong> so Skipper can match you to available slips.</span>
         </div>
       )}
-      <div style={{ marginBottom:14 }}>
+      <div style={{ marginBottom:10 }}>
         <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or city…" />
+      </div>
+      <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+        <button onClick={() => setFilterTransientOnly(v => !v)}
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:999, fontSize:12, fontWeight:700,
+            background: filterTransientOnly ? 'rgba(77,214,200,0.18)' : 'rgba(255,255,255,0.06)',
+            color: filterTransientOnly ? '#4dd6c8' : 'rgba(255,255,255,0.6)',
+            border: `1px solid ${filterTransientOnly ? 'rgba(77,214,200,0.4)' : 'rgba(255,255,255,0.12)'}`, cursor:'pointer', fontFamily:'inherit' }}>
+          🛥️ Transient Welcome {filterTransientOnly ? '✓' : ''}
+        </button>
       </div>
       {/* Map view */}
       {viewMode === 'map' && (
@@ -2416,8 +2456,8 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
         return (
           <div key={m.id}
             style={{ background:'rgba(255,255,255,0.07)', border:`1px solid ${coupled ? 'rgba(77,214,200,0.3)' : 'rgba(255,255,255,0.11)'}`, borderRadius:18, marginBottom:10, overflow:'hidden', animation:`fadeUp 0.3s ease ${i*0.04}s both` }}>
-            {/* Main row — tap to open Skipper chat */}
-            <button onClick={() => setSelected(m)}
+            {/* Main row — tap to open marina profile page */}
+            <button onClick={() => setProfileMarina(m)}
               style={{ width:'100%', display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:'transparent', border:'none', color:'#ffffff', fontFamily:'inherit', cursor:'pointer', textAlign:'left' }}>
               <div style={{ width:44, height:44, borderRadius:12, background: coupled ? 'rgba(74,222,128,0.12)' : 'rgba(77,214,200,0.15)', border:`1px solid ${coupled ? 'rgba(74,222,128,0.35)' : 'rgba(77,214,200,0.3)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
                 ⚓
@@ -2433,7 +2473,7 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
                 </div>
                 <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginTop:3 }}>{m.city}, {m.state} · {m.total_slips} slips</div>
               </div>
-              <div style={{ fontSize:12, color:'#4dd6c8', fontWeight:700, flexShrink:0 }}>Message →</div>
+              <div style={{ fontSize:12, color:'#4dd6c8', fontWeight:700, flexShrink:0 }}>View →</div>
             </button>
             {/* Action row */}
             <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
@@ -2471,6 +2511,231 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
     </div>
   )
 }
+// ─── Marina Profile Screen — Dockwa/marinas.com-style storefront page ─────────
+const AMENITY_LABELS: Record<string, string> = {
+  dockage: 'Dockage', water_hookup: 'Water Hookup', transient_storage: 'Transient Storage',
+  long_term_storage: 'Long-Term Storage', service_maintenance: 'Service & Maintenance',
+  wifi: 'WiFi', restrooms: 'Restrooms', showers: 'Showers', laundry: 'Laundry',
+  trash: 'Trash Disposal', ice: 'Ice', security: 'Security', swimming_pool: 'Swimming Pool',
+  alcohol: 'Alcohol Sold', hotels: 'Nearby Hotels', restaurants: 'Nearby Restaurants',
+  fixed_docks: 'Fixed Docks', floating_docks: 'Floating Docks', repair_crane: 'Repair Crane',
+  engine_service: 'Engine Service', propeller_service: 'Propeller Service', land_storage: 'Land Storage',
+  travel_lift: 'Travel Lift', pet_friendly: 'Pet Friendly', fuel_dock: 'Fuel Dock', pump_out: 'Pump-Out',
+  groceries: 'Groceries Nearby', medical: 'Medical Nearby', pharmacy: 'Pharmacy Nearby',
+  beach: 'Beach Nearby', dog_park: 'Dog Park Nearby', golf: 'Golf Nearby',
+}
+const AMENITY_ICONS: Record<string, string> = {
+  dockage:'⚓', water_hookup:'💧', transient_storage:'📦', long_term_storage:'🏬', service_maintenance:'🔧',
+  wifi:'📶', restrooms:'🚻', showers:'🚿', laundry:'🧺', trash:'🗑️', ice:'🧊', security:'🔒',
+  swimming_pool:'🏊', alcohol:'🍷', hotels:'🏨', restaurants:'🍽️', fixed_docks:'🛠️', floating_docks:'🌊',
+  repair_crane:'🏗️', engine_service:'⚙️', propeller_service:'🔩', land_storage:'🅿️', travel_lift:'🚧',
+  pet_friendly:'🐾', fuel_dock:'⛽', pump_out:'🚰', groceries:'🛒', medical:'⚕️', pharmacy:'💊',
+  beach:'🏖️', dog_park:'🐕', golf:'⛳',
+}
+
+function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequestSlip, onConnect, connecting }: {
+  marina: Marina; coupled: boolean; berth?: string | null
+  onBack: () => void; onMessage: () => void; onRequestSlip: () => void
+  onConnect: (e: React.MouseEvent) => void; connecting: boolean
+}) {
+  const [data,    setData]    = useState<MarinaStorefront | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/marinas/${marina.id}/storefront`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [marina.id])
+
+  const hero = data?.photos?.find(p => p.is_hero) ?? data?.photos?.[0] ?? null
+  const activeAmenities = data?.amenities
+    ? Object.entries(data.amenities).filter(([, v]) => v === true)
+    : []
+  const m = data?.marina
+
+  return (
+    <div style={{ animation:'fadeUp 0.3s ease both', paddingBottom:100 }}>
+      {/* Hero image / header */}
+      <div style={{
+        height: 200, position:'relative',
+        background: hero ? `url(${hero.url}) center/cover no-repeat` : 'linear-gradient(135deg,#0d2b4b,#123a5e)',
+        display:'flex', flexDirection:'column', justifyContent:'space-between',
+      }}>
+        <div style={{ position:'absolute', inset:0, background:'linear-gradient(180deg, rgba(5,17,31,0.55) 0%, rgba(5,17,31,0.15) 30%, rgba(5,17,31,0.85) 100%)' }} />
+        <div style={{ position:'relative', padding:'16px 16px 0' }}>
+          <button onClick={onBack} style={{ background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:10, padding:'7px 12px', color:'#fff', fontFamily:'inherit', cursor:'pointer', fontSize:13, backdropFilter:'blur(4px)' }}>← Back</button>
+        </div>
+        <div style={{ position:'relative', padding:'0 20px 16px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+            <span style={{ fontSize:22, fontWeight:800, color:'#fff' }}>{marina.name}</span>
+            {coupled && (
+              <span style={{ fontSize:10, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.18)', border:'1px solid rgba(74,222,128,0.4)', borderRadius:6, padding:'2px 7px' }}>CONNECTED</span>
+            )}
+          </div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,0.75)' }}>
+            {[m?.address, [m?.city, m?.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || `${marina.city}, ${marina.state}`}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding:'18px 20px 0' }}>
+        {/* Quick stat row */}
+        <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+          <StatPill icon="⚓" label={`${marina.total_slips ?? m?.total_slips ?? 0} Slips`} />
+          {(m?.transient_available ?? marina.transient_available) && <StatPill icon="🛥️" label="Transient Welcome" highlight />}
+          {m?.transient_daily_rate ? <StatPill icon="💵" label={`$${m.transient_daily_rate}/night`} /> : null}
+          {m?.vhf_channel && <StatPill icon="📻" label={`VHF ${m.vhf_channel}`} />}
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display:'flex', gap:8, marginBottom:20 }}>
+          {berth !== undefined ? (
+            <div style={{ flex:1, padding:'11px 12px', fontSize:13, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              ⚓ {berth ? `Slip ${berth}` : 'Active Berth'}
+            </div>
+          ) : (
+            <button onClick={onRequestSlip}
+              style={{ flex:1, padding:'11px 0', fontSize:13, fontWeight:700, color:'#fff', background:'linear-gradient(135deg,rgba(77,214,200,0.35),rgba(77,214,200,0.2))', border:'1px solid rgba(77,214,200,0.5)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
+              🛥️ Request a Slip
+            </button>
+          )}
+          <button onClick={onMessage}
+            style={{ flex:1, padding:'11px 0', fontSize:13, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
+            💬 Message
+          </button>
+          {!coupled && (
+            <button onClick={onConnect} disabled={connecting}
+              style={{ padding:'11px 16px', fontSize:13, fontWeight:700, color:'rgba(255,255,255,0.6)', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, cursor:'pointer', fontFamily:'inherit', opacity: connecting?0.5:1 }}>
+              {connecting ? '…' : 'Connect'}
+            </button>
+          )}
+        </div>
+
+        {loading && <div style={{ textAlign:'center', color:'rgba(255,255,255,0.5)', padding:'24px 0', fontSize:13 }}>Loading marina details…</div>}
+
+        {!loading && data && (
+          <>
+            {/* About */}
+            {m?.description && (
+              <ProfileSection title="About">
+                <div style={{ fontSize:13.5, color:'rgba(255,255,255,0.75)', lineHeight:1.6 }}>{m.description}</div>
+              </ProfileSection>
+            )}
+
+            {/* Dimensions & capacity */}
+            {(m?.max_vessel_loa_ft || m?.max_slip_length_ft || m?.max_draft_ft) && (
+              <ProfileSection title="Dockage Specs">
+                <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
+                  {m?.max_vessel_loa_ft && <SpecChip label="Max LOA" value={`${m.max_vessel_loa_ft} ft`} />}
+                  {m?.max_slip_length_ft && <SpecChip label="Max Slip Length" value={`${m.max_slip_length_ft} ft`} />}
+                  {m?.max_slip_width_ft && <SpecChip label="Max Slip Width" value={`${m.max_slip_width_ft} ft`} />}
+                  {m?.max_draft_ft && <SpecChip label="Max Draft" value={`${m.max_draft_ft} ft`} />}
+                </div>
+              </ProfileSection>
+            )}
+
+            {/* Shore power */}
+            {(m?.shore_power_30a || m?.shore_power_50a || m?.shore_power_100a) && (
+              <ProfileSection title="Shore Power">
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {m?.shore_power_30a && <SpecChip label="30 Amp" value="✓" />}
+                  {m?.shore_power_50a && <SpecChip label="50 Amp" value="✓" />}
+                  {m?.shore_power_100a && <SpecChip label="100 Amp" value="✓" />}
+                </div>
+              </ProfileSection>
+            )}
+
+            {/* Amenities grid */}
+            {activeAmenities.length > 0 && (
+              <ProfileSection title="Amenities & Services">
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  {activeAmenities.map(([key]) => (
+                    <div key={key} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'8px 10px' }}>
+                      <span style={{ fontSize:15 }}>{AMENITY_ICONS[key] ?? '✓'}</span>
+                      <span style={{ fontSize:12.5, color:'rgba(255,255,255,0.85)', fontWeight:600 }}>{AMENITY_LABELS[key] ?? key}</span>
+                    </div>
+                  ))}
+                </div>
+              </ProfileSection>
+            )}
+
+            {/* Photo gallery */}
+            {data.photos.length > 1 && (
+              <ProfileSection title="Photos">
+                <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
+                  {data.photos.map(p => (
+                    <img key={p.id} src={p.url} alt={p.caption ?? marina.name}
+                      style={{ width:120, height:90, objectFit:'cover', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', flexShrink:0 }} />
+                  ))}
+                </div>
+              </ProfileSection>
+            )}
+
+            {/* Contact info */}
+            <ProfileSection title="Contact">
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {m?.phone && <ContactRow icon="📞" label={m.phone} href={`tel:${m.phone}`} />}
+                {m?.email && <ContactRow icon="✉️" label={m.email} href={`mailto:${m.email}`} />}
+                {m?.website && <ContactRow icon="🌐" label={m.website.replace(/^https?:\/\//,'')} href={m.website} />}
+              </div>
+            </ProfileSection>
+          </>
+        )}
+
+        {!loading && !data?.marina?.description && !activeAmenities.length && (
+          <div style={{ textAlign:'center', color:'rgba(255,255,255,0.4)', fontSize:12.5, padding:'20px 10px', background:'rgba(255,255,255,0.04)', borderRadius:12, marginTop:10 }}>
+            This marina hasn&apos;t finished setting up their profile yet. Message them directly with any questions.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StatPill({ icon, label, highlight }: { icon:string; label:string; highlight?:boolean }) {
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:999, fontSize:12, fontWeight:700,
+      color: highlight ? '#4dd6c8' : 'rgba(255,255,255,0.75)',
+      background: highlight ? 'rgba(77,214,200,0.12)' : 'rgba(255,255,255,0.06)',
+      border: `1px solid ${highlight ? 'rgba(77,214,200,0.35)' : 'rgba(255,255,255,0.12)'}`,
+    }}>
+      <span>{icon}</span>{label}
+    </div>
+  )
+}
+
+function ProfileSection({ title, children }: { title:string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom:20 }}>
+      <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.5)', textTransform:'uppercase', letterSpacing:1.2, marginBottom:10 }}>{title}</div>
+      {children}
+    </div>
+  )
+}
+
+function SpecChip({ label, value }: { label:string; value:string }) {
+  return (
+    <div style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'8px 12px', minWidth:90 }}>
+      <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', fontWeight:700, textTransform:'uppercase', letterSpacing:0.5 }}>{label}</div>
+      <div style={{ fontSize:15, color:'#fff', fontWeight:700, marginTop:2 }}>{value}</div>
+    </div>
+  )
+}
+
+function ContactRow({ icon, label, href }: { icon:string; label:string; href:string }) {
+  return (
+    <a href={href} style={{ display:'flex', alignItems:'center', gap:10, color:'#4dd6c8', textDecoration:'none', fontSize:13.5, fontWeight:600 }}>
+      <span style={{ fontSize:15 }}>{icon}</span>{label}
+    </a>
+  )
+}
+
 // ─── Transient Request Form ─────────────────────────────────────────────────
 function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess }: {
   marina: Marina; user: User; profile: Profile|null; vessel: Vessel|null
