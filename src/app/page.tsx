@@ -1632,6 +1632,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         <AssetForm
           asset={editingAsset ?? undefined}
           contactId={profile?.contact_id ?? null}
+          authUserId={user.id}
           refreshTrigger={realtimeVersion}
           onSaved={(raw) => {
             const v = assetRowToVessel(raw)

@@ -23,6 +23,7 @@ import {
 interface Props {
   asset?: Record<string, any>
   contactId: string | null
+  authUserId: string
   onSaved: (asset: Record<string, any>) => void
   onCancel?: () => void
   refreshTrigger?: number
@@ -214,7 +215,7 @@ function buildPayload(fd: FormData) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function AssetForm({ asset, contactId, onSaved, onCancel, refreshTrigger }: Props) {
+export default function AssetForm({ asset, contactId, authUserId, onSaved, onCancel, refreshTrigger }: Props) {
   const a = asset ?? {}
   const isEdit = !!a.id
   const role: Role = 'boater'
@@ -260,7 +261,7 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
       const res = await fetch(`/api/assets/${a.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, auth_user_id: authUserId }),
       })
       const result = await res.json()
       if (!res.ok) { setError(result.error || 'Save failed'); setSaving(false); return }
@@ -269,7 +270,7 @@ export default function AssetForm({ asset, contactId, onSaved, onCancel, refresh
       const res = await fetch('/api/assets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, tenant_id: contactId, owner_type: payload.owner_type || 'customer' }),
+        body: JSON.stringify({ ...payload, tenant_id: contactId, owner_type: payload.owner_type || 'customer', auth_user_id: authUserId }),
       })
       const result = await res.json()
       if (!res.ok) { setError(result.error || 'Save failed'); setSaving(false); return }
