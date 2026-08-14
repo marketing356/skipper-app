@@ -1118,7 +1118,7 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
   }
 
   return (
-    <OnboardingShell step={1} total={2} title="Welcome aboard" subtitle="Just a few details so your marina knows it\'s you.">
+    <OnboardingShell step={1} total={2} title="Welcome aboard" subtitle="Just a few details so your marina knows it's you.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 4px' }}>
         <div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>First name *</div>
