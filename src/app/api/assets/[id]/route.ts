@@ -13,7 +13,7 @@ export async function PATCH(
 ) {
   try {
     const body = await req.json()
-    const res = await fetch(`${E}/api/v1/boater/assets/${params.id}`, { method: 'PATCH', headers: H(), body: JSON.stringify(body) })
+    const res = await fetch(`${E}/api/v1/boater/vessels/${params.id}`, { method: 'PATCH', headers: { ...H(), 'x-boater-auth': body.auth_user_id || '' }, body: JSON.stringify(body) })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (err) {
