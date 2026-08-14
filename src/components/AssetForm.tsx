@@ -264,8 +264,10 @@ export default function AssetForm({ asset, contactId, authUserId, onSaved, onCan
         body: JSON.stringify({ ...payload, auth_user_id: authUserId }),
       })
       const result = await res.json()
-      if (!res.ok) { setError(result.error || 'Save failed'); setSaving(false); return }
-      onSaved(result.asset)
+      if (!res.ok) { setError(result.error || result.detail || 'Save failed'); setSaving(false); return }
+      const saved = result.vessel ?? result.asset
+      if (!saved) { setError('Save succeeded but response was empty — refresh and check.'); setSaving(false); return }
+      onSaved(saved)
     } else {
       const res = await fetch('/api/assets', {
         method: 'POST',
@@ -273,8 +275,10 @@ export default function AssetForm({ asset, contactId, authUserId, onSaved, onCan
         body: JSON.stringify({ ...payload, tenant_id: contactId, owner_type: payload.owner_type || 'customer', auth_user_id: authUserId }),
       })
       const result = await res.json()
-      if (!res.ok) { setError(result.error || 'Save failed'); setSaving(false); return }
-      onSaved(result.asset)
+      if (!res.ok) { setError(result.error || result.detail || 'Save failed'); setSaving(false); return }
+      const saved = result.vessel ?? result.asset
+      if (!saved) { setError('Save succeeded but response was empty — refresh and check.'); setSaving(false); return }
+      onSaved(saved)
     }
     setSaving(false)
   }
