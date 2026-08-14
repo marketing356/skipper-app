@@ -12,9 +12,11 @@ type Marina = {
 export default function MarinaMap({
   marinas,
   onSelect,
+  onViewProfile,
 }: {
   marinas: Marina[]
   onSelect: (m: Marina) => void
+  onViewProfile?: (m: Marina) => void
 }) {
   const mapRef    = useRef<maplibregl.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -66,9 +68,14 @@ export default function MarinaMap({
               <div style="font-weight:700;font-size:14px;margin-bottom:3px;color:#0d2b4b">${marina.name}</div>
               <div style="font-size:12px;color:#666;margin-bottom:8px">${marina.city}, ${marina.state} · ${marina.total_slips} slips</div>
               ${marina.transient_available ? '<div style="font-size:11px;color:#4dd6c8;font-weight:700;margin-bottom:8px">TRANSIENT AVAILABLE</div>' : ''}
-              <button id="req-${marina.id}" style="width:100%;padding:8px 0;background:#4dd6c8;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;color:#071e38">
-                Request a Slip
-              </button>
+              <div style="display:flex;gap:6px">
+                <button id="view-${marina.id}" style="flex:1;padding:8px 0;background:transparent;border:1.5px solid #4dd6c8;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;color:#0d2b4b">
+                  View Profile
+                </button>
+                <button id="req-${marina.id}" style="flex:1;padding:8px 0;background:#4dd6c8;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;color:#071e38">
+                  Request Slip
+                </button>
+              </div>
             </div>
           `)
 
@@ -77,11 +84,13 @@ export default function MarinaMap({
           .setPopup(popup)
           .addTo(map)
 
-        // Wire the popup button
+        // Wire the popup buttons
         popup.on('open', () => {
           setTimeout(() => {
-            const btn = document.getElementById(`req-${marina.id}`)
-            if (btn) btn.onclick = () => onSelect(marina)
+            const reqBtn = document.getElementById(`req-${marina.id}`)
+            if (reqBtn) reqBtn.onclick = () => onSelect(marina)
+            const viewBtn = document.getElementById(`view-${marina.id}`)
+            if (viewBtn && onViewProfile) viewBtn.onclick = () => onViewProfile(marina)
           }, 50)
         })
       })

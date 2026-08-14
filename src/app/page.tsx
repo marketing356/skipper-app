@@ -2440,7 +2440,7 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
         <div style={{ height:'calc(100vh - 240px)', borderRadius:16, overflow:'hidden', border:'1px solid rgba(255,255,255,0.1)' }}>
           {loading
             ? <div style={{ width:'100%', height:'100%', background:'#0d1f2d', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.4)', fontSize:13 }}>Loading marinas…</div>
-            : <MarinaMap marinas={filtered} onSelect={m => setTransientMarina(m)} />
+            : <MarinaMap marinas={filtered} onSelect={m => setTransientMarina(m)} onViewProfile={m => setProfileMarina(m)} />
           }
         </div>
       )}
