@@ -2802,6 +2802,12 @@ type HotSlip = {
   nights: number|null; estimated_cost: number|null; holder_first_name: string|null; notes: string|null
 }
 
+type HotMooring = {
+  id: string; label: string|null; dock: string|null
+  max_loa_ft: number|null; max_weight_lbs: number|null; depth_ft: number|null; max_air_draft_ft: number|null
+  daily_rate: number|null; nights: number|null; estimated_cost: number|null; notes: string|null
+}
+
 function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess }: {
   marina: Marina; user: User; profile: Profile|null; vessel: Vessel|null
   onBack: () => void; onSuccess: () => void
@@ -2864,6 +2870,54 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
       setBookError('Something went wrong — try again')
     } finally {
       setBooking(null)
+    }
+  }
+
+  // Moorings — SEPARATE hard-stop set from slips: weight, LOA, air draft, and draft
+  // ONLY (no beam check — a boat swings freely on a mooring ball, unlike a fixed-width slip).
+  const [hotMoorings,        setHotMoorings]        = useState<HotMooring[]>([])
+  const [hotMooringsLoading, setHotMooringsLoading] = useState(false)
+  const [bookingMooring,     setBookingMooring]      = useState<string|null>(null)
+
+  useEffect(() => {
+    if (!vessel?.length_ft) { setHotMoorings([]); return }
+    setHotMooringsLoading(true)
+    const qs = new URLSearchParams({
+      check_in: arrival, check_out: departure,
+      loa_ft: String(vessel.length_ft || ''),
+      ...(vessel.weight_lbs ? { weight_lbs: String(vessel.weight_lbs) } : {}),
+      ...(vessel.draft_ft ? { draft_ft: String(vessel.draft_ft) } : {}),
+      ...(vessel.air_draft_ft ? { air_draft_ft: String(vessel.air_draft_ft) } : {}),
+    })
+    fetch(`/api/marinas/${marina.id}/available-hot-moorings?${qs}`)
+      .then(r => r.json())
+      .then(d => setHotMoorings(d.moorings ?? []))
+      .catch(() => setHotMoorings([]))
+      .finally(() => setHotMooringsLoading(false))
+  }, [marina.id, vessel?.length_ft, vessel?.weight_lbs, vessel?.draft_ft, vessel?.air_draft_ft, arrival, departure])
+
+  async function handleInstantBookMooring(mooringId: string) {
+    if (!vessel) return
+    setBookingMooring(mooringId); setBookError(null)
+    try {
+      const res = await fetch(`/api/marinas/${marina.id}/transient-moorings/${mooringId}/instant-book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setBookError(data.error || data.detail || 'Could not book this mooring')
+        return
+      }
+      if (data.checkout_url) {
+        window.open(data.checkout_url, '_blank')
+      }
+      onSuccess()
+    } catch {
+      setBookError('Something went wrong — try again')
+    } finally {
+      setBookingMooring(null)
     }
   }
 
@@ -2976,10 +3030,46 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Instant Book — moorings. Separate hard-stop set: weight, LOA, air draft, draft
+            only (no beam check — the boat swings freely on a mooring ball). */}
+        {vessel?.length_ft && hotMooringsLoading && (
+          <div style={{ marginBottom:16, fontSize:12, color:C.muted, textAlign:'center', padding:'10px 0' }}>Checking for instant-book moorings…</div>
+        )}
+        {vessel?.length_ft && !hotMooringsLoading && hotMoorings.length > 0 && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:12, fontWeight:800, color:'#4ade80', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+              ⚓ Moorings — Fits Your Boat
+            </div>
+            {hotMoorings.map(m => (
+              <div key={m.id} style={{ background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:12, padding:'12px 14px', marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.white }}>Mooring {m.label}{m.dock ? ` · ${m.dock}` : ''}</div>
+                  {m.daily_rate != null && <div style={{ fontSize:13, fontWeight:800, color:'#4ade80' }}>${m.daily_rate}/night</div>}
+                </div>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>
+                  {[m.max_loa_ft && `Fits up to ${m.max_loa_ft}ft`, m.max_weight_lbs && `Max ${m.max_weight_lbs}lbs`, m.depth_ft && `${m.depth_ft}ft depth`].filter(Boolean).join(' · ')}
+                </div>
+                {m.estimated_cost != null && (
+                  <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${m.estimated_cost.toFixed(2)} for {m.nights} night{m.nights !== 1 ? 's' : ''}</div>
+                )}
+                <button type="button" onClick={() => handleInstantBookMooring(m.id)} disabled={bookingMooring === m.id}
+                  style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: bookingMooring === m.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: bookingMooring === m.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
+                  {bookingMooring === m.id ? 'Booking…' : '💳 Book & Pay Now'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(hotSlips.length > 0 || hotMoorings.length > 0) && (
+          <div style={{ marginBottom:20 }}>
             {bookError && (
-              <div style={{ fontSize:12, color:C.danger, marginTop:6 }}>{bookError}</div>
+              <div style={{ fontSize:12, color:C.danger, marginBottom:6 }}>{bookError}</div>
             )}
-            <div style={{ fontSize:11, color:C.muted, textAlign:'center', marginTop:10, marginBottom:4 }}>Or send a regular request below — the marina will find you a spot</div>
+            <div style={{ fontSize:11, color:C.muted, textAlign:'center' }}>Or send a regular request below — the marina will find you a spot</div>
           </div>
         )}
 
