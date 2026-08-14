@@ -2523,6 +2523,8 @@ const AMENITY_LABELS: Record<string, string> = {
   travel_lift: 'Travel Lift', pet_friendly: 'Pet Friendly', fuel_dock: 'Fuel Dock', pump_out: 'Pump-Out',
   groceries: 'Groceries Nearby', medical: 'Medical Nearby', pharmacy: 'Pharmacy Nearby',
   beach: 'Beach Nearby', dog_park: 'Dog Park Nearby', golf: 'Golf Nearby',
+  atm: 'ATM', water_taxi: 'Water Taxi', dinghy_dock: 'Dinghy Dock', dry_stack: 'Dry Stack',
+  ship_store: 'Ship Store', restaurant_on_property: 'Restaurant On-Site',
 }
 const AMENITY_ICONS: Record<string, string> = {
   dockage:'⚓', water_hookup:'💧', transient_storage:'📦', long_term_storage:'🏬', service_maintenance:'🔧',
@@ -2531,7 +2533,18 @@ const AMENITY_ICONS: Record<string, string> = {
   repair_crane:'🏗️', engine_service:'⚙️', propeller_service:'🔩', land_storage:'🅿️', travel_lift:'🚧',
   pet_friendly:'🐾', fuel_dock:'⛽', pump_out:'🚰', groceries:'🛒', medical:'⚕️', pharmacy:'💊',
   beach:'🏖️', dog_park:'🐕', golf:'⛳',
+  atm:'🏦', water_taxi:'🚤', dinghy_dock:'🛶', dry_stack:'🏗️',
+  ship_store:'🏪', restaurant_on_property:'🍽️',
 }
+// Grouped categories — matches the marketing site's marina detail page layout exactly
+const AMENITY_GROUPS: [string,string[]][] = [
+  ['Docking & Fuel', ['fuel_dock','dockage','water_hookup','dry_stack','land_storage']],
+  ['On-Site', ['ship_store','restaurant_on_property','swimming_pool','wifi','security']],
+  ['Facilities', ['restrooms','showers','laundry','trash','ice','atm','pump_out']],
+  ['Service & Repair', ['engine_service','propeller_service','service_maintenance','repair_crane','travel_lift']],
+  ['Getting Around', ['water_taxi','dinghy_dock','pet_friendly','dog_park']],
+  ['Nearby', ['groceries','alcohol','medical','hotels','restaurants','pharmacy','beach','golf']],
+]
 
 function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequestSlip, onConnect, connecting }: {
   marina: Marina; coupled: boolean; berth?: string | null
@@ -2650,19 +2663,31 @@ function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequ
               </ProfileSection>
             )}
 
-            {/* Amenities grid */}
-            {activeAmenities.length > 0 && (
-              <ProfileSection title="Amenities & Services">
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                  {activeAmenities.map(([key]) => (
-                    <div key={key} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'8px 10px' }}>
-                      <span style={{ fontSize:15 }}>{AMENITY_ICONS[key] ?? '✓'}</span>
-                      <span style={{ fontSize:12.5, color:'rgba(255,255,255,0.85)', fontWeight:600 }}>{AMENITY_LABELS[key] ?? key}</span>
-                    </div>
-                  ))}
-                </div>
-              </ProfileSection>
-            )}
+            {/* Amenities — grouped by category, matches marketing site's marina detail page */}
+            {activeAmenities.length > 0 && (() => {
+              const activeKeys = new Set(activeAmenities.map(([key]) => key))
+              return (
+                <ProfileSection title="Amenities & Services">
+                  {AMENITY_GROUPS.map(([groupName, keys]) => {
+                    const active = keys.filter(k => activeKeys.has(k))
+                    if (active.length === 0) return null
+                    return (
+                      <div key={groupName} style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:10.5, fontWeight:700, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.6, marginBottom:8 }}>{groupName}</div>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                          {active.map(key => (
+                            <div key={key} style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(77,214,200,0.08)', border:'1px solid rgba(77,214,200,0.2)', borderRadius:999, padding:'7px 12px' }}>
+                              <span style={{ fontSize:14 }}>{AMENITY_ICONS[key] ?? '✓'}</span>
+                              <span style={{ fontSize:12.5, color:'rgba(255,255,255,0.9)', fontWeight:600 }}>{AMENITY_LABELS[key] ?? key}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </ProfileSection>
+              )
+            })()}
 
             {/* Photo gallery */}
             {data.photos.length > 1 && (
