@@ -2795,6 +2795,13 @@ function ContactRow({ icon, label, href }: { icon:string; label:string; href:str
 }
 
 // ─── Transient Request Form ─────────────────────────────────────────────────
+type HotSlip = {
+  id: string; label: string|null; dock: string|null
+  max_loa_ft: number|null; max_beam_ft: number|null; depth_ft: number|null
+  power_amps: string|null; water: boolean|null; daily_rate: number|null
+  nights: number|null; estimated_cost: number|null; holder_first_name: string|null; notes: string|null
+}
+
 function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess }: {
   marina: Marina; user: User; profile: Profile|null; vessel: Vessel|null
   onBack: () => void; onSuccess: () => void
@@ -2809,6 +2816,56 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
   const [notes,      setNotes]      = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]      = useState<string|null>(null)
+
+  // Instant-book: if a transient slip already fits this vessel's dimensions (hard-stop
+  // checks run server-side — LOA, beam, draft, air draft) and is open for these dates,
+  // skip the request-and-wait flow entirely and let the boater book + pay right now.
+  const [hotSlips,      setHotSlips]      = useState<HotSlip[]>([])
+  const [hotSlipsLoading, setHotSlipsLoading] = useState(false)
+  const [booking,       setBooking]       = useState<string|null>(null)
+  const [bookError,     setBookError]     = useState<string|null>(null)
+
+  useEffect(() => {
+    if (!vessel?.length_ft) { setHotSlips([]); return }
+    setHotSlipsLoading(true)
+    const qs = new URLSearchParams({
+      check_in: arrival, check_out: departure,
+      loa_ft: String(vessel.length_ft || ''),
+      ...(vessel.beam_ft ? { beam_ft: String(vessel.beam_ft) } : {}),
+      ...(vessel.draft_ft ? { draft_ft: String(vessel.draft_ft) } : {}),
+      ...(vessel.air_draft_ft ? { air_draft_ft: String(vessel.air_draft_ft) } : {}),
+    })
+    fetch(`/api/marinas/${marina.id}/available-hot-slips?${qs}`)
+      .then(r => r.json())
+      .then(d => setHotSlips(d.slips ?? []))
+      .catch(() => setHotSlips([]))
+      .finally(() => setHotSlipsLoading(false))
+  }, [marina.id, vessel?.length_ft, vessel?.beam_ft, vessel?.draft_ft, vessel?.air_draft_ft, arrival, departure])
+
+  async function handleInstantBook(slipId: string) {
+    if (!vessel) return
+    setBooking(slipId); setBookError(null)
+    try {
+      const res = await fetch(`/api/marinas/${marina.id}/transient-slips/${slipId}/instant-book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setBookError(data.error || data.detail || 'Could not book this slip')
+        return
+      }
+      if (data.checkout_url) {
+        window.open(data.checkout_url, '_blank')
+      }
+      onSuccess()
+    } catch {
+      setBookError('Something went wrong — try again')
+    } finally {
+      setBooking(null)
+    }
+  }
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
@@ -2889,6 +2946,42 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
         <div style={{ marginBottom:16, fontSize:12, color:C.muted }}>
           {calcNights()} night{calcNights() !== 1 ? 's' : ''}
         </div>
+
+        {/* Instant Book — slips that already fit this vessel's dimensions (hard-stop
+            checked server-side) and are open for these dates can be booked + paid right now,
+            no waiting on the marina to respond. */}
+        {vessel?.length_ft && hotSlipsLoading && (
+          <div style={{ marginBottom:16, fontSize:12, color:C.muted, textAlign:'center', padding:'10px 0' }}>Checking for instant-book slips…</div>
+        )}
+        {vessel?.length_ft && !hotSlipsLoading && hotSlips.length > 0 && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:12, fontWeight:800, color:'#4ade80', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+              ⚡ Book Instantly — Fits Your Boat
+            </div>
+            {hotSlips.map(slip => (
+              <div key={slip.id} style={{ background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:12, padding:'12px 14px', marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.white }}>Slip {slip.label}{slip.dock ? ` · Dock ${slip.dock}` : ''}</div>
+                  {slip.daily_rate != null && <div style={{ fontSize:13, fontWeight:800, color:'#4ade80' }}>${slip.daily_rate}/night</div>}
+                </div>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>
+                  {[slip.max_loa_ft && `Fits up to ${slip.max_loa_ft}ft`, slip.power_amps, slip.water ? 'Water hookup' : null].filter(Boolean).join(' · ')}
+                </div>
+                {slip.estimated_cost != null && (
+                  <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
+                )}
+                <button type="button" onClick={() => handleInstantBook(slip.id)} disabled={booking === slip.id}
+                  style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: booking === slip.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: booking === slip.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
+                  {booking === slip.id ? 'Booking…' : '💳 Book & Pay Now'}
+                </button>
+              </div>
+            ))}
+            {bookError && (
+              <div style={{ fontSize:12, color:C.danger, marginTop:6 }}>{bookError}</div>
+            )}
+            <div style={{ fontSize:11, color:C.muted, textAlign:'center', marginTop:10, marginBottom:4 }}>Or send a regular request below — the marina will find you a spot</div>
+          </div>
+        )}
 
         {/* Vessel info — pre-filled, read-only */}
         {vessel && (
