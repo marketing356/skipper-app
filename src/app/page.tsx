@@ -2181,10 +2181,34 @@ type TransientReq = {
   id: string; marina_id: string; status: string
   arrival_date: string; departure_date: string | null
   vessel_name: string | null; contact_name: string; created_at: string
+  invoice_id?: string | null
 }
 
 function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaProfile }: { user: User; profile: Profile|null; vessel: Vessel|null; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null }) {
   const [myBerthMap, setMyBerthMap] = useState<Record<string, string | null>>({}) // marina_id → slip label
+  const [payingReqInvoice, setPayingReqInvoice] = useState<string|null>(null)
+  const [reqPayError,      setReqPayError]      = useState<string|null>(null)
+
+  async function handlePayTransientInvoice(invoiceId: string) {
+    setPayingReqInvoice(invoiceId); setReqPayError(null)
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.checkout_url) {
+        setReqPayError(data.error || 'Could not create payment session')
+        return
+      }
+      window.open(data.checkout_url, '_blank')
+    } catch {
+      setReqPayError('Something went wrong — try again')
+    } finally {
+      setPayingReqInvoice(null)
+    }
+  }
 
   useEffect(() => {
     async function loadMyBerths() {
@@ -2232,7 +2256,7 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
         supabase.from('messages').select('id,body,direction,inserted_at,marina_id').eq('tenant_id', user.id).eq('channel', 'skipper').order('inserted_at', { ascending: false }),
         email
           ? supabase.from('transient_requests')
-              .select('id,marina_id,status,arrival_date,departure_date,vessel_name,contact_name,created_at')
+              .select('id,marina_id,status,arrival_date,departure_date,vessel_name,contact_name,created_at,invoice_id')
               .eq('contact_email', email)
               .order('created_at', { ascending: false })
               .limit(10)
@@ -2406,6 +2430,15 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
                 </div>
                 {req.status === 'accepted' && (
                   <div style={{ fontSize:11, color:'#4ade80', marginTop:4, fontWeight:600 }}>Marina confirmed — check your email for details</div>
+                )}
+                {req.status === 'accepted' && req.invoice_id && (
+                  <button onClick={() => handlePayTransientInvoice(req.invoice_id!)} disabled={payingReqInvoice === req.invoice_id}
+                    style={{ marginTop:10, width:'100%', padding:'9px 0', fontSize:12.5, fontWeight:700, color:'#0d2b4b', background: payingReqInvoice === req.invoice_id ? 'rgba(77,214,200,0.5)' : '#4dd6c8', border:'none', borderRadius:10, cursor: payingReqInvoice === req.invoice_id ? 'default' : 'pointer', fontFamily:'inherit' }}>
+                    {payingReqInvoice === req.invoice_id ? 'Opening checkout…' : '💳 Pay for This Stay'}
+                  </button>
+                )}
+                {req.status === 'accepted' && reqPayError && payingReqInvoice === null && (
+                  <div style={{ fontSize:11, color:C.danger, marginTop:6 }}>{reqPayError}</div>
                 )}
                 {req.status === 'pending' && (
                   <div style={{ fontSize:11, color:'#f59e0b', marginTop:4 }}>Waiting for marina response</div>
