@@ -1530,61 +1530,13 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   useEffect(() => {
     async function loadBerths() {
       setBerthLoading(true)
-      const { data: coupled } = await supabase
-        .from('contacts')
-        .select('id, marina_id')
-        .eq('auth_user_id', user.id)
-        .not('marina_id', 'is', null)
-
-      if (!coupled || coupled.length === 0) { setBerthLoading(false); return }
-
-      const contactIds = coupled.map((c: { id: string }) => c.id)
-      const marinaIds  = coupled.map((c: { marina_id: string }) => c.marina_id).filter(Boolean)
-
-      const { data: leases } = await supabase
-        .from('leases')
-        .select('id, tenant_id, space_v2_id, monthly_rate, contract_type, start_date, end_date, vessel_id')
-        .in('tenant_id', contactIds)
-        .eq('status', 'active')
-
-      if (!leases || leases.length === 0) { setBerthLoading(false); return }
-
-      const spaceIds = leases.map((l: { space_v2_id: string }) => l.space_v2_id).filter(Boolean)
-      const [{ data: spaces }, { data: marinas }] = await Promise.all([
-        spaceIds.length > 0
-          ? supabase.from('spaces').select('id, label, dock').eq('space_type', 'slip').in('id', spaceIds)
-          : Promise.resolve({ data: [] }),
-        supabase.from('marinas').select('id, name').in('id', marinaIds),
-      ])
-
-      const spaceMap: Record<string, { label: string; dock: string }> =
-        Object.fromEntries((spaces ?? []).map((s: { id: string; label: string; dock: string }) => [s.id, s]))
-      const marinaMap: Record<string, string> =
-        Object.fromEntries((marinas ?? []).map((m: { id: string; name: string }) => [m.id, m.name]))
-      const contactMarinaMap: Record<string, string> =
-        Object.fromEntries(coupled.map((c: { id: string; marina_id: string }) => [c.id, c.marina_id]))
-
-      const result: BerthData[] = leases.map((lease: {
-        id: string; tenant_id: string; space_v2_id: string; vessel_id: string | null;
-        monthly_rate: number | null; contract_type: string | null;
-        start_date: string | null; end_date: string | null;
-      }) => {
-        const marinaId = contactMarinaMap[lease.tenant_id]
-        const space    = spaceMap[lease.space_v2_id]
-        return {
-          id:          lease.id,
-          marinaId:    marinaId,
-          assetId:     lease.vessel_id ?? null,
-          marinaName:  marinaMap[marinaId] ?? 'Marina',
-          slipNumber:  space?.label ?? null,
-          dock:        space?.dock ?? null,
-          monthlyRate: lease.monthly_rate,
-          leaseType:   lease.contract_type,
-          startDate:   lease.start_date,
-          endDate:     lease.end_date,
-        }
-      })
-      setBerths(result)
+      try {
+        const res = await fetch(`/api/berths?auth_user_id=${user.id}`)
+        const data = res.ok ? await res.json() : { berths: [] }
+        setBerths((data.berths ?? []) as BerthData[])
+      } catch {
+        setBerths([])
+      }
       setBerthLoading(false)
     }
     loadBerths()
@@ -1593,15 +1545,21 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
   // ── Open edit: fetch raw row from DB ─────────────────────────────────────────
   async function openEdit(id: string) {
-    const { data } = await supabase.from('vessels').select('*').eq('id', id).single()
-    if (data) { setEditingAsset(data); setShowForm(true) }
+    const res = await fetch(`/api/vessels/${id}?auth_user_id=${user.id}`)
+    if (!res.ok) return
+    const data = await res.json()
+    if (data?.vessel) { setEditingAsset(data.vessel); setShowForm(true) }
   }
 
-  // ── Delete vessel ─────────────────────────────────────────────────────────────
+  // ── Delete vessel (soft-delete via Railway — Rule 2) ───────────────────────────
   async function deleteVessel(id: string) {
     if (!confirm('Delete this vessel? This cannot be undone.')) return
-    await supabase.from('vessels').delete().eq('id', id)
-    onVesselDeleted(id)
+    const res = await fetch(`/api/vessels/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth_user_id: user.id }),
+    })
+    if (res.ok) onVesselDeleted(id)
   }
 
   // ── Vessel Detail screen ─────────────────────────────────────────────────────
@@ -1612,8 +1570,10 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       onBack={() => setDetailIdx(null)}
       onEdit={async () => {
         const id = vesselIds[detailIdx]
-        const { data } = await supabase.from('vessels').select('*').eq('id', id).single()
-        if (data) { setEditingAsset(data); setDetailIdx(null); setShowForm(true) }
+        const res = await fetch(`/api/vessels/${id}?auth_user_id=${user.id}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data?.vessel) { setEditingAsset(data.vessel); setDetailIdx(null); setShowForm(true) }
       }}
     />
   )
@@ -2213,21 +2173,16 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
 
   useEffect(() => {
     async function loadMyBerths() {
-      const { data: cRows } = await supabase.from('contacts').select('id, marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null)
-      if (!cRows || cRows.length === 0) return
-      const contactIds = cRows.map((c: any) => c.id as string)
-      const contactMarinaMap: Record<string, string> = Object.fromEntries(cRows.map((c: any) => [c.id, c.marina_id]))
-      const { data: leases } = await supabase.from('leases').select('tenant_id, space_v2_id').in('tenant_id', contactIds).eq('status', 'active')
-      if (!leases || leases.length === 0) return
-      const spaceIds = leases.map((l: any) => l.space_v2_id).filter(Boolean)
-      const { data: spaces } = spaceIds.length > 0 ? await supabase.from('spaces').select('id, label').in('id', spaceIds) : { data: [] }
-      const spaceMap: Record<string, string> = Object.fromEntries((spaces ?? []).map((s: any) => [s.id, s.label]))
-      const berthMap: Record<string, string | null> = {}
-      for (const lease of leases) {
-        const marinaId = contactMarinaMap[lease.tenant_id]
-        if (marinaId) berthMap[marinaId] = spaceMap[lease.space_v2_id] ?? null
-      }
-      setMyBerthMap(berthMap)
+      try {
+        const res = await fetch(`/api/berths?auth_user_id=${user.id}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const berthMap: Record<string, string | null> = {}
+        for (const b of (data.berths ?? [])) {
+          if (b.marinaId) berthMap[b.marinaId] = b.slipNumber ?? null
+        }
+        setMyBerthMap(berthMap)
+      } catch { /* ignore */ }
     }
     loadMyBerths()
   // eslint-disable-next-line react-hooks/exhaustive-deps
