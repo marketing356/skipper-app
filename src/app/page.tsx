@@ -2205,34 +2205,27 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
 
   useEffect(() => {
     async function load() {
-      const email = user.email
-      const [{ data: marinaRows }, { data: couplingRows }, { data: msgRows }, { data: reqRows }] = await Promise.all([
-        supabase.from('marinas').select('id,name,city,state,total_slips,transient_available,lat,lng').order('name'),
-        supabase.from('contacts').select('marina_id').eq('auth_user_id', user.id).not('marina_id', 'is', null),
-        supabase.from('messages').select('id,body,direction,inserted_at,marina_id').eq('tenant_id', user.id).eq('channel', 'skipper').order('inserted_at', { ascending: false }),
-        email
-          ? supabase.from('transient_requests')
-              .select('id,marina_id,status,arrival_date,departure_date,vessel_name,contact_name,created_at,invoice_id')
-              .eq('contact_email', email)
-              .order('created_at', { ascending: false })
-              .limit(10)
-          : Promise.resolve({ data: [] }),
+      const [marinasRes, threadsRes, reqRes] = await Promise.all([
+        fetch(`/api/marinas?auth_user_id=${user.id}`),
+        fetch(`/api/recent-threads?auth_user_id=${user.id}`),
+        fetch(`/api/transient-requests?auth_user_id=${user.id}`),
       ])
-      const rows = marinaRows ?? []
+      const marinasData = marinasRes.ok ? await marinasRes.json() : { marinas: [] }
+      const rows: Marina[] = marinasData.marinas ?? []
       setMarinas(rows)
       const mMap: Record<string, Marina> = {}
       for (const m of rows) mMap[m.id] = m
       setMarinaMap(mMap)
-      setCoupledIds(new Set<string>((couplingRows ?? []).map((c: { marina_id: string }) => c.marina_id as string)))
-      if (msgRows && msgRows.length > 0) {
-        const seen = new Set<string>()
-        const grouped: MsgRow[] = []
-        for (const row of msgRows) {
-          if (!seen.has(row.marina_id)) { seen.add(row.marina_id); grouped.push(row) }
-        }
-        setRecentThreads(grouped)
-      }
-      setMyRequests((reqRows ?? []) as TransientReq[])
+      setCoupledIds(new Set<string>(rows.filter((m: Marina & {connected?: boolean}) => m.connected).map((m) => m.id)))
+
+      const threadsData = threadsRes.ok ? await threadsRes.json() : { threads: [] }
+      const threads: MsgRow[] = (threadsData.threads ?? []).map((t: { id:string; body:string; direction:string; marina_id:string; created_at:string }) => ({
+        id: t.id, body: t.body, direction: t.direction, marina_id: t.marina_id, inserted_at: t.created_at,
+      }))
+      if (threads.length > 0) setRecentThreads(threads)
+
+      const reqData = reqRes.ok ? await reqRes.json() : { requests: [] }
+      setMyRequests((reqData.requests ?? []) as TransientReq[])
       setLoading(false)
     }
     load()
@@ -2246,21 +2239,21 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
   async function handleRecouple(marinaId: string, marinaName: string, e: React.MouseEvent) {
     e.stopPropagation()
     setCoupling(marinaId)
-    const email = user.email
-    if (!email) { setCoupling(null); return }
-    // Find existing contacts row at this marina by email — re-link auth_user_id
-    const { data: row } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('marina_id', marinaId)
-      .eq('email', email)
-      .maybeSingle()
-    if (row) {
-      await supabase.from('contacts').update({ auth_user_id: user.id }).eq('id', row.id)
-      setCoupledIds(prev => { const s = new Set<string>(prev); s.add(marinaId); return s })
-      showToast(`✅ Reconnected to ${marinaName}`)
-    } else {
-      showToast(`No existing record at ${marinaName} — use "Request to Connect"`)
+    try {
+      const res = await fetch(`/api/marinas/${marinaId}/relink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.linked) {
+        setCoupledIds(prev => { const s = new Set<string>(prev); s.add(marinaId); return s })
+        showToast(`✅ Reconnected to ${marinaName}`)
+      } else {
+        showToast(`No existing record at ${marinaName} — use "Request to Connect"`)
+      }
+    } catch {
+      showToast(`Couldn't reconnect — try again`)
     }
     setCoupling(null)
   }
@@ -2268,22 +2261,16 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
   async function handleRequestConnect(marinaId: string, marinaName: string, e: React.MouseEvent) {
     e.stopPropagation()
     setCoupling(marinaId)
-    const displayName = profile
-      ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
-      : user.email
-    const vesselLine = vessel
-      ? ` | Vessel: ${vessel.name} (${vessel.length_ft}ft LOA, ${vessel.beam_ft}ft beam)`
-      : ''
-    // Send connection request as a special message — shows in marina Helm inbox
-    await supabase.from('messages').insert({
-      marina_id:   marinaId,
-      tenant_id:   user.id,
-      direction:   'inbound',
-      body:        `🔗 CONNECTION REQUEST: ${displayName} wants to connect their Skipper account.${vesselLine} Email: ${user.email}`,
-      channel:     'coupling_request',
-      sender_name: displayName ?? 'Boater',
-    })
-    showToast(`Request sent to ${marinaName}`)
+    try {
+      await fetch(`/api/marinas/${marinaId}/request-connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      showToast(`Request sent to ${marinaName}`)
+    } catch {
+      showToast(`Couldn't send request — try again`)
+    }
     setCoupling(null)
   }
 
@@ -3552,46 +3539,13 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   // ── Load all marinas this user is connected to ───────────────────────────
   useEffect(() => {
     async function load() {
-      const { data: cRows } = await supabase
-        .from('contacts')
-        .select('id, marina_id')
-        .eq('auth_user_id', user.id)
-        .not('marina_id', 'is', null)
-      if (!cRows || cRows.length === 0) { setLoading(false); return }
-      const ids = cRows.map((c: any) => c.marina_id as string)
-      const { data: mRows } = await supabase.from('marinas').select('id,name').in('id', ids)
-      const nm: Record<string,string> = {}
-      for (const m of (mRows ?? [])) nm[m.id] = m.name
-      // Determine tenant type for each marina — slip_holder, transient, or external
-      const contactIds = cRows.map((c: any) => c.id as string)
-      const { data: leaseRows } = await supabase
-        .from('leases')
-        .select('tenant_id')
-        .in('tenant_id', contactIds)
-        .eq('status', 'active')
-        .is('deleted_at', null)
-      const slipHolderSet = new Set((leaseRows ?? []).map((l: any) => l.tenant_id as string))
-
-      // Transient check for non-slip-holders
-      const nonSlipIds = contactIds.filter(id => !slipHolderSet.has(id))
-      let transientSet = new Set<string>()
-      if (nonSlipIds.length > 0) {
-        const { data: transRows } = await supabase
-          .from('transient_requests')
-          .select('tenant_id')
-          .in('tenant_id', nonSlipIds)
-          .eq('status', 'accepted')
-        transientSet = new Set((transRows ?? []).map((t: any) => t.tenant_id as string))
-      }
-
-      const marinas: MyMarina[] = cRows.map((c: any) => ({
-        marina_id:   c.marina_id as string,
-        contact_id:  c.id as string,
-        marina_name: nm[c.marina_id as string] ?? 'Marina',
-        tenantType:  slipHolderSet.has(c.id) ? 'slip_holder' : transientSet.has(c.id) ? 'transient' : 'external',
-      }))
-      setMyMarinas(marinas)
-      if (marinas.length === 1) setActiveMarina(marinas[0])
+      try {
+        const res = await fetch(`/api/my-marinas?auth_user_id=${user.id}`)
+        const data = res.ok ? await res.json() : { marinas: [] }
+        const marinas: MyMarina[] = data.marinas ?? []
+        setMyMarinas(marinas)
+        if (marinas.length === 1) setActiveMarina(marinas[0])
+      } catch { /* ignore */ }
       setLoading(false)
     }
     load()
@@ -4303,15 +4257,15 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   // Re-fetch raw contact + profile on every Account tab open
   const [rawContact, setRawContact] = React.useState<Record<string, unknown> | null>(null)
   React.useEffect(() => {
-    supabase.from('contacts').select('*')
-      .eq('auth_user_id', user.id).is('marina_id', null)
-      .order('created_at', { ascending: true }).limit(1)
-      .then(({ data }) => {
-        if (data?.[0]) {
-          setRawContact(data[0] as Record<string, unknown>)
-          onProfileUpdated(contactToProfile(data[0]))
+    fetch(`/api/account?auth_user_id=${user.id}`)
+      .then(res => res.ok ? res.json() : { contact: null })
+      .then(({ contact }) => {
+        if (contact) {
+          setRawContact(contact as Record<string, unknown>)
+          onProfileUpdated(contactToProfile(contact))
         }
       })
+      .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [editing,       setEditing]       = React.useState(false)
