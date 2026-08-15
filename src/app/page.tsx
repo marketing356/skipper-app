@@ -3100,18 +3100,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
   const [draft,   setDraft]   = useState('')
   const [sending, setSending] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
-  const [marinaContactId, setMarinaContactId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-
-  // Resolve the marina-scoped contact ID for this marina — used as tenant_id in messages
-  // so messages appear in the Helm inbox (Helm uses contact row IDs, not auth UUIDs)
-  useEffect(() => {
-    supabase.from('contacts').select('id')
-      .eq('auth_user_id', user.id).eq('marina_id', marina.id)
-      .limit(1).maybeSingle()
-      .then(({ data }) => setMarinaContactId(data?.id ?? profile?.contact_id ?? null))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marina.id, user.id])
 
   // Load persistent history on mount — localStorage first (instant), DB as fallback
   useEffect(() => {
@@ -3129,20 +3118,19 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
           }
         } catch { /* bad cache — fall through to DB */ }
       }
-      // 2. Fall back to DB — query by marina-scoped contact ID or auth UUID
-      const tid = marinaContactId ?? user.id
-      const { data } = await supabase
-        .from('messages')
-        .select('direction,body,inserted_at')
-        .eq('tenant_id', tid)
-        .eq('marina_id', marina.id)
-        .eq('channel', 'skipper')
-        .order('inserted_at', { ascending: true })
-      if (data && data.length > 0) {
-        const loaded = data.map((m: { direction: string; body: string }) => ({
-          role: m.direction === 'inbound' ? 'user' : 'skipper',
-          text: m.body,
-        }))
+      // 2. Fall back to Railway — Rule 2 (single source, no direct DB read)
+      let loaded: {role:string;text:string}[] = []
+      try {
+        const res = await fetch(`/api/marina-chat/${marina.id}?auth_user_id=${user.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          loaded = (data.messages ?? []).map((m: { direction: string; body: string }) => ({
+            role: m.direction === 'inbound' ? 'user' : 'skipper',
+            text: m.body,
+          }))
+        }
+      } catch { /* fall through to greeting */ }
+      if (loaded.length > 0) {
         setMsgs(loaded)
         localStorage.setItem(cacheKey, JSON.stringify(loaded))
       } else {
@@ -3167,15 +3155,12 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
     setMsgs(m => [...m, { role:'user', text:msg }])
     setSending(true)
 
-    // Save outbound to DB — use marina-scoped contact ID so message appears in Helm inbox
-    await supabase.from('messages').insert({
-      marina_id:   marina.id,
-      tenant_id:   marinaContactId ?? user.id,
-      direction:   'inbound',
-      body:        msg,
-      channel:     'skipper',
-      sender_name: displayName ?? 'Boater',
-    })
+    // Save inbound to Railway — Rule 2 (server resolves marina-scoped tenant for Helm inbox)
+    fetch(`/api/marina-chat/${marina.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth_user_id: user.id, direction: 'inbound', body: msg, sender_name: displayName ?? 'Boater' }),
+    }).catch(() => {})
 
     // Full identity package — same as Global Skipper + marina-specific context
     // Rule 2: spaceProfile/leaseProfile/marinaProfile come from Railway (profile endpoint)
@@ -3244,14 +3229,11 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       // Persist to localStorage so history survives tab switches
       const cacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
       localStorage.setItem(cacheKey, JSON.stringify(updatedMsgs))
-      await supabase.from('messages').insert({
-        marina_id:   marina.id,
-        tenant_id:   marinaContactId ?? user.id,
-        direction:   'outbound',
-        body:        reply,
-        channel:     'skipper',
-        sender_name: 'Skipper',
-      })
+      fetch(`/api/marina-chat/${marina.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, direction: 'outbound', body: reply, sender_name: 'Skipper' }),
+      }).catch(() => {})
     } catch {
       setMsgs(m => [...m, { role:'skipper', text:'Sorry — rough seas on my end. Try again in a moment.' }])
     }
