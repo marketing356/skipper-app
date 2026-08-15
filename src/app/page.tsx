@@ -589,19 +589,26 @@ export default function SkipperApp() {
       const profileRes = await fetch(`/api/profile?auth_user_id=${u.id}`)
       const profileData = profileRes.ok ? await profileRes.json() : null
 
-      // Step 2: All vessels from Railway using marina-scoped contact ID
-      const contactId = profileData?.contact?.id ?? null
+      // Step 2: All boats owned by this boater (by login, not marina — a boater owns
+      // boats with or without a marina; transients arrive from outside marinas).
       let loadedVessels: Vessel[] = []
       let loadedIds: string[] = []
-
-      if (contactId) {
-        const assetsRes = await fetch(`/api/assets?tenant_id=${contactId}`)
-        if (assetsRes.ok) {
-          const assetsData = await assetsRes.json()
-          const assetRows: any[] = assetsData.assets ?? []
-          loadedVessels = assetRows.map((a: any) => assetRowToVessel(a, null))
-          loadedIds = assetRows.map((a: any) => a.id as string)
-        }
+      const camelToRaw = (a: any) => ({
+        id: a.id, name: a.name, vessel_type: a.assetType, make: a.make, model: a.model,
+        year: a.year, length_ft: a.lengthFt, beam_ft: a.beamFt, draft_ft: a.draftFt,
+        shore_power: a.shorePower, fuel_type: a.fuelType, color: a.color,
+        registration_number: a.registrationNumber, registration_state: a.registrationState,
+        registration_expiry: a.registrationExpiry, hin: a.hin, hull_material: a.hullMaterial,
+        engine_count: a.engineCount, engine_type: a.engineType, engine_make: a.engineMake,
+        engine_model: a.engineModel, horsepower_per_engine: a.horsepowerPerEngine,
+        photo_url: a.photoUrl, notes: a.notes,
+      })
+      const assetsRes = await fetch(`/api/assets?auth_user_id=${u.id}`)
+      if (assetsRes.ok) {
+        const assetsData = await assetsRes.json()
+        const assetRows: any[] = assetsData.vessels ?? []
+        loadedVessels = assetRows.map((a: any) => assetRowToVessel(camelToRaw(a), null))
+        loadedIds = assetRows.map((a: any) => a.id as string)
       }
 
       // Fallback: use vessel embedded in profile if assets list is empty
@@ -624,7 +631,7 @@ export default function SkipperApp() {
 
       // Step 3: Build profile from Railway contact fields
       const rc = profileData?.contact
-      const prof: Profile | null = rc ? {
+      let prof: Profile | null = rc ? {
         id: u.id, contact_id: rc.id ?? null,
         first_name: rc.firstName ?? null, last_name: rc.lastName ?? null,
         email: rc.email ?? null, display_name: [rc.firstName, rc.lastName].filter(Boolean).join(' ') || null,
@@ -653,6 +660,17 @@ export default function SkipperApp() {
         parking_spot: null, shift_notes: null, doc_w2_on_file: null, doc_i9_on_file: null,
         doc_direct_deposit: null, doc_signed_offer: null, doc_background_check: null, languages_spoken: null,
       } : null
+      // No marina contact? Fall back to the boater's national-pool account so a no-marina
+      // boater still has their identity (name) and isn't wrongly pushed into marina setup.
+      if (!prof) {
+        try {
+          const accRes = await fetch(`/api/account?auth_user_id=${u.id}`)
+          if (accRes.ok) {
+            const accData = await accRes.json()
+            if (accData.contact) prof = contactToProfile(accData.contact)
+          }
+        } catch { /* ignore */ }
+      }
       setProfile(prof)
 
       // Step 4: Store marina + space + lease for home dashboard
