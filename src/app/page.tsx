@@ -1496,7 +1496,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
           }} />}
-          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} spaceProfile={spaceProfile} leaseProfile={leaseProfile} marinaProfile={marinaProfile} />}
+          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} vessels={vessels} spaceProfile={spaceProfile} leaseProfile={leaseProfile} marinaProfile={marinaProfile} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -2164,7 +2164,7 @@ type TransientReq = {
   invoice_id?: string | null
 }
 
-function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaProfile }: { user: User; profile: Profile|null; vessel: Vessel|null; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null }) {
+function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile, marinaProfile }: { user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null }) {
   const [myBerthMap, setMyBerthMap] = useState<Record<string, string | null>>({}) // marina_id → slip label
   const [payingReqInvoice, setPayingReqInvoice] = useState<string|null>(null)
   const [reqPayError,      setReqPayError]      = useState<string|null>(null)
@@ -2303,7 +2303,7 @@ function TabMarinas({ user, profile, vessel, spaceProfile, leaseProfile, marinaP
 
   if (transientMarina) return (
     <TransientRequestForm
-      marina={transientMarina} user={user} profile={profile} vessel={vessel}
+      marina={transientMarina} user={user} profile={profile} vessels={vessels}
       onBack={() => setTransientMarina(null)}
       onSuccess={() => { setTransientMarina(null); showToast('✅ Request sent! Marina will respond shortly.') }}
     />
@@ -2770,10 +2770,16 @@ type HotMooring = {
   daily_rate: number|null; nights: number|null; estimated_cost: number|null; notes: string|null
 }
 
-function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess }: {
-  marina: Marina; user: User; profile: Profile|null; vessel: Vessel|null
+function TransientRequestForm({ marina, user, profile, vessels, onBack, onSuccess }: {
+  marina: Marina; user: User; profile: Profile|null; vessels: Vessel[]
   onBack: () => void; onSuccess: () => void
 }) {
+  // Multi-vessel rule: if the boater owns more than one boat, stop and ask which one
+  // they're bringing before we check slip fit or send anything. One-boat owners auto-select.
+  // The chosen vessel's full specs (LOA, beam, draft, air draft, weight) drive every fit
+  // check and the request payload, so availability is always accurate to that exact boat.
+  const [selectedVesselId, setSelectedVesselId] = useState<string|null>(vessels.length === 1 ? vessels[0].id : null)
+  const vessel = vessels.find(v => v.id === selectedVesselId) ?? null
   const today = new Date().toISOString().split('T')[0]
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
 
@@ -2897,6 +2903,7 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (vessels.length > 0 && !vessel) { setError('Please choose which vessel you\'re bringing'); return }
     setSubmitting(true); setError(null)
     try {
       const res = await fetch('/api/transient-request', {
@@ -2946,6 +2953,29 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
       </div>
 
       <form onSubmit={handleSubmit}>
+        {/* Which vessel? — only shown when the boater has more than one boat. Must pick
+            before fit checks run (availability is gated on a selected vessel below). */}
+        {vessels.length > 1 && (
+          <div style={sectionStyle}>
+            <label style={labelStyle}>Which vessel are you bringing?</label>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {vessels.map(v => (
+                <button type="button" key={v.id} onClick={() => setSelectedVesselId(v.id)}
+                  style={{ textAlign:'left', display:'flex', alignItems:'center', gap:10, padding:'11px 13px', borderRadius:12, cursor:'pointer', fontFamily:'inherit',
+                    background: v.id === selectedVesselId ? 'rgba(77,214,200,0.12)' : 'rgba(255,255,255,0.05)',
+                    border: `1.5px solid ${v.id === selectedVesselId ? C.teal : 'rgba(255,255,255,0.12)'}` }}>
+                  <span style={{ fontSize:18 }}>{vesselIcon(v.vessel_type)}</span>
+                  <span style={{ flex:1 }}>
+                    <span style={{ display:'block', fontSize:13, fontWeight:700, color:C.white }}>{v.name || 'Unnamed Vessel'}</span>
+                    <span style={{ display:'block', fontSize:11, color:C.muted }}>{[v.length_ft && `${v.length_ft}ft LOA`, v.beam_ft && `${v.beam_ft}ft beam`, v.draft_ft && `${v.draft_ft}ft draft`].filter(Boolean).join(' · ') || 'No specs on file'}</span>
+                  </span>
+                  {v.id === selectedVesselId && <span style={{ color:C.teal, fontSize:16 }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Dates */}
         <div style={{ display:'flex', gap:10, marginBottom:16 }}>
           <div style={{ flex:1 }}>
@@ -3035,8 +3065,9 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
           </div>
         )}
 
-        {/* Vessel info — pre-filled, read-only */}
-        {vessel && (
+        {/* Vessel info — single-boat owners see their one boat read-only here (multi-boat
+            owners pick above). */}
+        {vessels.length === 1 && vessel && (
           <div style={{ ...sectionStyle, background:'rgba(77,214,200,0.07)', border:'1px solid rgba(77,214,200,0.18)', borderRadius:12, padding:'12px 14px' }}>
             <div style={{ fontSize:11, fontWeight:700, color:C.teal, textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Your Vessel</div>
             <div style={{ fontSize:13, color:C.white, fontWeight:600 }}>{vessel.name || 'Unnamed Vessel'}</div>
@@ -3045,9 +3076,14 @@ function TransientRequestForm({ marina, user, profile, vessel, onBack, onSuccess
             </div>
           </div>
         )}
-        {!vessel && (
+        {vessels.length === 0 && (
           <div style={{ ...sectionStyle, background:'rgba(248,113,113,0.07)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, padding:'12px 14px', fontSize:12, color:'#f87171' }}>
             ⚠️ Add your vessel under My Vessel so the marina knows your specs
+          </div>
+        )}
+        {vessels.length > 1 && !vessel && (
+          <div style={{ ...sectionStyle, background:'rgba(248,113,113,0.07)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, padding:'12px 14px', fontSize:12, color:'#f87171' }}>
+            ⚠️ Choose which vessel you're bringing above
           </div>
         )}
 
