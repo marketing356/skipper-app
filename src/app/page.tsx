@@ -1122,6 +1122,7 @@ function ContactSetupScreen({ user, onComplete }: { user: User; onComplete: (p: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           auth_user_id: user.id,
+          email: user.email || null,
           first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
           phone: phone.trim() || null,
