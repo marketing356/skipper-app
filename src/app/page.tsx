@@ -2374,13 +2374,21 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
           const marina = marinaMap[r.marina_id]
           const sc = (r.status==='confirmed'||r.status==='accepted') ? '#4ade80' : r.status==='declined' ? C.danger : '#f59e0b'
           const sl = r.status==='confirmed' ? '💳 Paid · Confirmed' : r.status==='accepted' ? '✅ Accepted' : r.status==='declined' ? '✗ Declined' : '⏳ Pending'
+          const nights = r.nights || (r.departure_date && r.arrival_date ? Math.max(0, Math.round((new Date(r.departure_date).getTime()-new Date(r.arrival_date).getTime())/86400000)) : null)
+          const total = r.quoted_nightly && nights ? (r.quoted_nightly * nights) : null
           return (
             <div key={r.id||i} style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, padding:'14px', marginBottom:10 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
                 <span style={{ fontSize:15, fontWeight:700, color:C.white }}>{marina?.name || 'Marina'}</span>
                 <span style={{ fontSize:11, fontWeight:700, color:sc }}>{sl}</span>
               </div>
-              <div style={{ fontSize:12, color:C.muted }}>{r.vessel_name || 'Vessel'} · {r.arrival_date}{r.departure_date ? ` → ${r.departure_date}` : ''}</div>
+              {r.assigned_slip_label && <div style={{ fontSize:13, fontWeight:700, color:C.teal, marginBottom:2 }}>Slip {r.assigned_slip_label}</div>}
+              <div style={{ fontSize:12, color:C.muted }}>{r.vessel_name || 'Vessel'} · {r.arrival_date}{r.departure_date ? ` → ${r.departure_date}` : ''}{nights ? ` · ${nights} night${nights>1?'s':''}` : ''}</div>
+              {(r.quoted_nightly || total) && (
+                <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
+                  {r.quoted_nightly ? `$${Number(r.quoted_nightly).toFixed(2)}/night` : ''}{total ? ` · Total $${Number(total).toFixed(2)}` : ''}
+                </div>
+              )}
             </div>
           )
         })
@@ -3845,6 +3853,19 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       .finally(() => setInvoicesLoading(false))
   }, [user.id])
 
+  // Upcoming/active transient bookings for the home 'Upcoming Stay' card (spec: home shows
+  // your next stay, not a resident berth, unless you actually hold a lease).
+  const [bookings, setBookings] = useState<any[]>([])
+  useEffect(() => {
+    if (!user.id) return
+    fetch(`/api/transient-requests?auth_user_id=${user.id}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setBookings(d.requests ?? []))
+      .catch(() => {})
+  }, [user.id])
+  const today = new Date().toISOString().slice(0,10)
+  const upcomingBookings = (bookings || []).filter(b => !b.departure_date || b.departure_date >= today)
+
   const unpaidTotal = invoices
     .filter(inv => ['unpaid', 'overdue', 'partial', 'sent'].includes(inv.status))
     .reduce((sum, inv) => sum + ((inv.amountDue ?? 0) - (inv.amountPaid ?? 0)), 0)
@@ -3995,7 +4016,25 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
         <div style={{ fontSize: 13, color: C.muted }}>{marinaProfile?.name ?? 'Your marina'}</div>
       </div>
 
-      {/* Vessel + Slip — boarding pass */}
+      {/* Upcoming Stay card — transient bookings (shown when there's no resident lease) */}
+      {(!leaseProfile || leaseProfile.status !== 'active') && upcomingBookings.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8 }}>Upcoming Stay{upcomingBookings.length > 1 ? 's' : ''}</div>
+          {upcomingBookings.map((b, i) => (
+            <button key={b.id || i} onClick={() => onTabChange('marinas')}
+              style={{ width:'100%', textAlign:'left', cursor:'pointer', fontFamily:FONT, background: 'linear-gradient(135deg,rgba(77,214,200,0.18) 0%,rgba(77,214,200,0.06) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 18, padding: '16px', marginBottom: 8 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <span style={{ fontSize:16, fontWeight:800, color:C.white }}>{b.assigned_slip_label ? `Slip ${b.assigned_slip_label}` : 'Transient Stay'}</span>
+                <span style={{ fontSize:11, fontWeight:700, color: b.status==='confirmed' ? '#4ade80' : '#f59e0b' }}>{b.status==='confirmed' ? '💳 Paid' : '⏳ Pending'}</span>
+              </div>
+              <div style={{ fontSize:12, color:C.muted }}>{b.vessel_name || 'Vessel'} · {b.arrival_date}{b.departure_date ? ` → ${b.departure_date}` : ''}{b.nights ? ` · ${b.nights} night${b.nights>1?'s':''}` : ''}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Vessel + Slip — boarding pass (resident berth only when a real lease exists) */}
+      {leaseProfile?.status === 'active' && (
       <div style={{ background: 'linear-gradient(135deg,rgba(77,214,200,0.18) 0%,rgba(77,214,200,0.06) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 20, padding: '20px', marginBottom: 14, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position:'absolute', right:-30, top:-30, width:140, height:140, borderRadius:'50%', background:'rgba(77,214,200,0.05)' }} />
         <div style={{ fontSize: 10, fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 12 }}>Your Berth</div>
@@ -4019,6 +4058,16 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
           </div>
         )}
       </div>
+      )}
+
+      {/* No lease + no bookings — prompt to discover */}
+      {(!leaseProfile || leaseProfile.status !== 'active') && upcomingBookings.length === 0 && (
+        <button onClick={() => onTabChange('marinas')}
+          style={{ width:'100%', textAlign:'left', cursor:'pointer', fontFamily:FONT, background:'rgba(255,255,255,0.05)', border:`1px dashed ${C.tealBorder}`, borderRadius:18, padding:'18px', marginBottom:14 }}>
+          <div style={{ fontSize:15, fontWeight:800, color:C.white, marginBottom:3 }}>🧭 Find a slip</div>
+          <div style={{ fontSize:12, color:C.muted }}>Browse marinas and book a transient stay.</div>
+        </button>
+      )}
 
       {/* Balance — tappable → invoice history */}
       <button onClick={() => setShowInvoices(true)} style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', marginBottom:14 }}>
