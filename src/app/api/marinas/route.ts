@@ -13,5 +13,8 @@ export async function GET(req: NextRequest) {
     headers: { ...H(), ...(auth_user_id ? { 'x-boater-auth': auth_user_id } : {}) },
     cache: 'no-store',
   })
-  return NextResponse.json(await res.json(), { status: res.status })
+  return NextResponse.json(await res.json(), {
+    status: res.status,
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
+  })
 }

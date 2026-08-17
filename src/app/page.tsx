@@ -679,7 +679,7 @@ export default function SkipperApp() {
       setLeaseProfile(profileData?.lease ?? null)
 
       // Step 5: Load connected marinas for Skipper AI context
-      const marinasRes = await fetch(`/api/marinas?auth_user_id=${u.id}`)
+      const marinasRes = await fetch(`/api/marinas?auth_user_id=${u.id}`, { cache: 'no-store' })
       if (marinasRes.ok) {
         const marinasData = await marinasRes.json()
         setCoupledMarinas(marinasData.marinas ?? [])
@@ -2226,7 +2226,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
   useEffect(() => {
     async function load() {
       const [marinasRes, threadsRes, reqRes] = await Promise.all([
-        fetch(`/api/marinas?auth_user_id=${user.id}`),
+        fetch(`/api/marinas?auth_user_id=${user.id}`, { cache: 'no-store' }),
         fetch(`/api/recent-threads?auth_user_id=${user.id}`),
         fetch(`/api/transient-requests?auth_user_id=${user.id}`),
       ])
