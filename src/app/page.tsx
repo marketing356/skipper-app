@@ -2818,6 +2818,7 @@ type HotSlip = {
   id: string; label: string|null; dock: string|null
   max_loa_ft: number|null; max_beam_ft: number|null; depth_ft: number|null
   power_amps: string|null; water: boolean|null; daily_rate: number|null
+  electric: string[]|null; pump_out: boolean|null; wifi: boolean|null
   nights: number|null; estimated_cost: number|null; holder_first_name: string|null; notes: string|null
 }
 
@@ -3075,7 +3076,13 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                   {slip.daily_rate != null && <div style={{ fontSize:13, fontWeight:800, color:'#4ade80' }}>${slip.daily_rate}/night</div>}
                 </div>
                 <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>
-                  {[slip.max_loa_ft && `Fits up to ${slip.max_loa_ft}ft`, slip.power_amps, slip.water ? 'Water hookup' : null].filter(Boolean).join(' · ')}
+                  {[
+                    slip.max_loa_ft && `Fits up to ${slip.max_loa_ft}ft`,
+                    (slip.electric && slip.electric.length > 0) ? `⚡ ${slip.electric.join('/')}` : (slip.power_amps || null),
+                    slip.water ? '💧 Water' : null,
+                    slip.pump_out ? '🚽 Pump-out' : null,
+                    slip.wifi ? '📶 WiFi' : null,
+                  ].filter(Boolean).join(' · ')}
                 </div>
                 {slip.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
