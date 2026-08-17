@@ -2645,28 +2645,41 @@ function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequ
         </div>
 
         {/* Action buttons */}
-        <div style={{ display:'flex', gap:8, marginBottom:20 }}>
-          {berth !== undefined ? (
-            <div style={{ flex:1, padding:'11px 12px', fontSize:13, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-              ⚓ {berth ? `Slip ${berth}` : 'Active Berth'}
-            </div>
-          ) : (
+        {berth !== undefined ? (
+          <div style={{ marginBottom:20, padding:'11px 12px', fontSize:13, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            ⚓ {berth ? `Slip ${berth}` : 'Active Berth'}
+          </div>
+        ) : (
+          <div style={{ marginBottom:20 }}>
+            {/* Intent hub — what do you need from THIS marina (spec §2). Transient books
+                instantly; the rest are marina-fulfilled requests routed via Message. */}
+            <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.45)', textTransform:'uppercase', letterSpacing:1.2, marginBottom:8 }}>What do you need?</div>
             <button onClick={onRequestSlip}
-              style={{ flex:1, padding:'11px 0', fontSize:13, fontWeight:700, color:'#fff', background:'linear-gradient(135deg,rgba(77,214,200,0.35),rgba(77,214,200,0.2))', border:'1px solid rgba(77,214,200,0.5)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
-              🛥️ Request a Slip
+              style={{ width:'100%', padding:'12px 0', fontSize:13, fontWeight:700, color:'#fff', background:'linear-gradient(135deg,rgba(77,214,200,0.35),rgba(77,214,200,0.2))', border:'1px solid rgba(77,214,200,0.5)', borderRadius:12, cursor:'pointer', fontFamily:'inherit', marginBottom:8 }}>
+              🛥️ Transient slip — book & pay now
             </button>
-          )}
-          <button onClick={onMessage}
-            style={{ flex:1, padding:'11px 0', fontSize:13, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
-            💬 Message
-          </button>
-          {!coupled && (
-            <button onClick={onConnect} disabled={connecting}
-              style={{ padding:'11px 16px', fontSize:13, fontWeight:700, color:'rgba(255,255,255,0.6)', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, cursor:'pointer', fontFamily:'inherit', opacity: connecting?0.5:1 }}>
-              {connecting ? '…' : 'Connect'}
-            </button>
-          )}
-        </div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {[['☀️ Seasonal slip','seasonal'],['❄️ Winter storage','storage'],['🔧 Repair / haul-out','repair']].map(([label,intent]) => (
+                <button key={intent} onClick={onMessage}
+                  style={{ flex:'1 1 45%', padding:'10px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8, marginTop:8 }}>
+              <button onClick={onMessage}
+                style={{ flex:1, padding:'11px 0', fontSize:13, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
+                💬 Message
+              </button>
+              {!coupled && (
+                <button onClick={onConnect} disabled={connecting}
+                  style={{ padding:'11px 16px', fontSize:13, fontWeight:700, color:'rgba(255,255,255,0.6)', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, cursor:'pointer', fontFamily:'inherit', opacity: connecting?0.5:1 }}>
+                  {connecting ? '…' : 'Connect'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {loading && <div style={{ textAlign:'center', color:'rgba(255,255,255,0.5)', padding:'24px 0', fontSize:13 }}>Loading marina details…</div>}
 
