@@ -2342,7 +2342,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
         </div>
       )}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <SectionTitle>Marinas</SectionTitle>
+        <SectionTitle>Discovery</SectionTitle>
         <div style={{ display:'flex', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, overflow:'hidden' }}>
           <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='list' ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='list' ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>≡ List</button>
           <button onClick={() => setViewMode('map')}  style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='map'  ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='map'  ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>🗺 Map</button>
