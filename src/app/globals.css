@@ -57,3 +57,11 @@
 textarea.form-input {
   @apply leading-relaxed;
 }
+
+/* Boater app runs a dark theme; native <option> rows default to light-on-white and were
+   invisible in dropdown menus (Fuel Type, etc.). Force readable dark bg + light text. */
+select option,
+select optgroup {
+  background-color: #0d2b4b;
+  color: #ffffff;
+}}

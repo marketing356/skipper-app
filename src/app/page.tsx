@@ -2787,6 +2787,13 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   const [departure,  setDeparture]  = useState(tomorrow)
   const [shorePower, setShorePower] = useState(false)
   const [fuelType,   setFuelType]   = useState('')
+  // Auto-fill shore power + fuel from the chosen vessel's saved specs (no re-asking what we
+  // already know). Runs when the selected boat changes; the boater can still override.
+  useEffect(() => {
+    if (!vessel) return
+    setShorePower(!!vessel.shore_power)
+    setFuelType(vessel.fuel_type || '')
+  }, [selectedVesselId])  // eslint-disable-line react-hooks/exhaustive-deps
   const [notes,      setNotes]      = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]      = useState<string|null>(null)
