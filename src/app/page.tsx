@@ -2211,6 +2211,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
   const [search,          setSearch]          = useState('')
   const [selected,        setSelected]        = useState<Marina|null>(null)
   const [coupledIds,      setCoupledIds]      = useState<Set<string>>(new Set())
+  const [discTab, setDiscTab] = useState<'marinas'|'bookings'|'past'|'trips'>('marinas')
   const [coupling,        setCoupling]        = useState<string|null>(null)
   const [toast,           setToast]           = useState<string|null>(null)
   const [recentThreads,   setRecentThreads]   = useState<MsgRow[]>([])
@@ -2348,6 +2349,48 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
           <button onClick={() => setViewMode('map')}  style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='map'  ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='map'  ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>🗺 Map</button>
         </div>
       </div>
+      {/* Discovery sub-tabs */}
+      <div style={{ display:'flex', gap:6, marginBottom:16, overflowX:'auto' }}>
+        {([['marinas','Marinas'],['bookings','My Bookings'],['past','Past'],['trips','Trip Planner']] as [typeof discTab,string][]).map(([key,label]) => (
+          <button key={key} onClick={() => setDiscTab(key)}
+            style={{ padding:'7px 14px', fontSize:12, fontWeight:700, whiteSpace:'nowrap', borderRadius:999, cursor:'pointer', fontFamily:'inherit',
+              background: discTab===key ? 'rgba(77,214,200,0.2)' : 'rgba(255,255,255,0.05)',
+              color: discTab===key ? '#4dd6c8' : 'rgba(255,255,255,0.5)',
+              border:`1px solid ${discTab===key ? 'rgba(77,214,200,0.4)' : 'rgba(255,255,255,0.1)'}` }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {(discTab==='bookings' || discTab==='past') && (() => {
+        const today = new Date().toISOString().slice(0,10)
+        const isPast = (r:{departure_date?:string|null}) => !!r.departure_date && r.departure_date < today
+        const rows = myRequests.filter(r => discTab==='past' ? isPast(r) : !isPast(r))
+        if (rows.length === 0) return (
+          <div style={{ textAlign:'center', color:'rgba(255,255,255,0.5)', padding:'40px 16px', fontSize:14 }}>
+            {discTab==='past' ? 'No past bookings yet.' : 'No upcoming bookings. Open Marinas to find a spot and book.'}
+          </div>
+        )
+        return rows.map((r, i) => {
+          const marina = marinaMap[r.marina_id]
+          const sc = (r.status==='confirmed'||r.status==='accepted') ? '#4ade80' : r.status==='declined' ? C.danger : '#f59e0b'
+          const sl = r.status==='confirmed' ? '💳 Paid · Confirmed' : r.status==='accepted' ? '✅ Accepted' : r.status==='declined' ? '✗ Declined' : '⏳ Pending'
+          return (
+            <div key={r.id||i} style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, padding:'14px', marginBottom:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                <span style={{ fontSize:15, fontWeight:700, color:C.white }}>{marina?.name || 'Marina'}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:sc }}>{sl}</span>
+              </div>
+              <div style={{ fontSize:12, color:C.muted }}>{r.vessel_name || 'Vessel'} · {r.arrival_date}{r.departure_date ? ` → ${r.departure_date}` : ''}</div>
+            </div>
+          )
+        })
+      })()}
+      {discTab==='trips' && (
+        <div style={{ textAlign:'center', color:'rgba(255,255,255,0.5)', padding:'40px 16px', fontSize:14 }}>
+          Trip Planner is coming soon — plan a multi-stop cruise and book marinas along the way.
+        </div>
+      )}
+      {discTab==='marinas' && (<>
       {/* Recent conversations — folded in from removed Messages tab */}
       {recentThreads.length > 0 && (
         <>
@@ -2503,6 +2546,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
           </div>
         )
       })}
+      </>)}
     </div>
   )
 }
