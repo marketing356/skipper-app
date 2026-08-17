@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const qs = fwd.toString()
   const res = await fetch(`${E}/api/v1/boater/marinas-list${qs ? '?' + qs : ''}`, {
     headers: { ...H(), ...(auth_user_id ? { 'x-boater-auth': auth_user_id } : {}) },
+    cache: 'no-store',
   })
   return NextResponse.json(await res.json(), { status: res.status })
 }

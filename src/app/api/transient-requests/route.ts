@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     const authUserId = new URL(req.url).searchParams.get('auth_user_id')
     if (!authUserId) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
     const res = await fetch(`${E}/api/v1/boater/transient-requests`, {
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'x-skipper-api-key': K, 'x-boater-auth': authUserId },
     })
     const data = await res.json()
