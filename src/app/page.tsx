@@ -1386,14 +1386,14 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
     ['home',     <IcoHome   key='h'  active={activeTab==='home'}    />, 'Home'],
     ['vessel',   <IcoVessel  key='v'  active={activeTab==='vessel'}   />, 'My Vessel'],
     ['weather',  <IcoWeather key='w'  active={activeTab==='weather'}  />, 'Weather'],
-    ['marinas',  <IcoMarinas key='m'  active={activeTab==='marinas'}  />, 'Marinas'],
+    ['marinas',  <IcoMarinas key='m'  active={activeTab==='marinas'}  />, 'Discovery'],
     ['messages', <IcoMsgs   key='ms' active={activeTab==='messages'} />, 'Messages'],
     ['log',      <IcoLog    key='l'  active={activeTab==='log'}      />, 'Log'],
     ['account',  <IcoAcct   key='a'  active={activeTab==='account'}  />, 'Account'],
   ]
 
   const TAB_LABELS: Record<HomeTab, string> = {
-    home: 'Home', vessel: 'My Vessel', weather: 'Weather', marinas: 'Marinas', messages: 'Messages', log: "Ship's Log", account: 'Account',
+    home: 'Home', vessel: 'My Vessel', weather: 'Weather', marinas: 'Discovery', messages: 'Messages', log: "Ship's Log", account: 'Account',
   }
 
   return (
