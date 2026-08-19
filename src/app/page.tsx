@@ -2157,6 +2157,26 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
 }
 
 // ─── TAB 2: Marinas ────────────────────────────────────────────────────────────
+// Render Skipper's replies with light markdown so **bold** shows as bold instead of raw stars,
+// and newlines become line breaks. Minimal + safe (no HTML injection) — bold + line breaks only.
+function renderChatText(text: string): React.ReactNode {
+  if (!text) return text
+  const lines = String(text).split('\n')
+  return lines.map((line, li) => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g)
+    return (
+      <span key={li}>
+        {parts.map((p, pi) =>
+          /^\*\*[^*]+\*\*$/.test(p)
+            ? <strong key={pi}>{p.slice(2, -2)}</strong>
+            : p
+        )}
+        {li < lines.length - 1 ? <br /> : null}
+      </span>
+    )
+  })
+}
+
 type TransientReq = {
   id: string; marina_id: string; status: string
   arrival_date: string; departure_date: string | null
@@ -3415,7 +3435,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
             )}
             <div style={{ maxWidth:'78%', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', overflow:'hidden', border:m.role==='skipper'?`1px solid ${C.cardBorder}`:'none' }}>
               <div style={{ padding:'11px 14px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
-                {m.text}
+                {m.role==='skipper' ? renderChatText(m.text) : m.text}
               </div>
               {(m as any).checkout_url && (
                 <a href={(m as any).checkout_url} target="_blank" rel="noopener noreferrer"
@@ -4401,7 +4421,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
               </div>
             )}
             <div style={{ maxWidth:'78%', padding:'11px 14px', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, border:m.role==='skipper'?`1px solid ${C.cardBorder}`:'none', fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
-              {m.text}
+              {m.role==='skipper' ? renderChatText(m.text) : m.text}
             </div>
           </div>
         ))}
