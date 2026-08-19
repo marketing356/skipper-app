@@ -104,6 +104,8 @@ type Profile = {
   avatar_url: string | null
   pin_hash: string | null
   onboarding_complete: boolean
+  cardBrand?: string | null
+  cardLast4?: string | null
   address: string | null
   address_city: string | null
   address_state: string | null
@@ -4286,6 +4288,11 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
               {!invoicesLoading && hasOverdue && <div style={{ fontSize:11, color:'#f87171', fontWeight:700, marginTop:4 }}>Overdue — tap to pay</div>}
               {!invoicesLoading && !hasOverdue && unpaidTotal > 0 && <div style={{ fontSize:11, color:'#facc15', fontWeight:600, marginTop:4 }}>Tap to view & pay</div>}
               {!invoicesLoading && !hasOverdue && unpaidTotal <= 0 && <div style={{ fontSize:11, color:'#4ade80', fontWeight:600, marginTop:4 }}>All paid up — tap for history</div>}
+              {profile?.cardBrand && profile?.cardLast4 && (
+                <div style={{ fontSize:11, color:C.muted, fontWeight:600, marginTop:6, display:'flex', alignItems:'center', gap:5 }}>
+                  💳 {profile.cardBrand} ···· {profile.cardLast4} on file
+                </div>
+              )}
             </div>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
               <div style={{ fontSize:32 }}>{hasOverdue ? '⚠️' : unpaidTotal > 0 ? '📋' : '✅'}</div>
