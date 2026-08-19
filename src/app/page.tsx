@@ -3971,7 +3971,13 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || data.error || 'Could not extend')
-      setManageResult(`Stay extended to ${extendDate}. The marina will follow up on any additional charge.`)
+      if (data.conflict) {
+        // Slip is already booked by someone else for part of the extension — not extended.
+        // Marina decides (move the incoming boat, or decline) — never silently resolved here.
+        setManageResult(data.message || "Your slip is already booked for part of that extension. Your marina will follow up.")
+      } else {
+        setManageResult(`Stay extended to ${extendDate}. The marina will follow up on any additional charge.`)
+      }
       refetchBookings()
     } catch (e: any) {
       setManageError(e.message || 'Something went wrong')
