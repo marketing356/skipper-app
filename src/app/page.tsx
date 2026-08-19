@@ -3894,7 +3894,11 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       .catch(() => {})
   }, [user.id])
   const today = new Date().toISOString().slice(0,10)
-  const upcomingBookings = (bookings || []).filter(b => !b.departure_date || b.departure_date >= today)
+  const upcomingBookings = (bookings || []).filter(b => {
+    const ph = transientStatusMeta(b.status || '').phase
+    if (ph === 'dead' || ph === 'past') return false   // cancelled/declined/departed are not upcoming
+    return !b.departure_date || b.departure_date >= today
+  })
 
   const unpaidTotal = invoices
     .filter(inv => ['unpaid', 'overdue', 'partial', 'sent'].includes(inv.status))
@@ -4054,9 +4058,10 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
             <button key={b.id || i} onClick={() => onTabChange('marinas')}
               style={{ width:'100%', textAlign:'left', cursor:'pointer', fontFamily:FONT, background: 'linear-gradient(135deg,rgba(77,214,200,0.18) 0%,rgba(77,214,200,0.06) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 18, padding: '16px', marginBottom: 8 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                <span style={{ fontSize:16, fontWeight:800, color:C.white }}>{b.assigned_slip_label ? `Slip ${b.assigned_slip_label}` : 'Transient Stay'}</span>
-                <span style={{ fontSize:11, fontWeight:700, color: b.status==='confirmed' ? '#4ade80' : '#f59e0b' }}>{b.status==='confirmed' ? '💳 Paid' : '⏳ Pending'}</span>
+                <span style={{ fontSize:16, fontWeight:800, color:C.white }}>{b.marina_name || 'Marina'}</span>
+                {(() => { const _m = transientStatusMeta(b.status); return <span style={{ fontSize:11, fontWeight:700, color:_m.color }}>{_m.label}</span> })()}
               </div>
+              <div style={{ fontSize:12.5, color:C.teal, fontWeight:700, marginBottom:2 }}>{b.assigned_slip_label ? `Slip ${b.assigned_slip_label}` : 'Transient stay'}{(b.marina_city || b.marina_state) ? <span style={{ color:C.muted, fontWeight:500 }}>{`  ·  ${[b.marina_city, b.marina_state].filter(Boolean).join(', ')}`}</span> : null}</div>
               <div style={{ fontSize:12, color:C.muted }}>{b.vessel_name || 'Vessel'} · {b.arrival_date}{b.departure_date ? ` → ${b.departure_date}` : ''}{b.nights ? ` · ${b.nights} night${b.nights>1?'s':''}` : ''}</div>
             </button>
           ))}
