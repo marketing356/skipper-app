@@ -3927,15 +3927,15 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
   const [manageError,     setManageError]     = useState<string|null>(null)
   const [manageResult,    setManageResult]    = useState<string|null>(null)
   const [confirmCancel,   setConfirmCancel]   = useState(false)
-  const [extendDate,      setExtendDate]      = useState('')
+
 
   function openManage(b: any) {
     setManagingBooking(b); setManageError(null); setManageResult(null)
-    setConfirmCancel(false); setExtendDate(b.departure_date || '')
+    setConfirmCancel(false)
   }
   function closeManage() {
     setManagingBooking(null); setManageError(null); setManageResult(null)
-    setConfirmCancel(false); setExtendDate('')
+    setConfirmCancel(false)
   }
 
   async function handleCancelBooking() {
@@ -3961,24 +3961,29 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
     }
   }
 
-  async function handleExtendBooking() {
-    if (!managingBooking || !extendDate) return
+
+  async function handleCheckout() {
+    if (!managingBooking) return
     setManageBusy(true); setManageError(null)
     try {
-      const res = await fetch(`/api/transient-requests/${managingBooking.id}/extend`, {
+      const res = await fetch(`/api/transient-requests/${managingBooking.id}/checkout`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id, new_end_date: extendDate }),
+        body: JSON.stringify({ auth_user_id: user.id }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || data.error || 'Could not extend')
-      if (data.conflict) {
-        // Slip is already booked by someone else for part of the extension — not extended.
-        // Marina decides (move the incoming boat, or decline) — never silently resolved here.
-        setManageResult(data.message || "Your slip is already booked for part of that extension. Your marina will follow up.")
+      if (!res.ok) throw new Error(data.detail || data.error || 'Could not check out')
+      if (data.needs_payment) {
+        // Outstanding dock charges + no card on file (or a decline) — send them to pay first.
+        if (data.checkout_url) {
+          setManageResult(`You have $${(data.outstanding ?? 0).toFixed(2)} in dock charges to settle. Opening payment…`)
+          setTimeout(() => { window.location.href = data.checkout_url }, 900)
+        } else {
+          setManageError(data.message || `You have $${(data.outstanding ?? 0).toFixed(2)} to settle before checkout.`)
+        }
       } else {
-        setManageResult(`Stay extended to ${extendDate}. The marina will follow up on any additional charge.`)
+        setManageResult(data.message || 'Checked out — thanks for staying!')
+        refetchBookings()
       }
-      refetchBookings()
     } catch (e: any) {
       setManageError(e.message || 'Something went wrong')
     } finally {
@@ -3986,23 +3991,12 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
     }
   }
 
-  async function handleCheckoutEarly() {
-    if (!managingBooking) return
-    setManageBusy(true); setManageError(null)
-    try {
-      const res = await fetch(`/api/transient-requests/${managingBooking.id}/checkout-early`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || data.error || 'Could not check out')
-      setManageResult(data.message || 'Checked out.')
-      refetchBookings()
-    } catch (e: any) {
-      setManageError(e.message || 'Something went wrong')
-    } finally {
-      setManageBusy(false)
-    }
+  function handleBookAdditionalNights() {
+    // "Extending" a stay = a NEW booking (the same slip may already be taken for the extra nights,
+    // so it must run through real availability, not an in-place date edit). Route the boater into
+    // the marinas/booking flow for this marina; they pick dates starting after their current stay.
+    closeManage()
+    onTabChange('marinas')
   }
 
   const unpaidTotal = invoices
@@ -4218,21 +4212,18 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                 {manageError && <div style={{ fontSize:12, color:C.danger, marginBottom:12 }}>{manageError}</div>}
 
                 {(managingBooking.status || '').toLowerCase() === 'checked_in' && (
-                  <button onClick={handleCheckoutEarly} disabled={manageBusy}
-                    style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor: manageBusy?'default':'pointer', fontFamily:'inherit', marginBottom:10 }}>
-                    {manageBusy ? 'Checking out…' : '🚪 Check Out Early'}
+                  <button onClick={handleCheckout} disabled={manageBusy}
+                    style={{ width:'100%', padding:'13px', background: manageBusy ? 'rgba(77,214,200,0.3)' : `linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:12, color:'#0d2b4b', fontSize:14, fontWeight:800, cursor: manageBusy?'default':'pointer', fontFamily:'inherit', marginBottom:10 }}>
+                    {manageBusy ? 'Checking out…' : '🏳️ Check Out & Settle Up'}
                   </button>
                 )}
 
-                <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Extend Stay</div>
-                <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-                  <input type="date" value={extendDate} min={managingBooking.departure_date || undefined}
-                    onChange={e => setExtendDate(e.target.value)}
-                    style={{ flex:1, padding:'11px 12px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:10, color:C.white, fontSize:13, fontFamily:'inherit' }} />
-                  <button onClick={handleExtendBooking} disabled={manageBusy || !extendDate || extendDate <= (managingBooking.departure_date || '')}
-                    style={{ padding:'11px 16px', background: (manageBusy || !extendDate || extendDate <= (managingBooking.departure_date||'')) ? 'rgba(77,214,200,0.3)' : C.teal, border:'none', borderRadius:10, color:'#0d2b4b', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-                    {manageBusy ? '…' : 'Extend'}
-                  </button>
+                <button onClick={handleBookAdditionalNights} disabled={manageBusy}
+                  style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:6 }}>
+                  ＋ Book Additional Nights
+                </button>
+                <div style={{ fontSize:11, color:C.muted, lineHeight:1.5, marginBottom:16 }}>
+                  Need more time? Book extra nights — we'll try to keep you in the same slip, or find you another if it's taken.
                 </div>
 
                 <button onClick={() => setConfirmCancel(true)} disabled={manageBusy}
