@@ -3906,19 +3906,98 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
   // Upcoming/active transient bookings for the home 'Upcoming Stay' card (spec: home shows
   // your next stay, not a resident berth, unless you actually hold a lease).
   const [bookings, setBookings] = useState<any[]>([])
-  useEffect(() => {
+  const refetchBookings = () => {
     if (!user.id) return
     fetch(`/api/transient-requests?auth_user_id=${user.id}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => setBookings(d.requests ?? []))
       .catch(() => {})
-  }, [user.id])
+  }
+  useEffect(() => { refetchBookings() }, [user.id])
   const today = new Date().toISOString().slice(0,10)
   const upcomingBookings = (bookings || []).filter(b => {
     const ph = transientStatusMeta(b.status || '').phase
     if (ph === 'dead' || ph === 'past') return false   // cancelled/declined/departed are not upcoming
     return !b.departure_date || b.departure_date >= today
   })
+
+  // ── Manage Booking (Extend / Cancel / Checkout Early) ──────────────────────
+  const [managingBooking, setManagingBooking] = useState<any|null>(null)
+  const [manageBusy,      setManageBusy]      = useState(false)
+  const [manageError,     setManageError]     = useState<string|null>(null)
+  const [manageResult,    setManageResult]    = useState<string|null>(null)
+  const [confirmCancel,   setConfirmCancel]   = useState(false)
+  const [extendDate,      setExtendDate]      = useState('')
+
+  function openManage(b: any) {
+    setManagingBooking(b); setManageError(null); setManageResult(null)
+    setConfirmCancel(false); setExtendDate(b.departure_date || '')
+  }
+  function closeManage() {
+    setManagingBooking(null); setManageError(null); setManageResult(null)
+    setConfirmCancel(false); setExtendDate('')
+  }
+
+  async function handleCancelBooking() {
+    if (!managingBooking) return
+    setManageBusy(true); setManageError(null)
+    try {
+      const res = await fetch(`/api/transient-requests/${managingBooking.id}/cancel`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Could not cancel')
+      if (data.auto_refunded) {
+        setManageResult(`Cancelled — $${(data.refund_amount ?? 0).toFixed(2)} refunded to your card.`)
+      } else {
+        setManageResult('Cancelled — your marina will review the refund and follow up.')
+      }
+      refetchBookings()
+    } catch (e: any) {
+      setManageError(e.message || 'Something went wrong')
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function handleExtendBooking() {
+    if (!managingBooking || !extendDate) return
+    setManageBusy(true); setManageError(null)
+    try {
+      const res = await fetch(`/api/transient-requests/${managingBooking.id}/extend`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, new_end_date: extendDate }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Could not extend')
+      setManageResult(`Stay extended to ${extendDate}. The marina will follow up on any additional charge.`)
+      refetchBookings()
+    } catch (e: any) {
+      setManageError(e.message || 'Something went wrong')
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function handleCheckoutEarly() {
+    if (!managingBooking) return
+    setManageBusy(true); setManageError(null)
+    try {
+      const res = await fetch(`/api/transient-requests/${managingBooking.id}/checkout-early`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Could not check out')
+      setManageResult(data.message || 'Checked out.')
+      refetchBookings()
+    } catch (e: any) {
+      setManageError(e.message || 'Something went wrong')
+    } finally {
+      setManageBusy(false)
+    }
+  }
 
   const unpaidTotal = invoices
     .filter(inv => ['unpaid', 'overdue', 'partial', 'sent'].includes(inv.status))
@@ -4074,17 +4153,91 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       {(!leaseProfile || leaseProfile.status !== 'active') && upcomingBookings.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8 }}>Upcoming Stay{upcomingBookings.length > 1 ? 's' : ''}</div>
-          {upcomingBookings.map((b, i) => (
-            <button key={b.id || i} onClick={() => onTabChange('marinas')}
-              style={{ width:'100%', textAlign:'left', cursor:'pointer', fontFamily:FONT, background: 'linear-gradient(135deg,rgba(77,214,200,0.18) 0%,rgba(77,214,200,0.06) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 18, padding: '16px', marginBottom: 8 }}>
+          {upcomingBookings.map((b, i) => {
+            const _canManage = ['confirmed','accepted','assigned','checked_in','awaiting_payment'].includes((b.status||'').toLowerCase())
+            return (
+            <div key={b.id || i}
+              style={{ fontFamily:FONT, background: 'linear-gradient(135deg,rgba(77,214,200,0.18) 0%,rgba(77,214,200,0.06) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 18, padding: '16px', marginBottom: 8 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                 <span style={{ fontSize:16, fontWeight:800, color:C.white }}>{b.marina_name || 'Marina'}</span>
                 {(() => { const _m = transientStatusMeta(b.status); return <span style={{ fontSize:11, fontWeight:700, color:_m.color }}>{_m.label}</span> })()}
               </div>
               <div style={{ fontSize:12.5, color:C.teal, fontWeight:700, marginBottom:2 }}>{b.assigned_slip_label ? `Slip ${b.assigned_slip_label}` : 'Transient stay'}{(b.marina_city || b.marina_state) ? <span style={{ color:C.muted, fontWeight:500 }}>{`  ·  ${[b.marina_city, b.marina_state].filter(Boolean).join(', ')}`}</span> : null}</div>
-              <div style={{ fontSize:12, color:C.muted }}>{b.vessel_name || 'Vessel'} · {b.arrival_date}{b.departure_date ? ` → ${b.departure_date}` : ''}{b.nights ? ` · ${b.nights} night${b.nights>1?'s':''}` : ''}</div>
-            </button>
-          ))}
+              <div style={{ fontSize:12, color:C.muted, marginBottom: _canManage ? 10 : 0 }}>{b.vessel_name || 'Vessel'} · {b.arrival_date}{b.departure_date ? ` → ${b.departure_date}` : ''}{b.nights ? ` · ${b.nights} night${b.nights>1?'s':''}` : ''}</div>
+              {_canManage && (
+                <button onClick={() => openManage(b)}
+                  style={{ width:'100%', padding:'8px 0', fontSize:12, fontWeight:700, color:C.teal, background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit' }}>
+                  ⚙️ Manage
+                </button>
+              )}
+            </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Manage Booking sheet — Extend / Cancel / Check out early */}
+      {managingBooking && (
+        <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'flex-end', background:'rgba(0,0,0,0.55)' }} onClick={closeManage}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width:'100%', background:'#0d2338', borderRadius:'20px 20px 0 0', padding:'20px 20px calc(env(safe-area-inset-bottom,0px) + 24px)', fontFamily:FONT, maxHeight:'80vh', overflowY:'auto' }}>
+            <div style={{ width:40, height:4, borderRadius:2, background:'rgba(255,255,255,0.2)', margin:'0 auto 16px' }} />
+            <div style={{ fontSize:17, fontWeight:800, color:C.white, marginBottom:2 }}>{managingBooking.marina_name || 'Manage Stay'}</div>
+            <div style={{ fontSize:12.5, color:C.muted, marginBottom:18 }}>
+              {managingBooking.assigned_slip_label ? `Slip ${managingBooking.assigned_slip_label} · ` : ''}{managingBooking.vessel_name || 'Vessel'} · {managingBooking.arrival_date} → {managingBooking.departure_date}
+            </div>
+
+            {manageResult ? (
+              <>
+                <div style={{ padding:'14px', background:'rgba(74,222,128,0.1)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:12, color:'#4ade80', fontSize:13, marginBottom:16 }}>{manageResult}</div>
+                <button onClick={closeManage}
+                  style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'none', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Done</button>
+              </>
+            ) : confirmCancel ? (
+              <>
+                <div style={{ fontSize:14, color:C.white, fontWeight:700, marginBottom:6 }}>Cancel this stay?</div>
+                <div style={{ fontSize:12.5, color:C.muted, marginBottom:16, lineHeight:1.5 }}>
+                  If you're within the marina's refund window you'll be refunded automatically. Otherwise the marina will review and follow up on any refund.
+                </div>
+                {manageError && <div style={{ fontSize:12, color:C.danger, marginBottom:12 }}>{manageError}</div>}
+                <button onClick={handleCancelBooking} disabled={manageBusy}
+                  style={{ width:'100%', padding:'13px', background: manageBusy ? 'rgba(248,113,113,0.4)' : '#f87171', border:'none', borderRadius:12, color:'#3a0a0a', fontSize:14, fontWeight:800, cursor: manageBusy?'default':'pointer', fontFamily:'inherit', marginBottom:8 }}>
+                  {manageBusy ? 'Cancelling…' : 'Yes, Cancel Stay'}
+                </button>
+                <button onClick={() => setConfirmCancel(false)} disabled={manageBusy}
+                  style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'none', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Never mind</button>
+              </>
+            ) : (
+              <>
+                {manageError && <div style={{ fontSize:12, color:C.danger, marginBottom:12 }}>{manageError}</div>}
+
+                {(managingBooking.status || '').toLowerCase() === 'checked_in' && (
+                  <button onClick={handleCheckoutEarly} disabled={manageBusy}
+                    style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor: manageBusy?'default':'pointer', fontFamily:'inherit', marginBottom:10 }}>
+                    {manageBusy ? 'Checking out…' : '🚪 Check Out Early'}
+                  </button>
+                )}
+
+                <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Extend Stay</div>
+                <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                  <input type="date" value={extendDate} min={managingBooking.departure_date || undefined}
+                    onChange={e => setExtendDate(e.target.value)}
+                    style={{ flex:1, padding:'11px 12px', background:C.inputBg, border:`1px solid ${C.inputBorder}`, borderRadius:10, color:C.white, fontSize:13, fontFamily:'inherit' }} />
+                  <button onClick={handleExtendBooking} disabled={manageBusy || !extendDate || extendDate <= (managingBooking.departure_date || '')}
+                    style={{ padding:'11px 16px', background: (manageBusy || !extendDate || extendDate <= (managingBooking.departure_date||'')) ? 'rgba(77,214,200,0.3)' : C.teal, border:'none', borderRadius:10, color:'#0d2b4b', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                    {manageBusy ? '…' : 'Extend'}
+                  </button>
+                </div>
+
+                <button onClick={() => setConfirmCancel(true)} disabled={manageBusy}
+                  style={{ width:'100%', padding:'13px', background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:12, color:'#f87171', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:8 }}>
+                  ✕ Cancel Stay
+                </button>
+                <button onClick={closeManage} disabled={manageBusy}
+                  style={{ width:'100%', padding:'13px', background:'none', border:'none', color:C.muted, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>Close</button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
