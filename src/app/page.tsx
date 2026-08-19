@@ -2162,6 +2162,22 @@ type TransientReq = {
   arrival_date: string; departure_date: string | null
   vessel_name: string | null; contact_name: string; created_at: string
   invoice_id?: string | null
+  assigned_slip_label?: string | null; quoted_nightly?: number | null; nights?: number | null
+}
+
+// SINGLE SOURCE for how a boater sees a transient booking's status — mirrors the drawer
+// status ladder the marina/Helm board uses so the two surfaces can never disagree
+// (awaiting_payment -> confirmed/accepted -> checked_in -> departed; declined/cancelled).
+function transientStatusMeta(status: string): { color: string; label: string; phase: 'upcoming'|'current'|'past'|'action'|'dead' } {
+  const s = (status || '').toLowerCase()
+  if (s === 'checked_in')                      return { color:'#4dd6c8', label:'⚓ In marina now', phase:'current' }
+  if (s === 'checked_out' || s === 'departed') return { color:'rgba(255,255,255,0.5)', label:'🏁 Departed', phase:'past' }
+  if (s === 'declined')                        return { color:'#f87171', label:'✗ Declined', phase:'dead' }
+  if (s === 'cancelled' || s === 'canceled')   return { color:'#f87171', label:'✗ Cancelled', phase:'dead' }
+  if (s === 'confirmed')                        return { color:'#4ade80', label:'💳 Paid · Confirmed', phase:'upcoming' }
+  if (s === 'accepted' || s === 'assigned')     return { color:'#4ade80', label:'✅ Confirmed', phase:'upcoming' }
+  if (s === 'awaiting_payment')                 return { color:'#f59e0b', label:'💳 Payment due', phase:'action' }
+  return { color:'#f59e0b', label:'⏳ Pending', phase:'upcoming' }
 }
 
 function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile, marinaProfile }: { user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null }) {
@@ -2363,7 +2379,12 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
       </div>
       {(discTab==='bookings' || discTab==='past') && (() => {
         const today = new Date().toISOString().slice(0,10)
-        const isPast = (r:{departure_date?:string|null}) => !!r.departure_date && r.departure_date < today
+        const isPast = (r:{departure_date?:string|null; status?:string}) => {
+          const ph = transientStatusMeta(r.status||'').phase
+          if (ph === 'past') return true          // departed/checked_out => Past regardless of date
+          if (ph === 'current') return false       // in marina now => never Past
+          return !!r.departure_date && r.departure_date < today
+        }
         const rows = myRequests.filter(r => discTab==='past' ? isPast(r) : !isPast(r))
         if (rows.length === 0) return (
           <div style={{ textAlign:'center', color:'rgba(255,255,255,0.5)', padding:'40px 16px', fontSize:14 }}>
@@ -2372,8 +2393,9 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
         )
         return rows.map((r, i) => {
           const marina = marinaMap[r.marina_id]
-          const sc = (r.status==='confirmed'||r.status==='accepted') ? '#4ade80' : r.status==='declined' ? C.danger : '#f59e0b'
-          const sl = r.status==='confirmed' ? '💳 Paid · Confirmed' : r.status==='accepted' ? '✅ Accepted' : r.status==='declined' ? '✗ Declined' : '⏳ Pending'
+          const _meta = transientStatusMeta(r.status)
+          const sc = _meta.color
+          const sl = _meta.label
           const nights = r.nights || (r.departure_date && r.arrival_date ? Math.max(0, Math.round((new Date(r.departure_date).getTime()-new Date(r.arrival_date).getTime())/86400000)) : null)
           const total = r.quoted_nightly && nights ? (r.quoted_nightly * nights) : null
           return (
@@ -2427,8 +2449,9 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
           <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10, marginTop: recentThreads.length > 0 ? 0 : 4 }}>My Slip Requests</div>
           {myRequests.map((req, i) => {
             const marina = marinaMap[req.marina_id]
-            const statusColor = req.status === 'accepted' ? '#4ade80' : req.status === 'declined' ? C.danger : '#f59e0b'
-            const statusLabel = req.status === 'accepted' ? '\u2705 Confirmed' : req.status === 'declined' ? '\u2717 Declined' : '\u23f3 Pending'
+            const _meta = transientStatusMeta(req.status)
+            const statusColor = _meta.color
+            const statusLabel = _meta.label
             const arrFmt = req.arrival_date ? new Date(req.arrival_date).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : null
             const depFmt = req.departure_date ? new Date(req.departure_date).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : null
             return (
@@ -2444,7 +2467,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
                 {req.status === 'accepted' && (
                   <div style={{ fontSize:11, color:'#4ade80', marginTop:4, fontWeight:600 }}>Marina confirmed — check your email for details</div>
                 )}
-                {req.status === 'accepted' && req.invoice_id && (
+                {(req.status === 'accepted' || req.status === 'awaiting_payment') && req.invoice_id && (
                   <button onClick={() => handlePayTransientInvoice(req.invoice_id!)} disabled={payingReqInvoice === req.invoice_id}
                     style={{ marginTop:10, width:'100%', padding:'9px 0', fontSize:12.5, fontWeight:700, color:'#0d2b4b', background: payingReqInvoice === req.invoice_id ? 'rgba(77,214,200,0.5)' : '#4dd6c8', border:'none', borderRadius:10, cursor: payingReqInvoice === req.invoice_id ? 'default' : 'pointer', fontFamily:'inherit' }}>
                     {payingReqInvoice === req.invoice_id ? 'Opening checkout…' : '💳 Pay for This Stay'}
