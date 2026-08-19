@@ -3993,14 +3993,6 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
     }
   }
 
-  function handleBookAdditionalNights() {
-    // "Extending" a stay = a NEW booking (the same slip may already be taken for the extra nights,
-    // so it must run through real availability, not an in-place date edit). Route the boater into
-    // the marinas/booking flow for this marina; they pick dates starting after their current stay.
-    closeManage()
-    onTabChange('marinas')
-  }
-
   const unpaidTotal = invoices
     .filter(inv => ['unpaid', 'overdue', 'partial', 'sent'].includes(inv.status))
     .reduce((sum, inv) => sum + ((inv.amountDue ?? 0) - (inv.amountPaid ?? 0)), 0)
@@ -4219,14 +4211,6 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                     {manageBusy ? 'Checking out…' : '🏳️ Check Out & Settle Up'}
                   </button>
                 )}
-
-                <button onClick={handleBookAdditionalNights} disabled={manageBusy}
-                  style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.14)', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:6 }}>
-                  ＋ Book Additional Nights
-                </button>
-                <div style={{ fontSize:11, color:C.muted, lineHeight:1.5, marginBottom:16 }}>
-                  Need more time? Book extra nights — we'll try to keep you in the same slip, or find you another if it's taken.
-                </div>
 
                 <button onClick={() => setConfirmCancel(true)} disabled={manageBusy}
                   style={{ width:'100%', padding:'13px', background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:12, color:'#f87171', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:8 }}>
