@@ -2768,6 +2768,16 @@ function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequ
               </ProfileSection>
             )}
 
+            {/* Cancellation policy — the marina's REAL transient refund terms (single source:
+                Helm Billing & Rates settings). Shown before booking so boaters know the terms. */}
+            {(data as any)?.cancellation_policy?.summary && (
+              <ProfileSection title="Cancellation Policy">
+                <div style={{ fontSize:13, color:'rgba(255,255,255,0.75)', lineHeight:1.6 }}>
+                  {(data as any).cancellation_policy.summary}
+                </div>
+              </ProfileSection>
+            )}
+
             {/* Amenities — grouped by category, matches marketing site's marina detail page */}
             {activeAmenities.length > 0 && (() => {
               const activeKeys = new Set(activeAmenities.map(([key]) => key))
