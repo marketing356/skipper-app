@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       .select('*')
       .eq('email', clean)
       .not('marina_id', 'is', null)
+      .is('deleted_at', null)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const marinaContacts: any[] = marinaScopedRows ?? []
