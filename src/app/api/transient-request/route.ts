@@ -12,6 +12,7 @@ export async function POST(req: Request) {
     const marina_id = body.marina_id
     if (!marina_id) return NextResponse.json({ error: 'marina_id required' }, { status: 400 })
     const res = await fetch(`${E}/api/v1/marina/${marina_id}/transient-requests`, {
+    cache: 'no-store',
       method: 'POST', headers: H(), body: JSON.stringify(body),
     })
     const data = await res.json()

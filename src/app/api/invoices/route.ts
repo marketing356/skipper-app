@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const auth_user_id = new URL(req.url).searchParams.get('auth_user_id')
   if (!auth_user_id) return NextResponse.json({ invoices: [] }, { status: 400 })
   const res = await fetch(`${E}/api/v1/boater/invoices`, {
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       'x-skipper-api-key': K,

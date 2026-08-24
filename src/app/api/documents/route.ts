@@ -5,6 +5,7 @@ const K = process.env.SKIPPER_DATA_API_KEY || ''
 const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 export async function GET(req: NextRequest) {
   const qs = new URL(req.url).searchParams.toString()
-  const res = await fetch(`${E}/api/v1/boater/documents${qs ? '?' + qs : ''}`, { headers: H() })
+  const res = await fetch(`${E}/api/v1/boater/documents${qs ? '?' + qs : ''}`, {
+    cache: 'no-store', headers: H() })
   return NextResponse.json(await res.json(), { status: res.status })
 }

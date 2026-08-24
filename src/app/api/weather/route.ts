@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
   // Reverse geocode for City, ST display
   let locationName = ''
   try {
-    const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'User-Agent': 'AyeAyeSkipper/1.0' }, next: { revalidate: 86400 } })
+    const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
+    cache: 'no-store', headers: { 'User-Agent': 'AyeAyeSkipper/1.0' }, next: { revalidate: 86400 } })
     if (geoRes.ok) {
       const geoJson = await geoRes.json()
       const city = geoJson.address?.city || geoJson.address?.town || geoJson.address?.village || geoJson.address?.hamlet || ''

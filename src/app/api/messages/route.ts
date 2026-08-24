@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const auth_user_id = new URL(req.url).searchParams.get('auth_user_id')
   if (!auth_user_id) return NextResponse.json({ messages: [] }, { status: 400 })
   const res = await fetch(`${E}/api/v1/boater/messages`, {
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       'x-skipper-api-key': K,
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
   const { auth_user_id, body } = await req.json()
   if (!auth_user_id || !body) return NextResponse.json({ error: 'missing fields' }, { status: 400 })
   const res = await fetch(`${E}/api/v1/boater/messages`, {
+    cache: 'no-store',
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

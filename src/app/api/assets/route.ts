@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const authUserId = url.searchParams.get('auth_user_id') || ''
     if (!authUserId) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
-    const res = await fetch(`${E}/api/v1/boater/vessels`, { headers: { ...H(), 'x-boater-auth': authUserId } })
+    const res = await fetch(`${E}/api/v1/boater/vessels`, {
+    cache: 'no-store', headers: { ...H(), 'x-boater-auth': authUserId } })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (err) {
@@ -27,7 +28,8 @@ export async function POST(req: NextRequest) {
     if (!body.name) return NextResponse.json({ error: 'name required' }, { status: 400 })
     const authUserId = body.auth_user_id || ''
     if (!authUserId) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
-    const res = await fetch(`${E}/api/v1/boater/vessels`, { method: 'POST', headers: { ...H(), 'x-boater-auth': authUserId }, body: JSON.stringify(body) })
+    const res = await fetch(`${E}/api/v1/boater/vessels`, {
+    cache: 'no-store', method: 'POST', headers: { ...H(), 'x-boater-auth': authUserId }, body: JSON.stringify(body) })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch (err) {

@@ -5,10 +5,12 @@ const K = process.env.SKIPPER_DATA_API_KEY || ''
 const H = () => ({ 'Content-Type': 'application/json', 'x-skipper-api-key': K })
 export async function GET(req: NextRequest) {
   const qs = new URL(req.url).searchParams.toString()
-  const res = await fetch(`${E}/api/v1/boater/service-history${qs ? '?' + qs : ''}`, { headers: H() })
+  const res = await fetch(`${E}/api/v1/boater/service-history${qs ? '?' + qs : ''}`, {
+    cache: 'no-store', headers: H() })
   return NextResponse.json(await res.json(), { status: res.status })
 }
 export async function POST(req: NextRequest) {
-  const res = await fetch(`${E}/api/v1/boater/service-history`, { method: 'POST', headers: H(), body: JSON.stringify(await req.json()) })
+  const res = await fetch(`${E}/api/v1/boater/service-history`, {
+    cache: 'no-store', method: 'POST', headers: H(), body: JSON.stringify(await req.json()) })
   return NextResponse.json(await res.json(), { status: res.status })
 }
