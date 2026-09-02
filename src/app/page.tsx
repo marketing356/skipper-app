@@ -524,6 +524,7 @@ function assetRowToVessel(a: Record<string, any>, contact?: Record<string, any> 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function SkipperApp() {
   const [screen,         setScreen]         = useState<Screen>('splash')
+  const [forgotMode,     setForgotMode]     = useState(false)
   const [user,           setUser]           = useState<User | null>(null)
   const [profile,        setProfile]        = useState<Profile | null>(null)
   const [vessel,         setVessel]         = useState<Vessel | null>(null)   // primary (top bar)
@@ -721,6 +722,20 @@ export default function SkipperApp() {
     }
   }
 
+  // Forgot PIN — standard reset: email a 6-digit code, then set a NEW PIN. Reuses the
+  // existing OTP flow; on verify we route to pin_setup instead of the PIN pad they're stuck on.
+  async function startPinReset(resetEmail: string) {
+    const clean = (resetEmail || '').trim().toLowerCase()
+    if (!clean || !clean.includes('@')) { setScreen('auth'); return }
+    try {
+      await supabase.auth.signInWithOtp({ email: clean, options: { shouldCreateUser: true } })
+    } catch { /* non-fatal: they can resend on the code screen */ }
+    setSavedEmail(clean)
+    setOtpEmail(clean)
+    setForgotMode(true)
+    setScreen('otp_verify')
+  }
+
   function handleSignOut() {
     const uid = user?.id ?? localStorage.getItem('skipper_user_id') ?? ''
     if (uid) {
@@ -806,9 +821,11 @@ export default function SkipperApp() {
         if (lcData.setup_complete || lcData.preLoaded) {
           localStorage.setItem(`skipper_setup_${u.id}`, 'complete')
         }
+        // Forgot-PIN reset: email verified — go straight to setting a NEW PIN.
+        if (forgotMode) { setForgotMode(false); setScreen('pin_setup'); return }
         await routeAfterAuth(u)
       }}
-      onBack={() => setScreen('auth')}
+      onBack={() => { setForgotMode(false); setScreen('auth') }}
     />
   )
 
@@ -849,6 +866,7 @@ export default function SkipperApp() {
         userRef.current = u
         await routeAfterAuth(u)
       }}
+      onForgotPin={() => startPinReset(savedEmail)}
       onNotMe={() => {
         setStoredUserId(null)
         setScreen('auth')
@@ -868,6 +886,7 @@ export default function SkipperApp() {
         userRef.current = u
         await routeAfterAuth(u)
       }}
+      onForgotPin={() => startPinReset(savedEmail)}
       onNotMe={() => {
         // Clear persistent identity — fall back to full OTP login
         document.cookie = 'skipper_uid=; max-age=0; path=/'
@@ -888,7 +907,8 @@ export default function SkipperApp() {
         localStorage.setItem(`skipper_unlocked_${user!.id}`, '1')
         routeAfterAuth(user!)  // loads vessels + sets userRef, then routes to home
       }}
-      onForgotPin={() => setScreen('auth')}
+      onForgotPin={() => startPinReset(savedEmail || user?.email || '')}
+      onSwitch={() => { setForgotMode(false); setScreen('auth') }}
     />
   )
 
@@ -1214,11 +1234,12 @@ function PinSetupScreen({ user, onComplete }: { user: User; onComplete: () => vo
 }
 
 // ─── PIN Session Refresh (new browser — cookie exists, no Supabase session) ─────────────
-function PinSessionRefreshScreen({ userId, email, onUnlocked, onNotMe }: {
+function PinSessionRefreshScreen({ userId, email, onUnlocked, onNotMe, onForgotPin }: {
   userId: string
   email: string
   onUnlocked: (u: import('@supabase/supabase-js').User) => void
   onNotMe: () => void
+  onForgotPin?: () => void
 }) {
   const [pin,   setPin]   = useState('')
   const [shake, setShake] = useState(false)
@@ -1279,8 +1300,14 @@ function PinSessionRefreshScreen({ userId, email, onUnlocked, onNotMe }: {
         <PinPad value={pin} onChange={v => { setPin(v); setErr('') }} max={4} onFull={verify} />
         {err && <div style={{ fontSize:13, color:C.danger, marginTop:8 }}>{err}</div>}
         {busy && <div style={{ marginTop:12 }}><Spinner /></div>}
+        {onForgotPin && (
+          <div><button onClick={onForgotPin}
+            style={{ background:'none', border:'none', color:C.teal, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
+            Forgot PIN?
+          </button></div>
+        )}
         <button onClick={onNotMe}
-          style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
+          style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:14 }}>
           Not you? Use a different account →
         </button>
       </div>
@@ -1289,10 +1316,11 @@ function PinSessionRefreshScreen({ userId, email, onUnlocked, onNotMe }: {
 }
 
 // ─── PIN Login (returning user) ────────────────────────────────────────────────
-function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
+function PinLoginScreen({ user, email, onUnlock, onForgotPin, onSwitch }: {
   user: User; email: string
   onUnlock: () => void
   onForgotPin: () => void
+  onSwitch?: () => void
 }) {
   const [pin,   setPin]   = useState('')
   const [shake, setShake] = useState(false)
@@ -1336,8 +1364,12 @@ function PinLoginScreen({ user, email, onUnlock, onForgotPin }: {
         <PinPad value={pin} onChange={v => { setPin(v); setErr('') }} max={4} onFull={verify} />
         {err && <div style={{ fontSize:13, color:C.danger, marginTop:8 }}>{err}</div>}
         {busy && <div style={{ marginTop:12 }}><Spinner /></div>}
-        <button onClick={onForgotPin}
-          style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
+        <div><button onClick={onForgotPin}
+          style={{ background:'none', border:'none', color:C.teal, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:FONT, marginTop:24 }}>
+          Forgot PIN?
+        </button></div>
+        <button onClick={onSwitch ?? onForgotPin}
+          style={{ background:'none', border:'none', color:C.muted2, fontSize:12, cursor:'pointer', fontFamily:FONT, marginTop:14 }}>
           Not you? Use a different email →
         </button>
       </div>
