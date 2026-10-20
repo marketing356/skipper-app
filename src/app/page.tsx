@@ -4159,14 +4159,12 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                 </div>
               )}
 
-              {/* Pay Now button */}
+              {/* Payment disabled until Clover connected - 2026-10-20 */}
               {payable && owed > 0 && (
-                <button
-                  onClick={() => handlePayNow(inv.id)}
-                  disabled={paying === inv.id}
-                  style={{ width:'100%', padding:'13px', background: paying===inv.id ? 'rgba(77,214,200,0.3)' : `linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:12, color:'#0d2b4b', fontSize:14, fontWeight:900, cursor: paying===inv.id ? 'default':'pointer', fontFamily:FONT, marginTop:4 }}>
-                  {paying === inv.id ? 'Opening payment…' : `Pay Now — $${owed.toFixed(2)}`}
-                </button>
+                <div style={{ padding:'12px 16px', background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, marginTop:4, textAlign:'center' }}>
+                  <div style={{ fontSize:13, color:'#f87171', fontWeight:600 }}>Online payment not yet available.</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', marginTop:4 }}>Contact the marina to arrange payment.</div>
+                </div>
               )}
             </div>
           )
