@@ -3957,6 +3957,37 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       .then(d => setBookings(d.requests ?? []))
       .catch(() => {})
   }
+  // ── Web push subscription — register SW and subscribe when user lands on home screen
+  // so the marina's in-app messages reach the boater even when Skipper is backgrounded/closed.
+  useEffect(() => {
+    if (screen !== 'home' || !user?.id) return
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!vapidKey) return
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        await navigator.serviceWorker.ready
+        const perm = await Notification.requestPermission()
+        if (perm !== 'granted') return
+        // Check existing subscription first
+        let sub = await reg.pushManager.getSubscription()
+        if (!sub) {
+          // Convert VAPID key from base64url to Uint8Array
+          const rawKey = atob(vapidKey.replace(/-/g, '+').replace(/_/g, '/'))
+          const uint8Key = new Uint8Array(rawKey.split('').map(c => c.charCodeAt(0)))
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: uint8Key })
+        }
+        const j = sub.toJSON()
+        if (!j.endpoint || !j.keys) return
+        await fetch('/api/push-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: user.id, endpoint: j.endpoint, p256dh: j.keys['p256dh'] ?? '', auth: j.keys['auth'] ?? '' })
+        })
+      } catch { /* non-fatal — push is optional */ }
+    })()
+  }, [screen, user?.id])
   useEffect(() => { refetchBookings() }, [user.id])
   const today = new Date().toISOString().slice(0,10)
   const upcomingBookings = (bookings || []).filter(b => {
