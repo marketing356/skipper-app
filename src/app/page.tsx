@@ -1420,7 +1420,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   useEffect(() => {
     fetch(`/api/messages?auth_user_id=${user.id}`)
       .then(r => r.json())
-      .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'inbound').length) })
+      .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'outbound').length) })
       .catch(() => {})
   }, [user.id])
   useEffect(() => { if (activeTab === 'messages') setUnreadMsgCount(0) }, [activeTab])
