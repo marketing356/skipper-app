@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     if (preLoaded) {
       await admin
         .from('contacts')
-        .update({ auth_user_id: userId, setup_complete: true })
+        .update({ auth_user_id: userId, setup_complete: true, platform: 'android' })
         .in('id', marinaContacts.map((c: { id: string }) => c.id))
     }
 
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     const syncPatch: Record<string, unknown> = {
       auth_user_id:    userId,
       setup_complete:  preLoaded,  // true = skip onboarding form, false = show it
+      platform:        'android',  // web app = Android Chrome
     }
     if (bestMarina?.first_name) syncPatch.first_name = bestMarina.first_name
     if (bestMarina?.last_name)  syncPatch.last_name  = bestMarina.last_name
