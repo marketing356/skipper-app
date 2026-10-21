@@ -1417,15 +1417,30 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   }, [])
 
   const [unreadMsgCount, setUnreadMsgCount] = useState(0)
-  // Fetch unread count on load
+  const LAST_READ_KEY = `skipper_last_read_${user.id}`
+  function countNew(msgs: {direction:string; inserted_at?: string; created_at?: string}[]): number {
+    const lastRead = localStorage.getItem(LAST_READ_KEY)
+    return msgs.filter(m => {
+      if (m.direction !== 'outbound') return false
+      if (!lastRead) return true
+      const ts = m.inserted_at || m.created_at || ''
+      return ts > lastRead
+    }).length
+  }
+  // Fetch unread count on load (only messages since last read)
   useEffect(() => {
     fetch(`/api/messages?auth_user_id=${user.id}`)
       .then(r => r.json())
-      .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'outbound').length) })
+      .then(d => { setUnreadMsgCount(countNew(d.messages ?? [])) })
       .catch(() => {})
   }, [user.id])
-  // Clear badge when messages tab is open
-  useEffect(() => { if (activeTab === 'messages') setUnreadMsgCount(0) }, [activeTab])
+  // Clear badge and save read timestamp when messages tab is open
+  useEffect(() => {
+    if (activeTab === 'messages') {
+      localStorage.setItem(LAST_READ_KEY, new Date().toISOString())
+      setUnreadMsgCount(0)
+    }
+  }, [activeTab])
   // Realtime: update badge whenever marina sends a new message
   useSkipperRealtime({
     scope: { kind: 'marina', id: marinaProfile?.id ?? '' },
@@ -1434,7 +1449,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       if (activeTab !== 'messages') {
         fetch(`/api/messages?auth_user_id=${user.id}`)
           .then(r => r.json())
-          .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'outbound').length) })
+          .then(d => { setUnreadMsgCount(countNew(d.messages ?? [])) })
           .catch(() => {})
       }
     },
