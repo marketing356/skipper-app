@@ -1417,13 +1417,28 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   }, [])
 
   const [unreadMsgCount, setUnreadMsgCount] = useState(0)
+  // Fetch unread count on load
   useEffect(() => {
     fetch(`/api/messages?auth_user_id=${user.id}`)
       .then(r => r.json())
       .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'outbound').length) })
       .catch(() => {})
   }, [user.id])
+  // Clear badge when messages tab is open
   useEffect(() => { if (activeTab === 'messages') setUnreadMsgCount(0) }, [activeTab])
+  // Realtime: update badge whenever marina sends a new message
+  useSkipperRealtime({
+    scope: { kind: 'marina', id: marinaProfile?.id ?? '' },
+    enabled: !!marinaProfile?.id,
+    onChange: () => {
+      if (activeTab !== 'messages') {
+        fetch(`/api/messages?auth_user_id=${user.id}`)
+          .then(r => r.json())
+          .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'outbound').length) })
+          .catch(() => {})
+      }
+    },
+  })
 
   const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
     ['home',     <IcoHome   key='h'  active={activeTab==='home'}    />, 'Home'],
