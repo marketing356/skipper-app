@@ -1454,6 +1454,33 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       }
     },
   })
+  // Auto-subscribe to push if permission already granted but subscription not yet saved
+  // Handles case where user enabled via OS Settings without going through the Enable button
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!vapidKey) return
+    ;(async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        await navigator.serviceWorker.ready
+        let sub = await reg.pushManager.getSubscription()
+        if (!sub) {
+          const rawKey = atob(vapidKey.replace(/-/g, '+').replace(/_/g, '/'))
+          const uint8Key = new Uint8Array(rawKey.split('').map(c => c.charCodeAt(0)))
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: uint8Key })
+        }
+        const j = sub.toJSON()
+        if (!j?.endpoint) return
+        await fetch('/api/push-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: user.id, endpoint: j.endpoint, p256dh: j.keys?.['p256dh'] ?? '', auth: j.keys?.['auth'] ?? '' })
+        })
+      } catch (e) { console.error('[auto-push-subscribe]', e) }
+    })()
+  }, [user.id])
 
   const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
     ['home',     <IcoHome   key='h'  active={activeTab==='home'}    />, 'Home'],
