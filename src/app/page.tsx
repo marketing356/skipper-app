@@ -3837,6 +3837,32 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     onChange: () => { loadThread() },
   })
 
+  // ── Enable push notifications ──────────────────────────────────────────
+  async function enableNotifications() {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!vapidKey) return
+    try {
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') return
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        const rawKey = atob(vapidKey.replace(/-/g, '+').replace(/_/g, '/'))
+        const uint8Key = new Uint8Array(rawKey.split('').map(c => c.charCodeAt(0)))
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: uint8Key })
+      }
+      const j = sub.toJSON()
+      if (!j?.endpoint) return
+      await fetch('/api/push-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: user.id, endpoint: j.endpoint, p256dh: j.keys?.['p256dh'] ?? '', auth: j.keys?.['auth'] ?? '' })
+      })
+    } catch (e) { console.error('[push-enable]', e) }
+  }
+
   // ── Send ─────────────────────────────────────────────────────────────────
   async function send() {
     if (!draft.trim() || !activeMarina || sending) return
@@ -3914,6 +3940,14 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
           <div style={{ fontSize:11, color:C.muted }}>Marina team</div>
         </div>
       </div>
+
+      {/* Notification permission banner */}
+      {typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted' && (
+        <div style={{ background:'rgba(77,214,200,0.08)', borderBottom:'1px solid rgba(77,214,200,0.2)', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexShrink:0 }}>
+          <div style={{ fontSize:12, color:C.teal, lineHeight:1.4 }}>Get notified when your marina sends a message</div>
+          <button onClick={enableNotifications} style={{ background:C.teal, color:'#0d2b4b', border:'none', borderRadius:6, padding:'6px 14px', fontSize:12, fontWeight:800, cursor:'pointer', flexShrink:0, fontFamily:FONT }}>Enable</button>
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
