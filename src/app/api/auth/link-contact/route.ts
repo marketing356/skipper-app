@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic'
  */
 export async function POST(req: NextRequest) {
   try {
-    const { email, userId } = await req.json()
+    const { email, userId, platform: clientPlatform } = await req.json()
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     if (preLoaded) {
       await admin
         .from('contacts')
-        .update({ auth_user_id: userId, setup_complete: true, platform: 'android' })
+        .update({ auth_user_id: userId, setup_complete: true, platform: clientPlatform ?? 'android' })
         .in('id', marinaContacts.map((c: { id: string }) => c.id))
     }
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     const syncPatch: Record<string, unknown> = {
       auth_user_id:    userId,
       setup_complete:  preLoaded,  // true = skip onboarding form, false = show it
-      platform:        'android',  // web app = Android Chrome
+      platform:        clientPlatform ?? 'android',  // iOS native app sends 'ios', web app defaults 'android'
     }
     if (bestMarina?.first_name) syncPatch.first_name = bestMarina.first_name
     if (bestMarina?.last_name)  syncPatch.last_name  = bestMarina.last_name
