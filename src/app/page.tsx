@@ -1416,12 +1416,21 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
     )
   }, [])
 
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0)
+  useEffect(() => {
+    fetch(`/api/messages?auth_user_id=${user.id}`)
+      .then(r => r.json())
+      .then(d => { const msgs: {direction:string}[] = d.messages ?? []; setUnreadMsgCount(msgs.filter(m => m.direction === 'inbound').length) })
+      .catch(() => {})
+  }, [user.id])
+  useEffect(() => { if (activeTab === 'messages') setUnreadMsgCount(0) }, [activeTab])
+
   const NAV_ITEMS: [HomeTab, React.ReactNode, string][] = [
     ['home',     <IcoHome   key='h'  active={activeTab==='home'}    />, 'Home'],
     ['vessel',   <IcoVessel  key='v'  active={activeTab==='vessel'}   />, 'My Vessel'],
     ['weather',  <IcoWeather key='w'  active={activeTab==='weather'}  />, 'Weather'],
     ['marinas',  <IcoMarinas key='m'  active={activeTab==='marinas'}  />, 'Discovery'],
-    ['messages', <IcoMsgs   key='ms' active={activeTab==='messages'} />, 'Messages'],
+    ['messages', <IcoMsgs   key='ms' active={activeTab==='messages'} unreadCount={unreadMsgCount} />, 'Messages'],
     ['log',      <IcoLog    key='l'  active={activeTab==='log'}      />, 'Log'],
     ['account',  <IcoAcct   key='a'  active={activeTab==='account'}  />, 'Account'],
   ]
@@ -1542,7 +1551,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
             <NavBtn icon={<IcoHome   active={activeTab==='home'}    />} label="Home"     active={activeTab==='home'}     onClick={() => onTabChange('home')}     />
             <NavBtn icon={<IcoVessel  active={activeTab==='vessel'}   />} label="Vessel"   active={activeTab==='vessel'}   onClick={() => onTabChange('vessel')}   />
             <NavBtn icon={<IcoMarinas active={activeTab==='marinas'}  />} label="Marinas"  active={activeTab==='marinas'}  onClick={() => onTabChange('marinas')}  />
-            <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
+            <NavBtn icon={<IcoMsgs   active={activeTab==='messages'} unreadCount={unreadMsgCount} />} label="Messages" active={activeTab==='messages'} onClick={() => onTabChange('messages')} />
             <NavBtn icon={<IcoLog    active={activeTab==='log'}      />} label="Log"      active={activeTab==='log'}      onClick={() => onTabChange('log')}      />
             <NavBtn icon={<IcoAcct   active={activeTab==='account'}  />} label="Account"  active={activeTab==='account'}  onClick={() => onTabChange('account')}  />
           </div>
@@ -5206,9 +5215,18 @@ function IcoMarinas({ active }: { active: boolean }) {
   const c = active ? C.teal : C.muted
   return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke={c} strokeWidth="1.8" fill={active?'rgba(77,214,200,0.1)':'none'}/><path d="M12 3v18M3 12h18" stroke={c} strokeWidth="1.8"/><path d="M5.6 5.6c1.8 2.8 1.8 10 0 12.8M18.4 5.6c-1.8 2.8-1.8 10 0 12.8" stroke={c} strokeWidth="1.4"/></svg>
 }
-function IcoMsgs({ active }: { active: boolean }) {
+function IcoMsgs({ active, unreadCount }: { active: boolean; unreadCount?: number }) {
   const c = active ? C.teal : C.muted
-  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" fill={active?'rgba(77,214,200,0.1)':'none'}/></svg>
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" fill={active?'rgba(77,214,200,0.1)':'none'}/></svg>
+      {(unreadCount ?? 0) > 0 && (
+        <span style={{ position:'absolute', top:-4, right:-6, background:'#ef4444', color:'#fff', borderRadius:999, minWidth:15, height:15, fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px', lineHeight:1 }}>
+          {(unreadCount ?? 0) > 99 ? '99+' : unreadCount}
+        </span>
+      )}
+    </div>
+  )
 }
 function IcoAcct({ active }: { active: boolean }) {
   const c = active ? C.teal : C.muted
