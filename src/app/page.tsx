@@ -1558,8 +1558,8 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         )}
       </div>
 
-      {/* Floating Skipper — offset on desktop to clear sidebar */}
-      <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} coupledMarinas={coupledMarinas} />
+      {/* Floating Skipper — hidden on messages tab so it doesn't block the send button */}
+      {activeTab !== 'messages' && <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} coupledMarinas={coupledMarinas} />}
     </div>
   )
 }
