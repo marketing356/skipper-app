@@ -4,7 +4,7 @@ import OPSShell from '@/components/OPSShell'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import ContactForm from '@/components/ContactForm'
-import InstallPrompt from '@/components/InstallPrompt'
+import InstallPrompt, { isBrowserTab, startInstall } from '@/components/InstallPrompt'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
@@ -4840,6 +4840,15 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   const [pinErr,        setPinErr]        = React.useState('')
   const [pinBusy,       setPinBusy]       = React.useState(false)
 
+  // 'Install app on home screen' row: only in a browser tab, never inside the installed app.
+  const [canInstall, setCanInstall] = React.useState(false)
+  React.useEffect(() => {
+    setCanInstall(isBrowserTab())
+    const onInstalled = () => setCanInstall(false)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => window.removeEventListener('appinstalled', onInstalled)
+  }, [])
+
   async function requestEmailChange() {
     if (!newEmail.trim()) { setEmailMsg('Enter a new email address'); return }
     setEmailBusy(true)
@@ -4932,6 +4941,20 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
           </button>
         </div>
       </div>
+
+      {/* Install app on home screen (browser tab only) */}
+      {canInstall && (
+        <button onClick={() => { startInstall().catch(() => {}) }}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16, marginBottom: 14, cursor: 'pointer', fontFamily: FONT, textAlign: 'left', color: C.white }}>
+          <img src="/skipper-icon-192.png" alt="" width={44} height={44}
+            style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.tealBorder}`, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.white, marginBottom: 2 }}>Install app on home screen</div>
+            <div style={{ fontSize: 13, color: C.muted }}>Open Skipper in one tap from your phone</div>
+          </div>
+          <div style={{ color: C.teal, fontSize: 22, fontWeight: 700, flexShrink: 0 }} aria-hidden="true">{'\u203A'}</div>
+        </button>
+      )}
 
       {/* Email change */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 14 }}>

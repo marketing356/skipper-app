@@ -2,10 +2,14 @@
 // Add-to-Home-Screen prompt (Mike GO 2026-10-30).
 // Shown to signed-in boaters on a phone browser (not already installed):
 // first time they reach home after sign-in, then again on the next 2 app opens
-// if they tap Not now. Never again once installed ('appinstalled' or opened standalone).
+// if they tap Not now. Hidden while installed ('appinstalled' or opened standalone).
+// Re-prompt (Mike GO 2026-10-30): Chrome fires 'beforeinstallprompt' ONLY when the app is
+// not installed (web.dev), so if it fires while we have the app marked installed, the icon
+// was deleted -> clear the mark + reset the count so the card shows again (same 3-open rule).
+// Account tab 'Install app on home screen' row uses startInstall()/isBrowserTab() below.
 // The early window-level 'beforeinstallprompt' capture + sw.js registration live in
 // the inline script in src/app/layout.tsx (it must run before React hydrates).
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 const KEY_INSTALLED = 'skipper_a2hs_installed'
 const KEY_SHOWN     = 'skipper_a2hs_shown'
@@ -43,6 +47,45 @@ function isMobile(): boolean {
 
 function readNum(key: string): number {
   try { return parseInt(localStorage.getItem(key) || '0', 10) || 0 } catch { return 0 }
+}
+
+// Icon was deleted (browser offered install again): forget 'installed', restart the count.
+// The inline boot script in layout.tsx does the same before React loads; this is the backup.
+function resetIfUninstalled(): void {
+  try {
+    if (localStorage.getItem(KEY_INSTALLED) === '1') {
+      localStorage.removeItem(KEY_INSTALLED)
+      localStorage.setItem(KEY_SHOWN, '0')
+    }
+  } catch { /* ignore */ }
+}
+
+// True when Skipper is running in a normal browser tab (not opened from the home-screen icon).
+export function isBrowserTab(): boolean {
+  if (typeof window === 'undefined') return false
+  return !isStandalone()
+}
+
+// Account tab button: use the browser's own install dialog when it offered one,
+// otherwise open the install card with the simple Android / iPhone steps.
+export async function startInstall(): Promise<'accepted' | 'dismissed' | 'steps'> {
+  const evt = getStoredPrompt()
+  if (evt) {
+    try {
+      await evt.prompt()
+      const choice = await evt.userChoice
+      ;(window as any).__skipperBIP = null // a prompt event can only be used once
+      if (choice?.outcome === 'accepted') {
+        try { localStorage.setItem(KEY_INSTALLED, '1') } catch { /* ignore */ }
+        return 'accepted'
+      }
+      return 'dismissed'
+    } catch {
+      ;(window as any).__skipperBIP = null // fall through to the manual steps
+    }
+  }
+  window.dispatchEvent(new Event('skipper-open-install'))
+  return 'steps'
 }
 
 const T = {
@@ -91,32 +134,16 @@ export default function InstallPrompt({ active }: { active: boolean }) {
   const [open, setOpen] = useState(false)
   const [hasPrompt, setHasPrompt] = useState(false)
   const [ios, setIos] = useState(false)
+  const activeRef = useRef(active)
+  activeRef.current = active
 
-  // Track the captured browser install event + installs.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setIos(isIos())
-    setHasPrompt(!!getStoredPrompt())
-    const onBip = () => setHasPrompt(!!getStoredPrompt())
-    const onInstalled = () => {
-      try { localStorage.setItem(KEY_INSTALLED, '1') } catch { /* ignore */ }
-      setOpen(false)
-    }
-    window.addEventListener('skipper-bip', onBip)
-    window.addEventListener('skipper-installed', onInstalled)
-    window.addEventListener('appinstalled', onInstalled)
-    return () => {
-      window.removeEventListener('skipper-bip', onBip)
-      window.removeEventListener('skipper-installed', onInstalled)
-      window.removeEventListener('appinstalled', onInstalled)
-    }
-  }, [])
-
-  // Decide whether to show the card once the boater is signed in (home screen).
-  useEffect(() => {
-    if (!active || shownThisLoad || typeof window === 'undefined') return
+  // Decide whether to show the card (signed in, home screen, phone browser, not installed).
+  // Runs when the boater reaches home AND again whenever the browser offers install
+  // ('beforeinstallprompt' can arrive ~30s later, e.g. after the icon was deleted).
+  function maybeShow() {
+    if (!activeRef.current || shownThisLoad || typeof window === 'undefined') return
     if (isStandalone()) {
-      // Opened from the home-screen icon: already installed, never prompt again.
+      // Opened from the home-screen icon: installed right now.
       try { localStorage.setItem(KEY_INSTALLED, '1') } catch { /* ignore */ }
       return
     }
@@ -125,12 +152,49 @@ export default function InstallPrompt({ active }: { active: boolean }) {
     const shown = readNum(KEY_SHOWN)
     if (shown >= MAX_SHOWS) return
     shownThisLoad = true
-    const t = setTimeout(() => {
+    setTimeout(() => {
       try { localStorage.setItem(KEY_SHOWN, String(shown + 1)) } catch { /* ignore */ }
       setHasPrompt(!!getStoredPrompt())
       setOpen(true)
     }, 900)
-    return () => clearTimeout(t)
+  }
+
+  // Track the captured browser install event + installs + the Account tab button.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setIos(isIos())
+    setHasPrompt(!!getStoredPrompt())
+    if (getStoredPrompt()) resetIfUninstalled()
+    const onBip = () => {
+      resetIfUninstalled()
+      setHasPrompt(!!getStoredPrompt())
+      maybeShow()
+    }
+    const onInstalled = () => {
+      try { localStorage.setItem(KEY_INSTALLED, '1') } catch { /* ignore */ }
+      setOpen(false)
+    }
+    const onOpenInstall = () => {
+      setHasPrompt(!!getStoredPrompt())
+      setOpen(true)
+    }
+    window.addEventListener('skipper-bip', onBip)
+    window.addEventListener('skipper-installed', onInstalled)
+    window.addEventListener('appinstalled', onInstalled)
+    window.addEventListener('skipper-open-install', onOpenInstall)
+    return () => {
+      window.removeEventListener('skipper-bip', onBip)
+      window.removeEventListener('skipper-installed', onInstalled)
+      window.removeEventListener('appinstalled', onInstalled)
+      window.removeEventListener('skipper-open-install', onOpenInstall)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Boater reached the home screen after sign-in.
+  useEffect(() => {
+    maybeShow()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
 
   async function handleInstall() {
