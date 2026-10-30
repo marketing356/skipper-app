@@ -8,6 +8,7 @@ import InstallPrompt from '@/components/InstallPrompt'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
+import { reportAppOpen } from '@/lib/app-open-client'
 import type { User } from '@supabase/supabase-js'
 
 const MarinaMap = dynamic(() => import('@/components/MarinaMap'), { ssr: false, loading: () => <div style={{ width:'100%', height:'100%', background:'#0d1f2d', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.4)', fontSize:13 }}>Loading map…</div> })
@@ -698,6 +699,9 @@ export default function SkipperApp() {
   async function routeAfterAuth(u: User) {
     userRef.current = u
     localStorage.setItem('skipper_user_id', u.id)
+    // Real-time app status: every sign-in path (email code, PIN, session restore) lands
+    // here - record which device/app the boater is on now. Fire-and-forget, once per launch.
+    reportAppOpen('open')
     setVesselsLoading(true)
     try {
       const result = await loadUserData(u)
@@ -772,10 +776,17 @@ export default function SkipperApp() {
       if (document.visibilityState === 'visible') {
         const u = userRef.current
         if (u) loadUserData(u).catch(e => console.error('[Skipper] visibility loadUserData:', e))
+        if (u) reportAppOpen('resume')  // real-time app status on return to foreground
       }
     }
+    // Real-time app status: Add-to-Home-Screen completed on this device.
+    function onInstalled() { if (userRef.current) reportAppOpen('installed') }
     document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -822,6 +833,7 @@ export default function SkipperApp() {
         if (lcData.setup_complete || lcData.preLoaded) {
           localStorage.setItem(`skipper_setup_${u.id}`, 'complete')
         }
+        reportAppOpen('open')  // also covers the forgot-PIN path, which skips routeAfterAuth
         // Forgot-PIN reset: email verified — go straight to setting a NEW PIN.
         if (forgotMode) { setForgotMode(false); setScreen('pin_setup'); return }
         await routeAfterAuth(u)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { isNativeIosUserAgent } from '@/lib/app-open'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,8 +40,7 @@ export async function POST(req: NextRequest) {
     // otherwise decide from the caller. Vercel logs proved the native app sends
     // UA "AyeAyeSkipperMarina/28 CFNetwork/... Darwin/..." and the web app sends a
     // browser "Mozilla/5.0 ..." UA. Native app builds before fdbcaf3 omit platform.
-    const ua = req.headers.get('user-agent') ?? ''
-    const isNativeIosClient = !/Mozilla/i.test(ua) && /CFNetwork|Darwin\//i.test(ua)
+    const isNativeIosClient = isNativeIosUserAgent(req.headers.get('user-agent'))
     const platform: 'ios' | 'android' =
       clientPlatform === 'ios' || clientPlatform === 'android'
         ? clientPlatform
