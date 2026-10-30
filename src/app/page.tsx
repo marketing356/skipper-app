@@ -4,7 +4,7 @@ import OPSShell from '@/components/OPSShell'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import ContactForm from '@/components/ContactForm'
-import InstallPrompt, { startInstall, A2HS_TITLE } from '@/components/InstallPrompt'
+import InstallPrompt, { startInstall, A2HS_TITLE, INSTALLED_TITLE, useIsInstalledApp } from '@/components/InstallPrompt'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
@@ -4813,6 +4813,7 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   onProfileUpdated:(p:Profile)=>void
 }) {
   const FONT = '"SF Pro Display", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  const installedApp = useIsInstalledApp() // opened as the installed app (no browser menu)
 
   // Re-fetch raw contact + profile on every Account tab open
   const [rawContact, setRawContact] = React.useState<Record<string, unknown> | null>(null)
@@ -4936,8 +4937,16 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
         </div>
       </div>
 
-      {/* App on your home screen: ALWAYS shown (browser tab AND installed app) */}
-      {(
+      {/* Home screen row. Installed app: calm status row, not tappable (no browser menu exists there).
+          Browser tab: one tap = Chrome install dialog if offered, else one short line. */}
+      {installedApp ? (
+        <div role="status"
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 16, marginBottom: 14, fontFamily: FONT, color: C.white, boxSizing: 'border-box' }}>
+          <img src="/skipper-icon-192.png" alt="" width={44} height={44}
+            style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.tealBorder}`, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 700, color: C.white }}>{INSTALLED_TITLE}</div>
+        </div>
+      ) : (
         <button onClick={() => { startInstall().catch(() => {}) }}
           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16, marginBottom: 14, cursor: 'pointer', fontFamily: FONT, textAlign: 'left', color: C.white }}>
           <img src="/skipper-icon-192.png" alt="" width={44} height={44}

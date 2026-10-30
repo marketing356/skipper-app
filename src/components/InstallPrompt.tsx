@@ -17,6 +17,9 @@ const KEY_SHOWN     = 'skipper_a2hs_shown'
 const MAX_SHOWS     = 3 // first sign-in + next 2 app opens
 
 export const A2HS_TITLE   = 'Add Skipper to your home screen'
+// Shown (not tappable) when Skipper is already running as the installed app (2026-10-30, Mike):
+// inside an installed app there is no browser menu and no way for a page to re-add its icon.
+export const INSTALLED_TITLE = '\u2713 Skipper app is installed'
 const LINE_ANDROID = 'Tap the \u22EE menu, then Add to Home screen.'
 const LINE_IPHONE  = 'Tap Share, then Add to Home Screen.'
 
@@ -32,13 +35,26 @@ function getStoredPrompt(): BIPEvent | null {
   return ((window as any).__skipperBIP as BIPEvent | undefined) ?? null
 }
 
+const KEY_TWA = 'skipper_twa'
+
+// Installed-app check (web.dev/learn/pwa/detection): any app display mode, iOS home-screen
+// icon (navigator.standalone), or Android TWA (referrer android-app://, remembered for the
+// session because the referrer is only set on the first page load).
 function isStandalone(): boolean {
   try {
-    if (window.matchMedia('(display-mode: standalone)').matches) return true
-    if (window.matchMedia('(display-mode: fullscreen)').matches) return true
-    if (window.matchMedia('(display-mode: minimal-ui)').matches) return true
+    if (window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui), (display-mode: window-controls-overlay)').matches) return true
   } catch { /* old browser */ }
-  return (navigator as any).standalone === true
+  try {
+    if ((navigator as any).standalone === true) return true
+  } catch { /* ignore */ }
+  try {
+    if ((document.referrer || '').startsWith('android-app://')) {
+      try { sessionStorage.setItem(KEY_TWA, '1') } catch { /* ignore */ }
+      return true
+    }
+    if (sessionStorage.getItem(KEY_TWA) === '1') return true
+  } catch { /* ignore */ }
+  return false
 }
 
 function isIos(): boolean {
@@ -71,6 +87,24 @@ export function isInstalledApp(): boolean {
   return isStandalone()
 }
 
+// React hook: true once mounted inside the installed app (false during server render, so no
+// hydration mismatch). Re-checks if the display mode changes.
+export function useIsInstalledApp(): boolean {
+  const [installed, setInstalled] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const check = () => setInstalled(isStandalone())
+    check()
+    let mq: MediaQueryList | null = null
+    try {
+      mq = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui), (display-mode: window-controls-overlay)')
+      mq.addEventListener?.('change', check)
+    } catch { /* old browser */ }
+    return () => { try { mq?.removeEventListener?.('change', check) } catch { /* ignore */ } }
+  }, [])
+  return installed
+}
+
 // True when Skipper is running in a normal browser tab (not opened from the home-screen icon).
 export function isBrowserTab(): boolean {
   if (typeof window === 'undefined') return false
@@ -79,7 +113,9 @@ export function isBrowserTab(): boolean {
 
 // Account tab row: one tap. Browser offered install -> its own install dialog right away.
 // Otherwise -> the one-line card for this phone (Android or iPhone, never both).
-export async function startInstall(): Promise<'accepted' | 'dismissed' | 'steps'> {
+export async function startInstall(): Promise<'accepted' | 'dismissed' | 'steps' | 'installed'> {
+  // Already the installed app: no browser menu here, nothing to show (row is a status row anyway).
+  if (isStandalone()) return 'installed'
   const evt = getStoredPrompt()
   if (evt) {
     try {
@@ -191,6 +227,8 @@ export default function InstallPrompt({ active }: { active: boolean }) {
   }
 
   if (!open) return null
+  // Never show menu instructions inside the installed app (there is no menu there).
+  if (!hasPrompt && isStandalone()) return null
 
   // ONE short card: title + one line for THIS phone + one big button. No fake icon boxes.
   return (
