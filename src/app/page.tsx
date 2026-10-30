@@ -3395,51 +3395,76 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
 
 // ─── Marina Chat ──────────────────────────────────────────────────────────────
 function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVessel, spaceProfile, leaseProfile, marinaProfile }: { marina:Marina; user:User; profile:Profile|null; vessel:Vessel|null; coupled?:boolean; onBack:()=>void; onAddVessel:()=>void; spaceProfile?:SpaceProfile|null; leaseProfile?:LeaseProfile|null; marinaProfile?:MarinaProfile|null }) {
-  const [msgs,    setMsgs]    = useState<{role:string;text:string}[]>([])
+  // failed = this message did NOT reach the marina (shown with Retry, never silently dropped)
+  const [msgs,    setMsgs]    = useState<{role:string;text:string;failed?:boolean;checkout_url?:string|null}[]>([])
   const [draft,   setDraft]   = useState('')
   const [sending, setSending] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const chatCacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
 
-  // Load persistent history on mount — localStorage first (instant), DB as fallback
+  // Server history is the source of truth (2026-10-30): it includes the MARINA STAFF's replies
+  // (in-app/SMS from the Helm). The old code returned early on any localStorage cache, so staff
+  // replies never showed here. Cache is only a fallback when the server can't be reached.
+  const loadServerHistory = useCallback(async (): Promise<{role:string;text:string}[] | null> => {
+    try {
+      const res = await fetch(`/api/marina-chat/${marina.id}?auth_user_id=${user.id}`, { cache: 'no-store' })
+      if (!res.ok) return null
+      const data = await res.json()
+      return (data.messages ?? []).map((m: { direction: string; body: string; channel?: string }) => ({
+        role: m.direction === 'inbound' ? 'user' : (m.channel === 'in_app' || m.channel === 'sms') ? 'staff' : 'skipper',
+        text: m.body,
+      }))
+    } catch { return null }
+  }, [marina.id, user.id])
+
   useEffect(() => {
-    const cacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
     async function loadHistory() {
-      // 1. Try localStorage first — survives tab switches and in-app navigation
-      const cached = localStorage.getItem(cacheKey)
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMsgs(parsed)
-            setHistoryLoaded(true)
-            return
-          }
-        } catch { /* bad cache — fall through to DB */ }
-      }
-      // 2. Fall back to Railway — Rule 2 (single source, no direct DB read)
-      let loaded: {role:string;text:string}[] = []
-      try {
-        const res = await fetch(`/api/marina-chat/${marina.id}?auth_user_id=${user.id}`)
-        if (res.ok) {
-          const data = await res.json()
-          loaded = (data.messages ?? []).map((m: { direction: string; body: string }) => ({
-            role: m.direction === 'inbound' ? 'user' : 'skipper',
-            text: m.body,
-          }))
-        }
-      } catch { /* fall through to greeting */ }
-      if (loaded.length > 0) {
-        setMsgs(loaded)
-        localStorage.setItem(cacheKey, JSON.stringify(loaded))
+      const server = await loadServerHistory()
+      if (server && server.length > 0) {
+        setMsgs(server)
+        localStorage.setItem(chatCacheKey, JSON.stringify(server))
       } else {
-        setMsgs([{ role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }])
+        let cachedMsgs: {role:string;text:string}[] = []
+        if (!server) {
+          try { const parsed = JSON.parse(localStorage.getItem(chatCacheKey) || '[]'); if (Array.isArray(parsed)) cachedMsgs = parsed } catch { /* ignore */ }
+        }
+        setMsgs(cachedMsgs.length > 0 ? cachedMsgs : [{ role:'skipper', text:`Aye aye! I'm Skipper, your direct line to ${marina.name}. What can I help you with?` }])
       }
       setHistoryLoaded(true)
     }
     loadHistory()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marina.id, user.id])
+
+  // Live: a staff reply from the Helm refreshes this chat (marina channel is broadcast on every message).
+  useSkipperRealtime({
+    scope: { kind: 'marina', id: marina.id },
+    enabled: !!marina.id && historyLoaded,
+    onChange: async () => {
+      if (sending) return
+      const server = await loadServerHistory()
+      if (server && server.length > 0) setMsgs(prev => [...server, ...prev.filter(m => m.failed)])
+    },
+  })
+
+  async function saveInbound(text: string): Promise<boolean> {
+    try {
+      const r = await fetch(`/api/marina-chat/${marina.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, direction: 'inbound', body: text, sender_name: displayName ?? 'Boater' }),
+      })
+      return r.ok
+    } catch { return false }
+  }
+
+  async function retrySave(idx: number) {
+    const m = msgs[idx]
+    if (!m) return
+    const ok = await saveInbound(m.text)
+    setMsgs(list => list.map((x, i) => i === idx ? { ...x, failed: !ok } : x))
+  }
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.display_name || user.email
@@ -3454,12 +3479,9 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
     setMsgs(m => [...m, { role:'user', text:msg }])
     setSending(true)
 
-    // Save inbound to Railway — Rule 2 (server resolves marina-scoped tenant for Helm inbox)
-    fetch(`/api/marina-chat/${marina.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auth_user_id: user.id, direction: 'inbound', body: msg, sender_name: displayName ?? 'Boater' }),
-    }).catch(() => {})
+    // Save inbound to Railway — Rule 2 (server resolves/creates the marina-scoped contact for the Helm inbox).
+    // Checked (2026-10-30): a failed save marks the bubble "Not delivered" with Retry instead of vanishing.
+    const savedP = saveInbound(msg)
 
     // Full identity package — same as Global Skipper + marina-specific context
     // Rule 2: spaceProfile/leaseProfile/marinaProfile come from Railway (profile endpoint)
@@ -3523,7 +3545,8 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
       const d = await r.json()
       const reply = d.reply || 'Let me check on that.'
       const checkoutUrl = d.checkout_url || null
-      const updatedMsgs = [...msgs, { role:'user', text:msg }, { role:'skipper', text:reply, checkout_url: checkoutUrl }]
+      const savedOk = await savedP
+      const updatedMsgs = [...msgs, { role:'user', text:msg, failed: !savedOk }, { role:'skipper', text:reply, checkout_url: checkoutUrl }]
       setMsgs(updatedMsgs)
       // Persist to localStorage so history survives tab switches
       const cacheKey = `skipper_marina_chat_${user.id}_${marina.id}`
@@ -3534,7 +3557,12 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
         body: JSON.stringify({ auth_user_id: user.id, direction: 'outbound', body: reply, sender_name: 'Skipper' }),
       }).catch(() => {})
     } catch {
-      setMsgs(m => [...m, { role:'skipper', text:'Sorry — rough seas on my end. Try again in a moment.' }])
+      const savedOk = await savedP
+      setMsgs(m => {
+        const out = [...m]
+        for (let i = out.length - 1; i >= 0; i--) { if (out[i].role === 'user' && out[i].text === msg) { out[i] = { ...out[i], failed: !savedOk }; break } }
+        return [...out, { role:'skipper', text: savedOk ? 'Your message was delivered to the marina team. (Skipper could not answer right now.)' : 'Sorry — rough seas on my end. Try again in a moment.' }]
+      })
     }
     setSending(false)
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:'smooth' }), 100)
@@ -3561,10 +3589,19 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
                 <Image src="/skipper-avatar.jpg" alt="Skipper" width={30} height={30} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center top' }} />
               </div>
             )}
-            <div style={{ maxWidth:'78%', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', overflow:'hidden', border:m.role==='skipper'?`1px solid ${C.cardBorder}`:'none' }}>
+            {m.role==='staff' && (
+              <div style={{ width:30, height:30, borderRadius:'50%', background:C.tealDim, border:`2px solid ${C.teal}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>⚓</div>
+            )}
+            <div style={{ maxWidth:'78%', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', overflow:'hidden', border:m.role!=='user'?`1px solid ${C.cardBorder}`:'none' }}>
               <div style={{ padding:'11px 14px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
+                {m.role==='staff' && <div style={{ fontSize:10, color:C.teal, fontWeight:700, marginBottom:3 }}>{marina.name} team</div>}
                 {m.role==='skipper' ? renderChatText(m.text) : m.text}
               </div>
+              {m.role==='user' && m.failed && (
+                <button onClick={() => retrySave(i)} style={{ display:'block', width:'100%', background:'rgba(239,68,68,0.15)', color:'#fca5a5', border:'none', padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer', textAlign:'right', fontFamily:FONT }}>
+                  Not delivered to the marina · Tap to retry
+                </button>
+              )}
               {(m as any).checkout_url && (
                 <a href={(m as any).checkout_url} target="_blank" rel="noopener noreferrer"
                   style={{ display:'block', padding:'12px 16px', background:'#0d9488', color:'#fff', textAlign:'center', fontWeight:700, fontSize:14, textDecoration:'none' }}>
@@ -3842,7 +3879,21 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   const [draft,        setDraft]        = useState('')
   const [sending,      setSending]      = useState(false)
   const [loading,      setLoading]      = useState(true)
+  // Send failures are never silent (2026-10-30 messaging-leak fix): the text stays in the box + Retry.
+  const [sendError,    setSendError]    = useState<string | null>(null)
+  // No lockout: a boater not linked to any marina (or wanting another one) can pick ANY marina.
+  const [browseAll,    setBrowseAll]    = useState(false)
+  const [allMarinas,   setAllMarinas]   = useState<{ id:string; name:string; city?:string; state?:string }[]>([])
+  const [marinaQuery,  setMarinaQuery]  = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!(browseAll || (!loading && myMarinas.length === 0)) || allMarinas.length) return
+    fetch(`/api/marinas?auth_user_id=${user.id}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { marinas: [] })
+      .then(d => setAllMarinas(d.marinas ?? []))
+      .catch(() => {})
+  }, [browseAll, loading, myMarinas.length, allMarinas.length, user.id])
 
   const displayName = profile
     ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || user.email
@@ -3864,13 +3915,18 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   }, [user.id])
 
   // ── Load messages for active marina via Railway (Rule 2 compliant) ────────
+  // Thread for the SELECTED marina (not whichever marina the server would guess).
+  const activeMarinaId = activeMarina?.marina_id ?? ''
   const loadThread = useCallback(async (_m?: MyMarina) => {
-    const res = await fetch(`/api/messages?auth_user_id=${user.id}`)
+    const mid = _m?.marina_id || activeMarinaId
+    const qs = mid ? `&marina_id=${encodeURIComponent(mid)}` : ''
+    const res = await fetch(`/api/messages?auth_user_id=${user.id}${qs}`, { cache: 'no-store' }).catch(() => null)
+    if (!res || !res.ok) return   // keep what is on screen; never blank the thread on a hiccup
     const data = await res.json().catch(() => ({}))
     setMsgs(data.messages ?? [])
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id])
+  }, [user.id, activeMarinaId])
 
   useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
 
@@ -3903,7 +3959,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       await fetch('/api/push-subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: user.id, endpoint: j.endpoint, p256dh: j.keys?.['p256dh'] ?? '', auth: j.keys?.['auth'] ?? '' })
+        body: JSON.stringify({ tenant_id: user.id, endpoint: j.endpoint, p256dh: j.keys?.['p256dh'] ?? '', auth: j.keys?.['auth'] ?? '', marina_id: activeMarina?.marina_id ?? null })
       })
     } catch (e) { console.error('[push-enable]', e) }
   }
@@ -3912,17 +3968,33 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   async function send() {
     if (!draft.trim() || !activeMarina || sending) return
     setSending(true)
+    setSendError(null)
     const body = draft.trim()
-    setDraft('')
-    await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        auth_user_id: user.id,
-        body,
-      }),
-    })
+    let errMsg: string | null = null
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_user_id: user.id,
+          body,
+          marina_id: activeMarina.marina_id,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        errMsg = (j && (j.detail || j.error)) ? String(j.detail || j.error) : `Error ${res.status}`
+      }
+    } catch {
+      errMsg = 'No connection'
+    }
     setSending(false)
+    if (errMsg) {
+      // Keep the text in the box so nothing is lost; show the error with a Retry button.
+      setSendError(`Message not sent (${errMsg}). Your text is still here - tap Retry.`)
+      return
+    }
+    setDraft('')
     loadThread()
   }
 
@@ -3945,14 +4017,36 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     </div>
   )
 
-  // ── Not connected to any marina ───────────────────────────────────────────
-  if (!loading && myMarinas.length === 0) return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', padding:'0 32px', textAlign:'center', color:C.muted }}>
-      <div style={{ fontSize:40, marginBottom:16 }}>⚓</div>
-      <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No marina connected</div>
-      <div style={{ fontSize:13, lineHeight:1.6 }}>Once your marina links your account, your conversation will appear here.</div>
-    </div>
-  )
+  // ── Pick ANY marina (not linked yet, or "Message another marina") ─────────
+  // 2026-10-30: replaces the old "No marina connected" dead end - nobody is locked out.
+  if (!activeMarina && (browseAll || (!loading && myMarinas.length === 0))) {
+    const q = marinaQuery.trim().toLowerCase()
+    const list = allMarinas.filter(m => !q || `${m.name} ${m.city ?? ''} ${m.state ?? ''}`.toLowerCase().includes(q)).slice(0, 60)
+    return (
+      <div style={{ padding:'24px 20px' }}>
+        {myMarinas.length > 0 && (
+          <button onClick={() => setBrowseAll(false)} style={{ background:'none', border:'none', color:C.teal, fontSize:14, cursor:'pointer', padding:0, marginBottom:10, fontFamily:FONT }}>‹ My marinas</button>
+        )}
+        <h1 style={{ fontSize:22, fontWeight:800, color:C.white, margin:'0 0 6px', letterSpacing:-0.5 }}>Message a marina</h1>
+        <p style={{ fontSize:13, color:C.muted, margin:'0 0 16px' }}>Pick the marina you want to reach. Your message goes straight to their team.</p>
+        <input value={marinaQuery} onChange={e => setMarinaQuery(e.target.value)} placeholder="Search marinas by name or town"
+          style={{ width:'100%', boxSizing:'border-box', background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:12, color:C.white, fontSize:14, fontFamily:FONT, padding:'11px 14px', outline:'none', marginBottom:12 }} />
+        <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+          {allMarinas.length === 0 && <div style={{ color:C.muted, fontSize:13, padding:'12px 0' }}>Loading marinas…</div>}
+          {list.map(m => (
+            <button key={m.id} onClick={() => { setActiveMarina({ marina_id: m.id, contact_id: '', marina_name: m.name, tenantType: 'external' }); setBrowseAll(false) }}
+              style={{ background:'rgba(255,255,255,0.05)', border:`1px solid rgba(255,255,255,0.09)`, borderRadius:16, padding:'14px 16px', display:'flex', alignItems:'center', gap:14, textAlign:'left', cursor:'pointer', width:'100%' }}>
+              <div style={{ width:40, height:40, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:C.white }}>{m.name}</div>
+                {(m.city || m.state) && <div style={{ fontSize:12, color:C.muted }}>{[m.city, m.state].filter(Boolean).join(', ')}</div>}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   // ── Marina picker (multiple marinas, none selected) ───────────────────────
   if (!activeMarina) return (
@@ -3967,6 +4061,10 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
             <div style={{ fontSize:15, fontWeight:700, color:C.white }}>{m.marina_name}</div>
           </button>
         ))}
+        <button onClick={() => setBrowseAll(true)}
+          style={{ background:'none', border:`1px dashed rgba(255,255,255,0.18)`, borderRadius:16, padding:'14px 16px', color:C.teal, fontSize:14, fontWeight:700, cursor:'pointer', width:'100%', marginTop:8, fontFamily:FONT }}>
+          + Message another marina
+        </button>
       </div>
     </div>
   )
@@ -3976,9 +4074,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     <div style={{ display:'flex', flexDirection:'column', height:'100%', minHeight:0 }}>
       {/* Header */}
       <div style={{ padding:'16px 20px 12px', borderBottom:`1px solid rgba(255,255,255,0.08)`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
-        {myMarinas.length > 1 && (
-          <button onClick={() => setActiveMarina(null)} style={{ background:'none', border:'none', color:C.teal, fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1 }}>‹</button>
-        )}
+        <button onClick={() => { setActiveMarina(null); setMsgs([]); setSendError(null) }} style={{ background:'none', border:'none', color:C.teal, fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1 }}>‹</button>
         <div style={{ width:36, height:36, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>⚓</div>
         <div>
           <div style={{ fontSize:16, fontWeight:800, color:C.white }}>{activeMarina.marina_name}</div>
@@ -4020,11 +4116,17 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
         <div ref={bottomRef} />
       </div>
 
+      {sendError && (
+        <div role="alert" style={{ background:'rgba(239,68,68,0.12)', borderTop:'1px solid rgba(239,68,68,0.4)', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexShrink:0 }}>
+          <div style={{ fontSize:12, color:'#fca5a5', lineHeight:1.4 }}>{sendError}</div>
+          <button onClick={send} disabled={sending} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:6, padding:'6px 14px', fontSize:12, fontWeight:800, cursor:'pointer', flexShrink:0, fontFamily:FONT }}>{sending ? 'Sending…' : 'Retry'}</button>
+        </div>
+      )}
       {/* Compose */}
       <div style={{ padding:'12px 16px env(safe-area-inset-bottom,12px)', borderTop:`1px solid rgba(255,255,255,0.08)`, display:'flex', gap:10, alignItems:'flex-end', flexShrink:0 }}>
         <textarea
           value={draft}
-          onChange={e => setDraft(e.target.value)}
+          onChange={e => { setDraft(e.target.value); if (sendError) setSendError(null) }}
           onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           placeholder={`Message ${activeMarina.marina_name}…`}
           rows={1}
