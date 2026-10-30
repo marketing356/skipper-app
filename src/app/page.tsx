@@ -4,7 +4,7 @@ import OPSShell from '@/components/OPSShell'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import ContactForm from '@/components/ContactForm'
-import InstallPrompt, { isBrowserTab, startInstall } from '@/components/InstallPrompt'
+import InstallPrompt, { isInstalledApp, startInstall } from '@/components/InstallPrompt'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
@@ -4840,12 +4840,12 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   const [pinErr,        setPinErr]        = React.useState('')
   const [pinBusy,       setPinBusy]       = React.useState(false)
 
-  // 'Install app on home screen' row (Mike 2026-10-30: ALWAYS available): shown whenever
-  // Skipper is open in a browser tab, re-checked on every render of this tab. Never hidden
-  // because of a past install or an 'appinstalled' event (the icon can be deleted later).
-  // Hidden only when opened from the home-screen icon (already installed right now).
-  // Client-only: TabAccount renders after sign-in, never in the server HTML.
-  const canInstall = isBrowserTab()
+  // 'App on your home screen' row (Mike 2026-10-30: ALWAYS in Account, in EVERY mode).
+  // Browser tab -> 'Install app on home screen' (one-tap prompt or steps).
+  // Installed app (standalone; Android links open here even after the icon is removed) ->
+  // 'Add Skipper icon to your home screen' (steps to put the icon back). Never hidden.
+  // Re-checked every render; client-only (TabAccount renders after sign-in).
+  const installedApp = isInstalledApp()
 
   async function requestEmailChange() {
     if (!newEmail.trim()) { setEmailMsg('Enter a new email address'); return }
@@ -4940,15 +4940,15 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
         </div>
       </div>
 
-      {/* Install app on home screen (browser tab only) */}
-      {canInstall && (
+      {/* App on your home screen: ALWAYS shown (browser tab AND installed app) */}
+      {(
         <button onClick={() => { startInstall().catch(() => {}) }}
           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, background: C.card, border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16, marginBottom: 14, cursor: 'pointer', fontFamily: FONT, textAlign: 'left', color: C.white }}>
           <img src="/skipper-icon-192.png" alt="" width={44} height={44}
             style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${C.tealBorder}`, flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: C.white, marginBottom: 2 }}>Install app on home screen</div>
-            <div style={{ fontSize: 13, color: C.muted }}>Open Skipper in one tap from your phone</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.white, marginBottom: 2 }}>{installedApp ? 'Add Skipper icon to your home screen' : 'Install app on home screen'}</div>
+            <div style={{ fontSize: 13, color: C.muted }}>{installedApp ? 'Missing the icon? Tap for how to put it back' : 'Open Skipper in one tap from your phone'}</div>
           </div>
           <div style={{ color: C.teal, fontSize: 22, fontWeight: 700, flexShrink: 0 }} aria-hidden="true">{'\u203A'}</div>
         </button>

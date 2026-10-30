@@ -6,7 +6,7 @@
 // Re-prompt (Mike GO 2026-10-30): Chrome fires 'beforeinstallprompt' ONLY when the app is
 // not installed (web.dev), so if it fires while we have the app marked installed, the icon
 // was deleted -> clear the mark + reset the count so the card shows again (same 3-open rule).
-// Account tab 'Install app on home screen' row uses startInstall()/isBrowserTab() below.
+// Account tab home-screen row (ALWAYS shown) uses startInstall()/isInstalledApp() below.
 // The early window-level 'beforeinstallprompt' capture + sw.js registration live in
 // the inline script in src/app/layout.tsx (it must run before React hydrates).
 import React, { useEffect, useRef, useState } from 'react'
@@ -60,6 +60,13 @@ function resetIfUninstalled(): void {
   } catch { /* ignore */ }
 }
 
+// True when Skipper is running as the installed app (opened from the icon / app list / a link
+// that Android routes into the installed app). Account tab then shows the 'put the icon back' row.
+export function isInstalledApp(): boolean {
+  if (typeof window === 'undefined') return false
+  return isStandalone()
+}
+
 // True when Skipper is running in a normal browser tab (not opened from the home-screen icon).
 export function isBrowserTab(): boolean {
   if (typeof window === 'undefined') return false
@@ -71,6 +78,12 @@ export function isBrowserTab(): boolean {
 // Explicit tap ALWAYS acts (Mike 2026-10-30): the 'skipper-open-install' handler below opens
 // the card regardless of skipper_a2hs_installed / Not-now count (those only gate the auto card).
 export async function startInstall(): Promise<'accepted' | 'dismissed' | 'steps'> {
+  // Installed app (Mike 2026-10-30): the icon may have been removed from the home screen while
+  // the app itself is still installed -> show the 'put the icon back' steps card.
+  if (isStandalone()) {
+    window.dispatchEvent(new CustomEvent('skipper-open-install', { detail: { restore: true } }))
+    return 'steps'
+  }
   const evt = getStoredPrompt()
   if (evt) {
     try {
@@ -136,6 +149,7 @@ export default function InstallPrompt({ active }: { active: boolean }) {
   const [open, setOpen] = useState(false)
   const [hasPrompt, setHasPrompt] = useState(false)
   const [ios, setIos] = useState(false)
+  const [restore, setRestore] = useState(false) // installed app: 'put the icon back' steps
   const activeRef = useRef(active)
   activeRef.current = active
 
@@ -156,6 +170,7 @@ export default function InstallPrompt({ active }: { active: boolean }) {
     shownThisLoad = true
     setTimeout(() => {
       try { localStorage.setItem(KEY_SHOWN, String(shown + 1)) } catch { /* ignore */ }
+      setRestore(false)
       setHasPrompt(!!getStoredPrompt())
       setOpen(true)
     }, 900)
@@ -176,7 +191,8 @@ export default function InstallPrompt({ active }: { active: boolean }) {
       try { localStorage.setItem(KEY_INSTALLED, '1') } catch { /* ignore */ }
       setOpen(false)
     }
-    const onOpenInstall = () => {
+    const onOpenInstall = (e: Event) => {
+      setRestore(!!(e as CustomEvent)?.detail?.restore)
       setHasPrompt(!!getStoredPrompt())
       setOpen(true)
     }
@@ -218,6 +234,36 @@ export default function InstallPrompt({ active }: { active: boolean }) {
   }
 
   if (!open) return null
+
+  // Installed app: simple 'put the icon back' steps (Mike 2026-10-30). Big text, both phones.
+  if (restore) {
+    const androidStep = (
+      <Step key='a' icon={<DotsIcon />} title='Android'
+        text={<span style={{ fontSize:17, lineHeight:1.45 }}>Open your phone's app list, find <b>Skipper</b>, press and hold it, and drag it to your home screen. If Skipper isn't in your app list, open <b>app.ayeayeskipper.com</b> in <b>Chrome</b> and tap <b>Install</b>.</span>} />
+    )
+    const iphoneStep = (
+      <Step key='i' icon={<ShareIcon />} title='iPhone'
+        text={<span style={{ fontSize:17, lineHeight:1.45 }}>Open <b>app.ayeayeskipper.com</b> in <b>Safari</b>, tap <b>Share</b>, then <b>Add to Home Screen</b>.</span>} />
+    )
+    return (
+      <div role='dialog' aria-modal='true' aria-label='Add Skipper icon to your home screen'
+        style={{ position:'fixed', inset:0, zIndex:100000, background:T.bgGrad, fontFamily:T.font, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom))', overflowY:'auto' }}>
+        <div style={{ width:'100%', maxWidth:380, display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center', gap:18 }}>
+          <img src='/skipper-icon-192.png' alt='Skipper' width={96} height={96}
+            style={{ width:96, height:96, borderRadius:24, border:`2px solid ${T.teal}`, boxShadow:'0 8px 32px rgba(77,214,200,0.25)' }} />
+          <div style={{ color:T.white, fontSize:26, fontWeight:800, lineHeight:1.2 }}>Add Skipper icon to your home screen</div>
+          <div style={{ color:T.muted, fontSize:17, lineHeight:1.45 }}>Missing the icon? Here's how to put it back.</div>
+          <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:12, marginTop:6 }}>
+            {ios ? [iphoneStep, androidStep] : [androidStep, iphoneStep]}
+          </div>
+          <button onClick={() => setOpen(false)}
+            style={{ width:'100%', marginTop:6, padding:'18px 20px', borderRadius:16, border:'none', background:T.teal, color:'#05111f', fontSize:18, fontWeight:800, fontFamily:T.font, cursor:'pointer', boxShadow:'0 6px 24px rgba(77,214,200,0.35)' }}>
+            Got it
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div role='dialog' aria-modal='true' aria-label='Add Skipper to your home screen'
