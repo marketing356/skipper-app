@@ -34,6 +34,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'userId required' }, { status: 400 })
     }
 
+    // Platform tagging (Mike 2026-10-30): native App Store app = iPhone = 'ios';
+    // mobile web app in a browser = 'android'. Trust an explicit body value first;
+    // otherwise decide from the caller. Vercel logs proved the native app sends
+    // UA "AyeAyeSkipperMarina/28 CFNetwork/... Darwin/..." and the web app sends a
+    // browser "Mozilla/5.0 ..." UA. Native app builds before fdbcaf3 omit platform.
+    const ua = req.headers.get('user-agent') ?? ''
+    const isNativeIosClient = !/Mozilla/i.test(ua) && /CFNetwork|Darwin\//i.test(ua)
+    const platform: 'ios' | 'android' =
+      clientPlatform === 'ios' || clientPlatform === 'android'
+        ? clientPlatform
+        : isNativeIosClient ? 'ios' : 'android'
+
     const clean = email.trim().toLowerCase()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = supabaseAdmin as any
@@ -54,7 +66,7 @@ export async function POST(req: NextRequest) {
     if (preLoaded) {
       await admin
         .from('contacts')
-        .update({ auth_user_id: userId, setup_complete: true, platform: clientPlatform ?? 'android' })
+        .update({ auth_user_id: userId, setup_complete: true, platform })
         .in('id', marinaContacts.map((c: { id: string }) => c.id))
     }
 
@@ -64,7 +76,7 @@ export async function POST(req: NextRequest) {
     const syncPatch: Record<string, unknown> = {
       auth_user_id:    userId,
       setup_complete:  preLoaded,  // true = skip onboarding form, false = show it
-      platform:        clientPlatform ?? 'android',  // iOS native app sends 'ios', web app defaults 'android'
+      platform,        // see platform tagging rule above
     }
     if (bestMarina?.first_name) syncPatch.first_name = bestMarina.first_name
     if (bestMarina?.last_name)  syncPatch.last_name  = bestMarina.last_name
