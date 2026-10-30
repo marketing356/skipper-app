@@ -4,6 +4,7 @@ import OPSShell from '@/components/OPSShell'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import ContactForm from '@/components/ContactForm'
+import InstallPrompt from '@/components/InstallPrompt'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
@@ -913,7 +914,11 @@ export default function SkipperApp() {
   )
 
   // ── Home ──
+  // InstallPrompt: Add-Skipper-to-home-screen card for phone-browser boaters,
+  // shown once they are signed in (first sign-in + next 2 opens; never once installed).
   return (
+    <>
+    <InstallPrompt active={screen === 'home' && !!user} />
     <HomeScreen
       user={user!}
       profile={profile}
@@ -943,6 +948,7 @@ export default function SkipperApp() {
       leaseProfile={leaseProfile}
       coupledMarinas={coupledMarinas}
     />
+    </>
   )
 }
 

@@ -1,14 +1,32 @@
 {
+  "id": "/",
   "name": "Skipper",
   "short_name": "Skipper",
   "description": "We run on Skipper. Your marina, your slip, everything in one place.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#05111f",
   "theme_color": "#4dd6c8",
   "orientation": "portrait",
   "icons": [
-    { "src": "/skipper-logo.jpg", "sizes": "192x192", "type": "image/jpeg" },
-    { "src": "/skipper-logo.jpg", "sizes": "512x512", "type": "image/jpeg" }
+    {
+      "src": "/skipper-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/skipper-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/skipper-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
