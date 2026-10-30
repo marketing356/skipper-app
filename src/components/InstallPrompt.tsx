@@ -68,6 +68,8 @@ export function isBrowserTab(): boolean {
 
 // Account tab button: use the browser's own install dialog when it offered one,
 // otherwise open the install card with the simple Android / iPhone steps.
+// Explicit tap ALWAYS acts (Mike 2026-10-30): the 'skipper-open-install' handler below opens
+// the card regardless of skipper_a2hs_installed / Not-now count (those only gate the auto card).
 export async function startInstall(): Promise<'accepted' | 'dismissed' | 'steps'> {
   const evt = getStoredPrompt()
   if (evt) {

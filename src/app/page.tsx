@@ -4840,14 +4840,12 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
   const [pinErr,        setPinErr]        = React.useState('')
   const [pinBusy,       setPinBusy]       = React.useState(false)
 
-  // 'Install app on home screen' row: only in a browser tab, never inside the installed app.
-  const [canInstall, setCanInstall] = React.useState(false)
-  React.useEffect(() => {
-    setCanInstall(isBrowserTab())
-    const onInstalled = () => setCanInstall(false)
-    window.addEventListener('appinstalled', onInstalled)
-    return () => window.removeEventListener('appinstalled', onInstalled)
-  }, [])
+  // 'Install app on home screen' row (Mike 2026-10-30: ALWAYS available): shown whenever
+  // Skipper is open in a browser tab, re-checked on every render of this tab. Never hidden
+  // because of a past install or an 'appinstalled' event (the icon can be deleted later).
+  // Hidden only when opened from the home-screen icon (already installed right now).
+  // Client-only: TabAccount renders after sign-in, never in the server HTML.
+  const canInstall = isBrowserTab()
 
   async function requestEmailChange() {
     if (!newEmail.trim()) { setEmailMsg('Enter a new email address'); return }
