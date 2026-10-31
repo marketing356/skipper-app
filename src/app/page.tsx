@@ -11,6 +11,7 @@ import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
 import { reportAppOpen } from '@/lib/app-open-client'
 import type { User } from '@supabase/supabase-js'
 
+const MarinaLayoutMap = dynamic(() => import('@/components/MarinaLayoutMap'), { ssr: false, loading: () => <div style={{ fontSize:13, color:'rgba(255,255,255,0.5)' }}>Loading map…</div> })
 const MarinaMap = dynamic(() => import('@/components/MarinaMap'), { ssr: false, loading: () => <div style={{ width:'100%', height:'100%', background:'#0d1f2d', display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.4)', fontSize:13 }}>Loading map…</div> })
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -2854,6 +2855,11 @@ function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequ
 
         {!loading && data && (
           <>
+            {/* Marina map - public layout, slip + mooring labels only (Mike 2026-10-31) */}
+            <ProfileSection title="Marina map">
+              <MarinaLayoutMap marinaId={marina.id} />
+            </ProfileSection>
+
             {/* About */}
             {m?.description && (
               <ProfileSection title="About">
