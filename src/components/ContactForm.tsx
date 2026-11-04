@@ -125,7 +125,7 @@ function renderControl(field: ContactField, c: Record<string, unknown>) {
     case 'textarea':
       return (
         <textarea name={field.name} rows={TEXTAREA_ROWS[field.name] ?? 3}
-          placeholder={field.placeholder}
+          placeholder=""
           defaultValue={(c[field.name] ?? '') as string}
           style={{ ...inputStyle, resize: 'none' }} />
       )
@@ -138,7 +138,7 @@ function renderControl(field: ContactField, c: Record<string, unknown>) {
     case 'bool-select':
       return <FBoolSelect name={field.name} defaultValue={c[field.name] as boolean | null} />
     default:
-      return <FInput name={field.name} type={field.type} placeholder={field.placeholder} defaultValue={c[field.name]} />
+      return <FInput name={field.name} type={field.type} placeholder="" defaultValue={c[field.name]} />
   }
 }
 

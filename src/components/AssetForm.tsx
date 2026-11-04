@@ -290,7 +290,7 @@ export default function AssetForm({ asset, contactId, authUserId, onSaved, onCan
       case 'textarea':
         return (
           <textarea name={field.name} rows={TEXTAREA_ROWS[field.name] ?? 3}
-            className="form-input resize-none" placeholder={field.placeholder}
+            className="form-input resize-none" placeholder=""
             defaultValue={a[field.name] ?? ''} />
         )
       case 'select':
@@ -304,9 +304,9 @@ export default function AssetForm({ asset, contactId, authUserId, onSaved, onCan
       case 'bool-select':
         return <BoolSelect name={field.name} defaultValue={a[field.name]} />
       case 'tag-input':
-        return <TagInput name={field.name} defaultValue={a[field.name]} placeholder={field.placeholder} />
+        return <TagInput name={field.name} defaultValue={a[field.name]} placeholder="" />
       default:
-        return <Input name={field.name} type={field.type} placeholder={field.placeholder} defaultValue={a[field.name]} />
+        return <Input name={field.name} type={field.type} placeholder="" defaultValue={a[field.name]} />
     }
   }
 
