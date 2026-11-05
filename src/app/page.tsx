@@ -93,6 +93,7 @@ type BerthData = {
   startDate: string | null
   endDate: string | null
   assetId: string | null
+  spaceType?: string | null
 }
 
 type Profile = {
@@ -1419,6 +1420,9 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 }) {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
   const isDesktop = useIsDesktop()
+  // "Show on map" buttons (Vessel and Home tabs) open the Marinas tab straight onto that marina's page.
+  const [mapMarinaId, setMapMarinaId] = useState<string | null>(null)
+  const showOnMap = (marinaId: string) => { setMapMarinaId(marinaId); onTabChange('marinas') }
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
@@ -1606,8 +1610,8 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-          {activeTab === 'home'     && <TabHome user={user} profile={profile} vessel={vessel} marinaProfile={marinaProfile} spaceProfile={spaceProfile} leaseProfile={leaseProfile} weatherData={weatherData} onTabChange={onTabChange} />}
-          {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} />}
+          {activeTab === 'home'     && <TabHome user={user} profile={profile} vessel={vessel} marinaProfile={marinaProfile} spaceProfile={spaceProfile} leaseProfile={leaseProfile} weatherData={weatherData} onTabChange={onTabChange} onShowOnMap={showOnMap} />}
+          {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} onShowOnMap={showOnMap} />}
           {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
             if (typeof navigator === 'undefined' || !navigator.geolocation) return
             navigator.geolocation.getCurrentPosition(pos => {
@@ -1615,7 +1619,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
           }} />}
-          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} vessels={vessels} spaceProfile={spaceProfile} leaseProfile={leaseProfile} marinaProfile={marinaProfile} />}
+          {activeTab === 'marinas'  && <TabMarinas  user={user} profile={profile} vessel={vessel} vessels={vessels} spaceProfile={spaceProfile} leaseProfile={leaseProfile} marinaProfile={marinaProfile} openMarinaId={mapMarinaId} onOpenHandled={() => setMapMarinaId(null)} />}
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
@@ -1641,9 +1645,9 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
-function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselDeleted, vesselsLoading }: {
+function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselDeleted, vesselsLoading, onShowOnMap }: {
   vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void
-  vesselsLoading: boolean
+  vesselsLoading: boolean; onShowOnMap?: (marinaId: string) => void
 }) {
   // ── Berth state ──────────────────────────────────────────────────────────────
   const [berths,      setBerths]      = useState<BerthData[]>([])
@@ -1755,7 +1759,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
           <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>
             Current Berth{berths.length > 1 ? 's' : ''}
           </div>
-          {berths.map(b => <BerthCard key={b.id} berth={b} />)}
+          {berths.map(b => <BerthCard key={b.id} berth={b} onShowOnMap={onShowOnMap} />)}
         </div>
       )}
 
@@ -1781,8 +1785,8 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         <>
           {vessels.map((v, idx) => (
             <div key={vesselIds[idx]} style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
-              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:16 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:12, minWidth:0 }}>
                   <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>{vesselIcon(v.vessel_type)}</div>
                   <div>
                     <div style={{ fontSize:20, fontWeight:800, letterSpacing:-0.4 }}>{v.name}</div>
@@ -1795,7 +1799,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                         <div style={{ marginTop:6 }}>
                           <div style={{ fontSize:15, fontWeight:800, color:'#4dd6c8', letterSpacing:-0.2 }}>{b.marinaName}</div>
                           <div style={{ fontSize:13, fontWeight:700, color:'#4ade80', marginTop:2 }}>
-                            {b.slipNumber ? `Slip ${b.slipNumber}` : b.leaseType ?? 'Active Berth'}
+                            {b.slipNumber ? spaceWord(b.spaceType) + ' ' + b.slipNumber : (leaseTypeLabel(b.leaseType) || 'Active Berth')}
                           </div>
                           {(v.shore_power || v.fuel_type) && (
                             <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
@@ -1835,7 +1839,21 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 }
 
 // ─── Berth Card ──────────────────────────────────────────────────────────────────
-function BerthCard({ berth }: { berth: BerthData }) {
+// Plain-English words for lease codes and space types (never show a raw code like follows_boat).
+function leaseTypeLabel(code?: string | null): string {
+  const c = (code || '').trim().toLowerCase()
+  if (!c) return ''
+  const known: Record<string, string> = { follows_boat: 'Follows the boat', month_to_month: 'Month to month', annual: 'Annual', seasonal: 'Seasonal', monthly: 'Monthly', transient: 'Transient', winter: 'Winter storage', summer: 'Summer' }
+  if (known[c]) return known[c]
+  const t = c.replace(/_/g, ' ')
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+function spaceWord(t?: string | null): string {
+  const k = (t || 'slip').toLowerCase()
+  return k === 'mooring' ? 'Mooring' : k === 'yard' ? 'Yard space' : k === 'rack' ? 'Rack' : k === 'parking' ? 'Parking' : k === 'slip' ? 'Slip' : 'Space'
+}
+
+function BerthCard({ berth, onShowOnMap }: { berth: BerthData; onShowOnMap?: (marinaId: string) => void }) {
   const days      = daysUntil(berth.endDate)
   const isExpired = days !== null && days < 0
   const isDueSoon = days !== null && days >= 0 && days <= 30
@@ -1878,11 +1896,11 @@ function BerthCard({ berth }: { berth: BerthData }) {
           <div style={{ fontSize:16, fontWeight:800, letterSpacing:-0.3 }}>{berth.marinaName}</div>
           {berth.slipNumber && (
             <div style={{ fontSize:13, color:C.teal, fontWeight:700, marginTop:1 }}>
-              Slip {berth.slipNumber}{berth.dock ? ` · Dock ${berth.dock}` : ''}
+              {spaceWord(berth.spaceType)} {berth.slipNumber}{berth.dock ? ' · Dock ' + berth.dock : ''}
             </div>
           )}
           {!berth.slipNumber && berth.leaseType && (
-            <div style={{ fontSize:13, color:C.muted, marginTop:1 }}>{berth.leaseType}</div>
+            <div style={{ fontSize:13, color:C.muted, marginTop:1 }}>{leaseTypeLabel(berth.leaseType)}</div>
           )}
         </div>
       </div>
@@ -1893,7 +1911,7 @@ function BerthCard({ berth }: { berth: BerthData }) {
           <StatTile label="Monthly" value={`$${Number(berth.monthlyRate).toLocaleString()}`} />
         )}
         {berth.leaseType && (
-          <StatTile label="Lease Type" value={berth.leaseType.charAt(0).toUpperCase() + berth.leaseType.slice(1)} />
+          <StatTile label="Lease Type" value={leaseTypeLabel(berth.leaseType)} />
         )}
         {berth.startDate && (
           <StatTile label="Start" value={fmtDate(berth.startDate)} />
@@ -2319,7 +2337,7 @@ function transientStatusMeta(status: string): { color: string; label: string; ph
   return { color:'#f59e0b', label:'⏳ Pending', phase:'upcoming' }
 }
 
-function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile, marinaProfile }: { user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null }) {
+function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile, marinaProfile, openMarinaId, onOpenHandled }: { user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null; openMarinaId?: string|null; onOpenHandled?: () => void }) {
   const [myBerthMap, setMyBerthMap] = useState<Record<string, string | null>>({}) // marina_id → slip label
   const [payingReqInvoice, setPayingReqInvoice] = useState<string|null>(null)
   const [reqPayError,      setReqPayError]      = useState<string|null>(null)
@@ -2406,6 +2424,15 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
     load()
   }, [user.id, user.email])
 
+  // "Show on map" from the Vessel / Home tabs: open that marina's page (the map lights up the customer's own spaces).
+  useEffect(() => {
+    if (!openMarinaId || loading) return
+    const mm = marinas.find(x => x.id === openMarinaId)
+    if (mm) setProfileMarina(mm)
+    onOpenHandled?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openMarinaId, loading, marinas])
+
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3200)
@@ -2482,6 +2509,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
       marina={profileMarina}
       coupled={coupledIds.has(profileMarina.id)}
       berth={myBerthMap[profileMarina.id]}
+      userId={user.id}
       onBack={() => setProfileMarina(null)}
       onMessage={() => { setSelected(profileMarina); setProfileMarina(null) }}
       onRequestSlip={() => { setTransientMarina(profileMarina); setProfileMarina(null) }}
@@ -2544,6 +2572,12 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
                 <span style={{ fontSize:11, fontWeight:700, color:sc }}>{sl}</span>
               </div>
               {r.assigned_slip_label && <div style={{ fontSize:13, fontWeight:700, color:C.teal, marginBottom:2 }}>Slip {r.assigned_slip_label}</div>}
+              {r.assigned_slip_label && r.marina_id && marinas.some(x => x.id === r.marina_id) && (
+                <button onClick={() => { const mm = marinas.find(x => x.id === r.marina_id); if (mm) setProfileMarina(mm) }}
+                  style={{ margin:'4px 0 6px', padding:'6px 12px', fontSize:12, fontWeight:700, color:C.teal, background:'rgba(77,214,200,0.1)', border:'1px solid ' + C.tealBorder, borderRadius:10, cursor:'pointer', fontFamily:'inherit' }}>
+                  Show on map
+                </button>
+              )}
               <div style={{ fontSize:12, color:C.muted }}>{r.vessel_name || 'Vessel'} · {r.arrival_date}{r.departure_date ? ` → ${r.departure_date}` : ''}{nights ? ` · ${nights} night${nights>1?'s':''}` : ''}</div>
               {(r.quoted_nightly || total) && (
                 <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
@@ -2755,13 +2789,24 @@ const AMENITY_GROUPS: [string,string[]][] = [
   ['Nearby', ['groceries','alcohol','medical','hotels','restaurants','pharmacy','beach','golf']],
 ]
 
-function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequestSlip, onConnect, connecting }: {
-  marina: Marina; coupled: boolean; berth?: string | null
+function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage, onRequestSlip, onConnect, connecting }: {
+  marina: Marina; coupled: boolean; berth?: string | null; userId?: string
   onBack: () => void; onMessage: () => void; onRequestSlip: () => void
   onConnect: (e: React.MouseEvent) => void; connecting: boolean
 }) {
   const [data,    setData]    = useState<MarinaStorefront | null>(null)
   const [loading, setLoading] = useState(true)
+  // The customer's own spaces at this marina (slip, yard trailer, mooring, booked transient slip): lit up on the map.
+  const [mySpaces, setMySpaces] = useState<{ label: string; kind: string; space_type?: string | null; asset_name?: string | null }[]>([])
+  useEffect(() => {
+    if (!userId) return
+    let off = false
+    fetch('/api/my-spaces?auth_user_id=' + userId + '&marina_id=' + encodeURIComponent(marina.id), { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!off && d && Array.isArray(d.spaces)) setMySpaces(d.spaces) })
+      .catch(() => {})
+    return () => { off = true }
+  }, [userId, marina.id])
 
   useEffect(() => {
     let cancelled = false
@@ -2857,7 +2902,7 @@ function MarinaProfileScreen({ marina, coupled, berth, onBack, onMessage, onRequ
           <>
             {/* Marina map - public layout, slip + mooring labels only (Mike 2026-10-31) */}
             <ProfileSection title="Marina map">
-              <MarinaLayoutMap marinaId={marina.id} />
+              <MarinaLayoutMap marinaId={marina.id} highlights={mySpaces} />
             </ProfileSection>
 
             {/* About */}
@@ -4269,10 +4314,10 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
 
 // ─── Floating Skipper ──────────────────────────────────────────────────────
 // ─── TAB: Home Dashboard ────────────────────────────────────────────────────────
-function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProfile, weatherData, onTabChange }: {
+function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProfile, weatherData, onTabChange, onShowOnMap }: {
   user: User; profile: Profile|null; vessel: Vessel|null
   marinaProfile: MarinaProfile|null; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null
-  weatherData: WeatherData|null; onTabChange: (t: HomeTab) => void
+  weatherData: WeatherData|null; onTabChange: (t: HomeTab) => void; onShowOnMap?: (marinaId: string) => void
 }) {
   const [invoices,        setInvoices]        = useState<any[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
@@ -4573,6 +4618,12 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
               </div>
               <div style={{ fontSize:12.5, color:C.teal, fontWeight:700, marginBottom:2 }}>{b.assigned_slip_label ? `Slip ${b.assigned_slip_label}` : 'Transient stay'}{(b.marina_city || b.marina_state) ? <span style={{ color:C.muted, fontWeight:500 }}>{`  ·  ${[b.marina_city, b.marina_state].filter(Boolean).join(', ')}`}</span> : null}</div>
               <div style={{ fontSize:12, color:C.muted, marginBottom: _canManage ? 10 : 0 }}>{b.vessel_name || 'Vessel'} · {b.arrival_date}{b.departure_date ? ` → ${b.departure_date}` : ''}{b.nights ? ` · ${b.nights} night${b.nights>1?'s':''}` : ''}</div>
+              {b.assigned_slip_label && b.marina_id && onShowOnMap && (
+                <button onClick={() => onShowOnMap(b.marina_id)}
+                  style={{ width:'100%', padding:'8px 0', marginBottom:8, fontSize:12, fontWeight:700, color:C.teal, background:'rgba(77,214,200,0.1)', border:'1px solid ' + C.tealBorder, borderRadius:10, cursor:'pointer', fontFamily:'inherit' }}>
+                  Show my slip on the map
+                </button>
+              )}
               {_canManage && (
                 <button onClick={() => openManage(b)}
                   style={{ width:'100%', padding:'8px 0', fontSize:12, fontWeight:700, color:C.teal, background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit' }}>

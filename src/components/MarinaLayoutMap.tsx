@@ -19,11 +19,13 @@ type MapData = {
   buildingLabels: Record<string, string>
 }
 type VB = { x: number; y: number; w: number; h: number }
+// The logged-in customer's own spaces (from /api/my-spaces): lit up on the map. Only their own, never anyone else's.
+export type Highlight = { label: string; kind?: string; space_type?: string | null; asset_name?: string | null }
 
 const DOCK_FILL: Record<string, string> = { walnut: '#9a7b55', driftwood: '#b49b78', slate: '#7b8794' }
 const toPts = (p: any): Pt[] => (Array.isArray(p) ? p.map((q: any) => (Array.isArray(q) ? { x: q[0], y: q[1] } : { x: q?.x, y: q?.y })).filter(q => typeof q.x === 'number' && typeof q.y === 'number') : [])
 
-export default function MarinaLayoutMap({ marinaId }: { marinaId: string }) {
+export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaId: string; highlights?: Highlight[] }) {
   const [maps, setMaps] = useState<MapData[] | null>(null)
   const [idx, setIdx] = useState(0)
   const [err, setErr] = useState(false)
@@ -52,6 +54,22 @@ export default function MarinaLayoutMap({ marinaId }: { marinaId: string }) {
     return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + 2 * pad, h: y1 - y0 + 2 * pad }
   }, [m])
 
+  // Spaces to light up: matched to this map by label (preferred space type first, then any).
+  const mine = useMemo(() => {
+    if (!m) return []
+    const arrays = { slip: m.slips, mooring: m.moorings, yard: m.yard }
+    const out: { h: Highlight; p: { label: string; x: number; y: number }; type: 'slip' | 'mooring' | 'yard' }[] = []
+    for (const h of highlights) {
+      const lab = (h.label || '').trim().toLowerCase(); if (!lab) continue
+      const t = (h.space_type || 'slip').toLowerCase()
+      const pref: 'slip' | 'mooring' | 'yard' = t === 'mooring' ? 'mooring' : (t === 'slip' ? 'slip' : 'yard')
+      const order = [pref, ...(['slip', 'mooring', 'yard'] as const).filter(k => k !== pref)]
+      for (const k of order) { const p = arrays[k].find(q => q.label.toLowerCase() === lab); if (p) { out.push({ h, p, type: k }); break } }
+    }
+    return out
+  }, [m, highlights])
+  const mineKey = mine.map(x => x.type + ':' + x.p.label).join('|')
+
   const rect = () => boxRef.current?.getBoundingClientRect()
   // Fit the whole marina into the box (keeps the box's aspect ratio).
   const fit = () => {
@@ -61,7 +79,17 @@ export default function MarinaLayoutMap({ marinaId }: { marinaId: string }) {
     if (h < bounds.h) { h = bounds.h; w = h / asp }
     setVb({ x: bounds.x + bounds.w / 2 - w / 2, y: bounds.y + bounds.h / 2 - h / 2, w, h })
   }
-  useEffect(() => { setQuery(''); const t = setTimeout(fit, 30); return () => clearTimeout(t) }, [idx, maps, expanded, bounds]) // eslint-disable-line
+  // Zoom so the customer's own space(s) fill the view (several spaces: fit them all).
+  const zoomMine = () => {
+    const r = rect(); if (!r || !bounds || !r.width || !r.height || !mine.length) return
+    const asp = r.height / r.width
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
+    mine.forEach(({ p }) => { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y) })
+    let w = Math.max(x1 - x0 + 40, bounds.w / 7), h = w * asp
+    if (h < y1 - y0 + 40) { h = y1 - y0 + 40; w = h / asp }
+    setVb({ x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h })
+  }
+  useEffect(() => { setQuery(''); const t = setTimeout(fit, 30); const t2 = setTimeout(zoomMine, 90); return () => { clearTimeout(t); clearTimeout(t2) } }, [idx, maps, expanded, bounds, mineKey]) // eslint-disable-line
 
   const zoomAt = (px: number, py: number, factor: number) => setVb(v => {
     const r = rect(); if (!v || !r || !bounds) return v
@@ -113,6 +141,7 @@ export default function MarinaLayoutMap({ marinaId }: { marinaId: string }) {
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a slip, e.g. A12"
           style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontFamily: 'inherit', fontSize: 13 }} />
         {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
+        {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>My spot</button>}
         <button onClick={fit} style={btn()}>Reset</button>
         <button onClick={() => setExpanded(v => !v)} style={btn()}>{expanded ? 'Close' : 'Expand'}</button>
       </div>
@@ -148,11 +177,32 @@ export default function MarinaLayoutMap({ marinaId }: { marinaId: string }) {
                 <text x={p.x} y={p.y - 5} fontSize={labelSize * 1.5} fontWeight={800} textAnchor="middle" fill="#9a3412" style={halo}>{p.label}</text>
               </g>
             ))}
+            {mine.map(({ p }, i) => (
+              <g key={'mine' + i} pointerEvents="none">
+                <circle cx={p.x} cy={p.y} r={5} fill="none" stroke="#e11d48" strokeWidth={1.4}>
+                  <animate attributeName="r" values="5;14;5" dur="1.8s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="1;0.1;1" dur="1.8s" repeatCount="indefinite" />
+                </circle>
+                <circle cx={p.x} cy={p.y} r={3.2} fill="#e11d48" stroke="#fff" strokeWidth={0.9} />
+                <text x={p.x} y={p.y - 6.5} fontSize={labelSize * 1.35} fontWeight={800} textAnchor="middle" fill="#9f1239" style={halo}>{p.label}</text>
+              </g>
+            ))}
             {m.sections.filter(s => m.dockLabels[s.id]).map(s => <text key={'d' + s.id} x={s.x} y={s.y} fontSize={13} fontWeight={800} textAnchor="middle" fill="#1f2937" style={halo}>{m.dockLabels[s.id]}</text>)}
             {m.sections.filter(s => m.buildingLabels[s.id]).map(s => <text key={'b' + s.id} x={s.x} y={s.y} fontSize={11} fontWeight={700} textAnchor="middle" fill="#7c2d12" style={halo}>{m.buildingLabels[s.id]}</text>)}
           </svg>
         )}
       </div>
+      {mine.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {mine.map(({ h, p, type }, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#fff' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 5, background: '#e11d48', flexShrink: 0 }} />
+              <span style={{ fontWeight: 700 }}>{h.kind === 'transient' ? 'Your booked slip ' : type === 'yard' ? 'Your yard space ' : type === 'mooring' ? 'Your mooring ' : 'Your slip '}{p.label}</span>
+              {h.asset_name && <span style={{ color: 'rgba(255,255,255,0.6)' }}>{h.asset_name}</span>}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>Pinch or scroll to zoom, drag to move. Zoom in to see slip numbers. Layout only — no vessel information is shown.</div>
     </div>
   )
