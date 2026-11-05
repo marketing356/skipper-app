@@ -3873,6 +3873,30 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
 }
 
 // ─── TAB: Skipper AI (Global) ────────────────────────────────────────────────
+// ─── Messaging circles (2026-11-05): plain line icons, same keys the engine stores ───
+function CircleGlyph({ name, size = 22, color = 'currentColor' }: { name: string; size?: number; color?: string }) {
+  const P: Record<string, React.ReactNode> = {
+    building: (<><rect x="5" y="3" width="14" height="18" rx="1" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" /></>),
+    anchor: (<><circle cx="12" cy="5" r="2" /><path d="M12 7v14M8 11h8M5 14c0 4 3 7 7 7s7-3 7-7" /></>),
+    fuel: (<><path d="M5 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v17M4 21h12M15 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V9l-3-3" /><path d="M7 8h6" /></>),
+    bag: (<><path d="M6 8h12l1 12H5L6 8z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>),
+    wrench: (<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5z" />),
+    shield: (<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" />),
+    chat: (<path d="M4 5h16v11H9l-5 4V5z" />),
+    phone: (<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />),
+    wave: (<path d="M3 9c3-3 5 3 9 0s6 3 9 0M3 15c3-3 5 3 9 0s6 3 9 0" />),
+    flag: (<path d="M5 21V4M5 4h12l-2 4 2 4H5" />),
+    star: (<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z" />),
+    key: (<><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M16 7l3 3" /></>),
+    more: (<><circle cx="5" cy="12" r="1.6" fill="currentColor" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /><circle cx="19" cy="12" r="1.6" fill="currentColor" /></>),
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {P[name] || P.chat}
+    </svg>
+  )
+}
+
 // ─── TAB: Messages ───────────────────────────────────────────────────────────
 type DirectThread = { marina_id: string; marinaName: string; lastBody: string; lastAt: string; unread: number }
 type DirectMsg    = { id: string; body: string; direction: string; inserted_at: string }
@@ -3892,6 +3916,15 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   const [allMarinas,   setAllMarinas]   = useState<{ id:string; name:string; city?:string; state?:string }[]>([])
   const [marinaQuery,  setMarinaQuery]  = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  // Messaging circles (2026-11-05): a marina with only the Office on looks and works exactly as before.
+  type Circle = { key: string; name: string; icon: string; phone: string; vhf: string; hours: string; unread: number }
+  const [circles,       setCircles]       = useState<Circle[]>([])
+  const [activeCircle,  setActiveCircle]  = useState('')
+  const [circlesReady,  setCirclesReady]  = useState(false)
+  const [showMore,      setShowMore]      = useState(false)
+  const [routedNote,    setRoutedNote]    = useState('')
+  const circleRef = useRef('')
+  circleRef.current = activeCircle
 
   useEffect(() => {
     if (!(browseAll || (!loading && myMarinas.length === 0)) || allMarinas.length) return
@@ -3923,25 +3956,46 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
   // ── Load messages for active marina via Railway (Rule 2 compliant) ────────
   // Thread for the SELECTED marina (not whichever marina the server would guess).
   const activeMarinaId = activeMarina?.marina_id ?? ''
+  const loadCircles = useCallback(async (_mid?: string) => {
+    const id = _mid || activeMarinaId
+    if (!id) return
+    const res = await fetch(`/api/message-circles?auth_user_id=${user.id}&marina_id=${encodeURIComponent(id)}`, { cache: 'no-store' }).catch(() => null)
+    if (!res || !res.ok) return
+    const d = await res.json().catch(() => ({}))
+    const list: Circle[] = Array.isArray(d.circles) ? d.circles : []
+    setCircles(list)
+    setActiveCircle(prev => list.length <= 1 ? '' : (list.some(c => c.key === prev) ? prev : 'office'))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, activeMarinaId])
   const loadThread = useCallback(async (_m?: MyMarina) => {
     const mid = _m?.marina_id || activeMarinaId
-    const qs = mid ? `&marina_id=${encodeURIComponent(mid)}` : ''
+    const qs = (mid ? `&marina_id=${encodeURIComponent(mid)}` : '') + (circleRef.current ? `&circle=${encodeURIComponent(circleRef.current)}` : '')
     const res = await fetch(`/api/messages?auth_user_id=${user.id}${qs}`, { cache: 'no-store' }).catch(() => null)
     if (!res || !res.ok) return   // keep what is on screen; never blank the thread on a hiccup
     const data = await res.json().catch(() => ({}))
     setMsgs(data.messages ?? [])
+    if (circleRef.current) loadCircles(mid)
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id, activeMarinaId])
 
-  useEffect(() => { if (activeMarina) loadThread(activeMarina) }, [activeMarina?.marina_id])
+  // Circles first, so the very first thread load is already the right circle (never a mixed thread).
+  useEffect(() => {
+    setCirclesReady(false); setCircles([]); setActiveCircle(''); setShowMore(false); setRoutedNote('')
+    if (activeMarina) loadCircles(activeMarina.marina_id).finally(() => setCirclesReady(true))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMarina?.marina_id])
+  useEffect(() => {
+    if (activeMarina && circlesReady) { setMsgs([]); loadThread(activeMarina) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMarina?.marina_id, circlesReady, activeCircle])
 
   // Marina channel — public, Railway already broadcasts here on message events.
   // This is how Helm → Boater messages arrive in real-time.
   useSkipperRealtime({
     scope: { kind: 'marina', id: activeMarina?.marina_id ?? '' },
     enabled: !!activeMarina?.marina_id,
-    onChange: () => { loadThread() },
+    onChange: () => { loadThread(); loadCircles() },
   })
 
   // ── Enable push notifications ──────────────────────────────────────────
@@ -3977,7 +4031,10 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
     setSendError(null)
     const body = draft.trim()
     let errMsg: string | null = null
+    let switchedCircle = false
     try {
+      // Circles: in the Office the words decide ("auto"); in any other circle the message stays there.
+      const circleToSend = circles.length > 1 ? (activeCircle === 'office' || !activeCircle ? 'auto' : activeCircle) : undefined
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3985,11 +4042,21 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
           auth_user_id: user.id,
           body,
           marina_id: activeMarina.marina_id,
+          ...(circleToSend ? { circle: circleToSend } : {}),
         }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         errMsg = (j && (j.detail || j.error)) ? String(j.detail || j.error) : `Error ${res.status}`
+      } else if (circles.length > 1) {
+        const j = await res.json().catch(() => ({}))
+        if (j && j.circle && j.circle !== activeCircle) {
+          const c = circles.find(x => x.key === j.circle)
+          setRoutedNote(`Sent to ${c ? c.name : 'the right team'}`)
+          setTimeout(() => setRoutedNote(''), 6000)
+          switchedCircle = true
+          setActiveCircle(j.circle)
+        }
       }
     } catch {
       errMsg = 'No connection'
@@ -4001,7 +4068,8 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       return
     }
     setDraft('')
-    loadThread()
+    if (!switchedCircle) loadThread()
+    loadCircles()
   }
 
   function fmtTime(iso: string) {
@@ -4084,9 +4152,59 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
         <div style={{ width:36, height:36, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>⚓</div>
         <div>
           <div style={{ fontSize:16, fontWeight:800, color:C.white }}>{activeMarina.marina_name}</div>
-          <div style={{ fontSize:11, color:C.muted }}>Marina team</div>
+          <div style={{ fontSize:11, color:C.muted }}>{circles.length > 1 ? (circles.find(c => c.key === activeCircle)?.name || 'Marina team') : 'Marina team'}</div>
         </div>
       </div>
+
+      {/* Messaging circles: four across, the last one is More when the marina has more than four on */}
+      {circles.length > 1 && (() => {
+        const slots: { key: string; name: string; icon: string; unread: number; isMore?: boolean }[] =
+          circles.length <= 4 ? circles.map(c => ({ key: c.key, name: c.name, icon: c.icon, unread: c.unread }))
+          : [...circles.slice(0, 3).map(c => ({ key: c.key, name: c.name, icon: c.icon, unread: c.unread })),
+             { key: '__more', name: 'More', icon: 'more', unread: circles.slice(3).reduce((a, c) => a + (c.unread || 0), 0), isMore: true }]
+        const overflowActive = circles.length > 4 && circles.slice(3).some(c => c.key === activeCircle)
+        const cur = circles.find(c => c.key === activeCircle)
+        return (
+          <div style={{ flexShrink:0, borderBottom:'1px solid rgba(255,255,255,0.08)', padding:'10px 12px 8px' }}>
+            <div style={{ display:'flex', justifyContent:'space-around', gap:6 }}>
+              {slots.map(sl => {
+                const on = sl.isMore ? (overflowActive || showMore) : activeCircle === sl.key
+                return (
+                  <button key={sl.key} onClick={() => { if (sl.isMore) setShowMore(v => !v); else { setShowMore(false); setActiveCircle(sl.key) } }}
+                    style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:5, flex:1, minWidth:0, fontFamily:FONT, padding:0 }}>
+                    <div style={{ position:'relative', width:46, height:46, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+                      background: on ? C.tealDim : 'rgba(255,255,255,0.06)', border: on ? `1.5px solid ${C.teal}` : '1.5px solid rgba(255,255,255,0.14)', color: on ? C.teal : C.muted }}>
+                      <CircleGlyph name={sl.icon} size={21} />
+                      {sl.unread > 0 && <span style={{ position:'absolute', top:-2, right:-2, minWidth:16, height:16, borderRadius:8, background:'#ef4444', color:'#fff', fontSize:10, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px' }}>{sl.unread}</span>}
+                    </div>
+                    <span style={{ fontSize:11, fontWeight: on ? 700 : 500, color: on ? C.white : C.muted, maxWidth:'100%', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sl.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {showMore && circles.length > 4 && (
+              <div style={{ marginTop:10, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:14, padding:'4px 6px' }}>
+                {circles.slice(3).map(c => (
+                  <button key={c.key} onClick={() => { setActiveCircle(c.key); setShowMore(false) }}
+                    style={{ width:'100%', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:12, padding:'10px 8px', color: activeCircle === c.key ? C.teal : C.white, fontFamily:FONT, fontSize:14, fontWeight:600, textAlign:'left' }}>
+                    <CircleGlyph name={c.icon} size={20} />
+                    <span style={{ flex:1 }}>{c.name}</span>
+                    {c.unread > 0 && <span style={{ minWidth:18, height:18, borderRadius:9, background:'#ef4444', color:'#fff', fontSize:11, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 5px' }}>{c.unread}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {cur && (cur.hours || cur.vhf || cur.phone) && (
+              <div style={{ marginTop:8, fontSize:11, color:C.muted, textAlign:'center' }}>
+                {[cur.hours ? `Hours ${cur.hours}` : '', cur.vhf ? `VHF ${cur.vhf}` : '', cur.phone || ''].filter(Boolean).join('  |  ')}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+      {routedNote && (
+        <div style={{ background:'rgba(77,214,200,0.10)', borderBottom:'1px solid rgba(77,214,200,0.25)', padding:'8px 16px', fontSize:12, color:C.teal, flexShrink:0 }}>{routedNote}</div>
+      )}
 
       {/* Notification permission banner */}
       {typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted' && (
@@ -4101,7 +4219,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
         {msgs.length === 0 && (
           <div style={{ textAlign:'center', color:C.muted, fontSize:13, padding:'40px 0' }}>
             <div style={{ fontSize:28, marginBottom:10 }}>👋</div>
-            <div>Send a message to {activeMarina.marina_name}.</div>
+            <div>Send a message to {circles.length > 1 ? (circles.find(c => c.key === activeCircle)?.name || activeMarina.marina_name) : activeMarina.marina_name}.</div>
           </div>
         )}
         {msgs.map(m => {
@@ -4134,7 +4252,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
           value={draft}
           onChange={e => { setDraft(e.target.value); if (sendError) setSendError(null) }}
           onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={`Message ${activeMarina.marina_name}…`}
+          placeholder={`Message ${circles.length > 1 ? (circles.find(c => c.key === activeCircle)?.name || activeMarina.marina_name) : activeMarina.marina_name}…`}
           rows={1}
           style={{ flex:1, background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:22, color:C.white, fontSize:15, fontFamily:FONT, padding:'11px 16px', outline:'none', resize:'none', maxHeight:100, overflowY:'auto' }}
         />

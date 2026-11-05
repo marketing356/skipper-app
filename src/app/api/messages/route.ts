@@ -15,9 +15,14 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams
   const auth_user_id = sp.get('auth_user_id')
   const marina_id = sp.get('marina_id')
+  const circle = sp.get('circle')
   if (!auth_user_id) return NextResponse.json({ messages: [] }, { status: 400 })
+  // Messaging circles (2026-11-05): ?circle=fuel shows one circle; no circle = everything (older app builds).
+  const qs = new URLSearchParams()
+  if (marina_id) qs.set('marina_id', marina_id)
+  if (circle) qs.set('circle', circle)
   try {
-    const res = await fetch(`${E}/api/v1/boater/messages${marina_id ? `?marina_id=${encodeURIComponent(marina_id)}` : ''}`, {
+    const res = await fetch(`${E}/api/v1/boater/messages${qs.toString() ? '?' + qs.toString() : ''}`, {
       cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
@@ -32,7 +37,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { auth_user_id, body, marina_id } = await req.json()
+  const { auth_user_id, body, marina_id, circle } = await req.json()
   if (!auth_user_id || !body) return NextResponse.json({ error: 'missing fields' }, { status: 400 })
   try {
     const res = await fetch(`${E}/api/v1/boater/messages`, {
@@ -43,7 +48,7 @@ export async function POST(req: NextRequest) {
         'x-skipper-api-key': K,
         'x-boater-auth': auth_user_id,
       },
-      body: JSON.stringify(marina_id ? { body, marina_id } : { body }),
+      body: JSON.stringify({ body, ...(marina_id ? { marina_id } : {}), ...(circle ? { circle } : {}) }),
     })
     return NextResponse.json(await res.json().catch(() => ({ error: `engine ${res.status}` })), { status: res.status })
   } catch (err) {
