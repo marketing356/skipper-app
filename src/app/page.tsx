@@ -591,12 +591,12 @@ export default function SkipperApp() {
       setUser(u)
       userRef.current = u
 
-      // Accidental reload / pull-down (Mike 2026-11-06): if the app was used in the last 10 minutes and the
+      // Accidental reload / pull-down (Mike 2026-11-06): if the app was used in the last 12 hours and the
       // PIN was already entered on this device, go straight back in. Longer gaps still ask for the PIN.
       let recent = false
       try {
         const la = Number(localStorage.getItem('skipper_last_active') || 0)
-        recent = !!localStorage.getItem(`skipper_unlocked_${u.id}`) && la > 0 && Date.now() - la < 10 * 60 * 1000
+        recent = !!localStorage.getItem(`skipper_unlocked_${u.id}`) && la > 0 && Date.now() - la < 12 * 60 * 60 * 1000
       } catch { /* ignore */ }
       if (localStorage.getItem(`skipper_pin_${u.id}`) && !recent) {
         setScreen('pin_login')
