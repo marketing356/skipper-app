@@ -2650,7 +2650,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
                 <span style={{ fontSize:15, fontWeight:700, color:C.white }}>{marina?.name || 'Marina'}</span>
                 <span style={{ fontSize:11, fontWeight:700, color:sc }}>{sl}</span>
               </div>
-              {r.assigned_slip_label && <div style={{ fontSize:13, fontWeight:700, color:C.teal, marginBottom:2 }}>Slip {r.assigned_slip_label}</div>}
+              {r.assigned_slip_label && <div style={{ fontSize:13, fontWeight:700, color:C.teal, marginBottom:2 }}>Your space: {r.assigned_slip_label}</div>}
               {r.assigned_slip_label && r.marina_id && marinas.some(x => x.id === r.marina_id) && (
                 <button onClick={() => { const mm = marinas.find(x => x.id === r.marina_id); if (mm) setProfileMarina(mm) }}
                   style={{ margin:'4px 0 6px', padding:'6px 12px', fontSize:12, fontWeight:700, color:C.teal, background:'rgba(77,214,200,0.1)', border:'1px solid ' + C.tealBorder, borderRadius:10, cursor:'pointer', fontFamily:'inherit' }}>
@@ -3170,6 +3170,8 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   // skip the request-and-wait flow entirely and let the boater book + pay right now.
   const [hotSlips,      setHotSlips]      = useState<HotSlip[]>([])
   const [hotSlipsLoading, setHotSlipsLoading] = useState(false)
+  // Marina layout while requesting (Mike 2026-11-06): look at the slips and moorings before you ask.
+  const [showLayout, setShowLayout] = useState(false)
   const [booking,       setBooking]       = useState<string|null>(null)
   const [bookError,     setBookError]     = useState<string|null>(null)
 
@@ -3370,6 +3372,13 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
         {/* Instant Book — slips that already fit this vessel's dimensions (hard-stop
             checked server-side) and are open for these dates can be booked + paid right now,
             no waiting on the marina to respond. */}
+        <div style={{ marginBottom: 16 }}>
+          <button type="button" data-request-map-toggle="1" onClick={() => setShowLayout(v => !v)}
+            style={{ width: '100%', textAlign: 'left', padding: '11px 14px', background: C.tealDim, border: '1px solid ' + C.tealBorder, borderRadius: 12, color: C.teal, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            {showLayout ? 'Hide the marina map' : 'See the marina map (slips and moorings)'}
+          </button>
+          {showLayout && <div style={{ marginTop: 10 }}><MarinaLayoutMap marinaId={marina.id} highlights={[]} /></div>}
+        </div>
         {vessel?.length_ft && hotSlipsLoading && (
           <div style={{ marginBottom:16, fontSize:12, color:C.muted, textAlign:'center', padding:'10px 0' }}>Checking for instant-book slips…</div>
         )}
