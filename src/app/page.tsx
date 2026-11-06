@@ -3196,20 +3196,26 @@ function AddonPicker({ price, picked, setPicked }: { price: PlanPrice; picked: s
   const singles: typeof opts = []
   opts.forEach(o => { if (o.choice_group) { (groups[o.choice_group] = groups[o.choice_group] || []).push(o) } else singles.push(o) })
   const toggle = (id: string, groupIds: string[]) => setPicked(picked.includes(id) ? picked.filter(x => x !== id) : [...picked.filter(x => !groupIds.includes(x)), id])
-  const row = (o: typeof opts[number], groupIds: string[], radio: boolean) => (
-    <label key={o.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:C.white, padding:'4px 0', cursor:'pointer' }}>
-      <input type={radio ? 'radio' : 'checkbox'} checked={picked.includes(o.id)} onChange={() => toggle(o.id, groupIds)} />
-      <span style={{ flex:1 }}>{o.name}</span>
-      <span style={{ color:C.muted }}>{o.amount > 0 ? '+$' + o.amount.toFixed(2) : 'Included'}</span>
-    </label>
-  )
+  const row = (o: typeof opts[number], groupIds: string[], _radio: boolean) => {
+    const on = picked.includes(o.id)
+    return (
+      <div key={o.id} role="checkbox" aria-checked={on} tabIndex={0}
+        onClick={() => toggle(o.id, groupIds)}
+        onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(o.id, groupIds) } }}
+        style={{ display:'flex', alignItems:'center', gap:12, fontSize:14, color:C.white, padding:'10px 12px', margin:'6px 0', cursor:'pointer', borderRadius:10, background: on ? 'rgba(77,214,200,0.14)' : 'rgba(255,255,255,0.06)', border: '1.5px solid ' + (on ? C.teal : 'rgba(255,255,255,0.35)') }}>
+        <span style={{ width:24, height:24, flexShrink:0, borderRadius:6, border:'2px solid ' + (on ? C.teal : 'rgba(255,255,255,0.7)'), background: on ? C.teal : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', color:'#042b2a', fontSize:16, fontWeight:900 }}>{on ? '2713' : ''}</span>
+        <span style={{ flex:1, fontWeight:600 }}>Add {o.name}</span>
+        <span style={{ color: on ? C.teal : C.muted, fontWeight:700 }}>{o.amount > 0 ? '+$' + o.amount.toFixed(2) : 'Included'}</span>
+      </div>
+    )
+  }
   return (
     <div style={{ marginBottom:8, borderTop:'1px solid rgba(255,255,255,0.12)', paddingTop:6 }}>
       {Object.entries(groups).map(([g, items]) => (
         <div key={g}>
-          <div style={{ fontSize:11, color:C.muted2, textTransform:'capitalize' }}>{g} (pick one)</div>
+          <div style={{ fontSize:11, color:C.muted2, textTransform:'capitalize' }}>{g} (tap to add)</div>
           {items.map(o => row(o, items.map(x => x.id), true))}
-          {items.some(x => picked.includes(x.id)) && <button type="button" onClick={() => setPicked(picked.filter(x => !items.some(y => y.id === x)))} style={{ fontSize:11, background:'none', border:'none', color:C.muted2, textDecoration:'underline', cursor:'pointer', padding:0 }}>No {g}</button>}
+          
         </div>
       ))}
       {singles.map(o => row(o, [], false))}
