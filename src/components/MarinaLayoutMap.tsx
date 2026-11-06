@@ -206,7 +206,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
       {!expanded && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Use two fingers to zoom and move the map. Tap it to open full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
       <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
-        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#dff1fb', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
+        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#8ccbe8', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
         {vb && (
           <svg width="100%" height="100%" viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h} preserveAspectRatio="none" style={{ display: 'block' }}>
             {m.shore.length > 2 && <polygon points={m.shore.map(p => p.x + ',' + p.y).join(' ')} fill="#ece3cc" stroke="#cdbf9b" strokeWidth={0.8} />}
