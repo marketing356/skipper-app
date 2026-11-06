@@ -3129,6 +3129,7 @@ type HotSlip = {
   power_amps: string|null; water: boolean|null; daily_rate: number|null
   electric: string[]|null; pump_out: boolean|null; wifi: boolean|null
   nights: number|null; estimated_cost: number|null; holder_first_name: string|null; notes: string|null
+  price?: { nights: number; nightly: number; dockage_subtotal: number; tax_rate: number; tax_amount: number; marina_total: number; booking_fee: number; total_due: number } | null
 }
 
 type HotMooring = {
@@ -3409,7 +3410,30 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                     slip.wifi ? '📶 WiFi' : null,
                   ].filter(Boolean).join(' · ') || 'Amenities: contact marina'}
                 </div>
-                {slip.estimated_cost != null && (
+                {slip.price && slip.price.nights > 0 ? (
+                  <div style={{ fontSize:12, color:C.white, marginBottom:10, borderTop:'1px solid rgba(255,255,255,0.12)', paddingTop:8 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                      <span style={{ color:C.muted }}>{slip.price.nights} night{slip.price.nights !== 1 ? 's' : ''} x ${slip.price.nightly.toFixed(2)}</span>
+                      <span>${slip.price.dockage_subtotal.toFixed(2)}</span>
+                    </div>
+                    {slip.price.tax_amount > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                        <span style={{ color:C.muted }}>Tax ({slip.price.tax_rate}%)</span>
+                        <span>${slip.price.tax_amount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {slip.price.booking_fee > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                        <span style={{ color:C.muted }}>Skipper booking fee</span>
+                        <span>${slip.price.booking_fee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800, marginTop:4 }}>
+                      <span>Total</span>
+                      <span>${slip.price.total_due.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ) : slip.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
                 )}
                 <button type="button" onClick={() => handleInstantBook(slip.id)} disabled={booking === slip.id}
