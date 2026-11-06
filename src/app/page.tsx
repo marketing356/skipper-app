@@ -1420,6 +1420,22 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 }) {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
   const isDesktop = useIsDesktop()
+  // Skipper welcome + tour (Mike 2026-11-06): opens once per account on this device, after the first load finished
+  // (so we know for sure whether the boater is connected to a marina). Replay: Account > Show me around.
+  const [tourOpen, setTourOpen] = useState(false)
+  const sawLoadRef = React.useRef(false)
+  const tourKey = 'skipper_tour_seen_v1_' + user.id
+  React.useEffect(() => {
+    if (vesselsLoading) { sawLoadRef.current = true; return }
+    if (!sawLoadRef.current) return
+    try { if (!localStorage.getItem(tourKey)) setTourOpen(true) } catch { /* private mode: skip */ }
+  }, [vesselsLoading, tourKey])
+  React.useEffect(() => {
+    const h = () => setTourOpen(true)
+    window.addEventListener('skipper:show-tour', h)
+    return () => window.removeEventListener('skipper:show-tour', h)
+  }, [])
+  const closeTour = () => { try { localStorage.setItem(tourKey, '1') } catch { /* ignore */ } setTourOpen(false) }
   // "Show on map" buttons (Vessel and Home tabs) open the Marinas tab straight onto that marina's page.
   const [mapMarinaId, setMapMarinaId] = useState<string | null>(null)
   const showOnMap = (marinaId: string) => { setMapMarinaId(marinaId); onTabChange('marinas') }
@@ -1638,6 +1654,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
         )}
       </div>
 
+      {tourOpen && <SkipperWelcomeTour linked={coupledMarinas.length > 0 || !!marinaProfile} marinaName={marinaProfile?.name ?? coupledMarinas[0]?.name ?? ''} firstName={profile?.first_name ?? ''} onDone={closeTour} onGo={(t) => { closeTour(); onTabChange(t) }} />}
       {/* Floating Skipper — hidden on messages tab so it doesn't block the send button */}
       {activeTab !== 'messages' && <SkipperFloat user={user} profile={profile} vessel={vessel} onRefreshVessels={onRefreshVessels} coupledMarinas={coupledMarinas} />}
     </div>
@@ -1645,6 +1662,65 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 }
 
 // ─── TAB 1: My Vessel ─────────────────────────────────────────────────────────
+// ─── Skipper welcome + tour ─────────────────────────────────────────────────
+// Two versions only (Mike 2026-11-06): connected to a marina, or not. Never promises a specific button: the app is a
+// direct line to the marina, and every marina offers different services. Marina name comes from live data.
+function SkipperWelcomeTour({ linked, marinaName, firstName, onDone, onGo }: { linked: boolean; marinaName: string; firstName: string; onDone: () => void; onGo: (t: HomeTab) => void }) {
+  const [step, setStep] = React.useState(-1) // -1 = opening, 0.. = tour cards
+  const mn = marinaName || 'your marina'
+  const cards: { tab: HomeTab; title: string; text: string }[] = [
+    { tab: 'home', title: 'Home', text: linked ? 'Your dashboard. Your boat, your marina and what is going on, at a glance.' : 'Your boat and the marinas you are exploring, at a glance.' },
+    { tab: 'vessel', title: 'My Vessel', text: 'Everything about your boat in one place: details, engines, documents. Keep it up to date and your marina always knows what you have.' },
+    { tab: 'weather', title: 'Weather', text: 'Wind, tides and the forecast. Check it before you cast off.' },
+    { tab: 'marinas', title: 'Discovery', text: linked ? 'Marinas on the map: contact details, services and more. Heading somewhere new? Request a slip right from here.' : 'Find marinas, see what they offer, request a slip and connect to your marina.' },
+    { tab: 'messages', title: 'Messages', text: linked ? 'Your direct line. Pick the right desk (office, dock, fuel, service) and ask. You get a notification when they answer.' : 'Once you are connected to a marina, your messages live here. You can also message a marina from its page in Discovery.' },
+    { tab: 'log', title: "Ship's Log", text: "Your boat's logbook: trips, fuel stops and marina visits." },
+    { tab: 'account', title: 'Account', text: 'Your details, notifications and sign in. Tap Show me around any time to see this tour again.' },
+  ]
+  const shell: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(3,14,25,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: FONT }
+  const card: React.CSSProperties = { width: '100%', maxWidth: 420, background: C.bgGrad, border: '1px solid ' + C.tealBorder, borderRadius: 22, padding: 22, color: C.white, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }
+  const primary: React.CSSProperties = { flex: 1, padding: '12px 14px', background: C.teal, color: '#042b2a', border: 'none', borderRadius: 12, fontFamily: FONT, fontSize: 14, fontWeight: 800, cursor: 'pointer' }
+  const ghost: React.CSSProperties = { flex: 1, padding: '12px 14px', background: 'transparent', color: C.white, border: '1px solid ' + C.inputBorder, borderRadius: 12, fontFamily: FONT, fontSize: 14, fontWeight: 600, cursor: 'pointer' }
+  const bubble = (text: React.ReactNode) => (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 18 }}>
+      <div style={{ width: 38, height: 38, borderRadius: '50%', background: C.tealDim, border: '1px solid ' + C.tealBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>⚓</div>
+      <div style={{ background: C.card, border: '1px solid ' + C.cardBorder, borderRadius: '4px 16px 16px 16px', padding: '12px 14px', fontSize: 14, lineHeight: 1.5 }}>{text}</div>
+    </div>
+  )
+  if (step < 0) return (
+    <div data-skipper-tour="1" style={shell}>
+      <div style={card}>
+        {bubble(linked ? (
+          <>{firstName ? 'Ahoy ' + firstName + '! ' : 'Ahoy! '}Welcome to {mn}! I&apos;m Skipper, your dock hand assistant. This app is your direct line to {mn}. Message the office, the fuel dock or the dock hands and ask for anything: a haul-out, a fuel stop, your balance, a repair. Every marina offers different services, so just ask. Want a quick tour? Or ask me anything.</>
+        ) : (
+          <>{firstName ? 'Ahoy ' + firstName + '! ' : 'Ahoy! '}I&apos;m Skipper, your dock hand assistant. I&apos;ll help you find a marina, find a slip, request a stay and talk to the marina directly. Want a quick tour? Or ask me anything.</>
+        ))}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button style={primary} onClick={() => setStep(0)}>Take the tour</button>
+          <button style={ghost} onClick={onDone}>Ask me anything</button>
+        </div>
+      </div>
+    </div>
+  )
+  const c = cards[step]
+  const last = step === cards.length - 1
+  return (
+    <div data-skipper-tour="1" style={shell}>
+      <div style={card}>
+        <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>{step + 1} of {cards.length}</div>
+        {bubble(<><div style={{ fontWeight: 800, marginBottom: 4, color: C.teal }}>{c.title}</div>{c.text}</>)}
+        {last && bubble(<>That&apos;s the tour. I&apos;m in the corner whenever you need me. Fair winds!</>)}
+        <div style={{ display: 'flex', gap: 10 }}>
+          {!last && <button style={ghost} onClick={onDone}>Skip</button>}
+          {!last && <button style={primary} onClick={() => setStep(step + 1)}>Next</button>}
+          {last && <button style={ghost} onClick={() => onGo(c.tab)}>Open {c.title}</button>}
+          {last && <button style={primary} onClick={onDone}>Done</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselDeleted, vesselsLoading, onShowOnMap }: {
   vessels: Vessel[]; vesselIds: string[]; user: User; profile: Profile|null; onVesselSaved: (v: Vessel, id: string) => void; onVesselDeleted: (id: string) => void
   vesselsLoading: boolean; onShowOnMap?: (marinaId: string) => void
@@ -5193,6 +5269,11 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
           Sign out
         </button>
       </div>
+
+      <button data-show-tour="1" onClick={() => window.dispatchEvent(new Event('skipper:show-tour'))}
+        style={{ width: '100%', textAlign: 'left', background: C.tealDim, border: '1px solid ' + C.tealBorder, borderRadius: 14, padding: '12px 14px', marginBottom: 14, color: C.teal, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+        ⚓ Show me around
+      </button>
 
       {/* Profile card */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 20, padding: 20, marginBottom: 14 }}>
