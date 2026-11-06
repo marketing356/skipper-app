@@ -1423,12 +1423,15 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   // Skipper welcome + tour (Mike 2026-11-06): opens once per account on this device, after the first load finished
   // (so we know for sure whether the boater is connected to a marina). Replay: Account > Show me around.
   const [tourOpen, setTourOpen] = useState(false)
-  const sawLoadRef = React.useRef(false)
   const tourKey = 'skipper_tour_seen_v1_' + user.id
   React.useEffect(() => {
-    if (vesselsLoading) { sawLoadRef.current = true; return }
-    if (!sawLoadRef.current) return
-    try { if (!localStorage.getItem(tourKey)) setTourOpen(true) } catch { /* private mode: skip */ }
+    // HomeScreen only mounts AFTER the sign-in load finished, so loading is already false here. Wait a beat, and
+    // never open while a load is running (the marina link is known only when it is done).
+    if (vesselsLoading) return
+    const t = setTimeout(() => {
+      try { if (!localStorage.getItem(tourKey)) setTourOpen(true) } catch { /* private mode: skip */ }
+    }, 700)
+    return () => clearTimeout(t)
   }, [vesselsLoading, tourKey])
   React.useEffect(() => {
     const h = () => setTourOpen(true)
