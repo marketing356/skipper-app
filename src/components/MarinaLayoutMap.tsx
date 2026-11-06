@@ -79,7 +79,7 @@ function buildPolylines(segsIn: Seg[], W = 3000): Poly[] {
 const DOCK_FILL: Record<string, string> = { walnut: '#9a7b55', driftwood: '#b49b78', slate: '#7b8794' }
 const toPts = (p: any): Pt[] => (Array.isArray(p) ? p.map((q: any) => (Array.isArray(q) ? { x: q[0], y: q[1] } : { x: q?.x, y: q?.y })).filter(q => typeof q.x === 'number' && typeof q.y === 'number') : [])
 
-export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaId: string; highlights?: Highlight[] }) {
+export default function MarinaLayoutMap({ marinaId, highlights = [], compact = false }: { marinaId: string; highlights?: Highlight[]; compact?: boolean }) {
   const [maps, setMaps] = useState<MapData[] | null>(null)
   const [idx, setIdx] = useState(0)
   const [err, setErr] = useState(false)
@@ -249,18 +249,18 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
           Close map
         </button>
       )}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center', paddingRight: expanded ? 120 : 0, paddingTop: expanded ? 'env(safe-area-inset-top, 0px)' : 0 }}>
+      {!(compact && !expanded) && <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center', paddingRight: expanded ? 120 : 0, paddingTop: expanded ? 'env(safe-area-inset-top, 0px)' : 0 }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a slip, e.g. A12"
           style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontFamily: 'inherit', fontSize: 13 }} />
         {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
         {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>{mine.some(x => x.h.kind === 'available') ? 'Available' : 'My spot'}</button>}
         <button onClick={fit} style={btn()}>Whole marina</button>
         {!expanded && <button onClick={openFull} style={btn()}>Full screen</button>}
-      </div>
-      {!expanded && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Use two fingers to zoom and move the map. Tap it to open full screen.</div>}
+      </div>}
+      {!expanded && !compact && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Use two fingers to zoom and move the map. Tap it to open full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
       <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
-        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: 'linear-gradient(180deg, #0f3a5c 0%, #061828 100%)', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
+        style={{ width: '100%', height: expanded ? undefined : compact ? 190 : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: 'linear-gradient(180deg, #0f3a5c 0%, #061828 100%)', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
         {vb && (
           <svg width="100%" height="100%" viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h} preserveAspectRatio="none" style={{ display: 'block' }}>
             {/* Land: closed bulkhead/shoreline rings, even-odd (same as Chart Room 2D) */}
@@ -323,7 +323,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
           ))}
         </div>
       )}
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>Pinch or scroll to zoom, drag to move. Zoom in to see slip numbers. Layout only — no vessel information is shown.</div>
+      {!(compact && !expanded) && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>Pinch or scroll to zoom, drag to move. Zoom in to see slip numbers. Layout only — no vessel information is shown.</div>}
     </div>
   )
   return expanded && typeof document !== 'undefined' ? createPortal(content, document.body) : content

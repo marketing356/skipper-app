@@ -2931,6 +2931,12 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
 
       <div style={{ padding:'18px 20px 0' }}>
         {/* Quick stat row */}
+        {/* Marina map right under the headline: small preview, tap to open full screen (Mike 2026-11-06) */}
+        <div style={{ marginBottom:16 }}>
+          <MarinaLayoutMap marinaId={marina.id} highlights={mySpaces} compact />
+          <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:6, textAlign:'center' }}>Tap the map to open it full screen</div>
+        </div>
+
         <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
           <StatPill icon="⚓" label={`${marina.total_slips ?? m?.total_slips ?? 0} Slips`} />
           {(m?.transient_available ?? marina.transient_available) && <StatPill icon="🛥️" label="Transient Welcome" highlight />}
@@ -2979,11 +2985,6 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
 
         {!loading && data && (
           <>
-            {/* Marina map - public layout, slip + mooring labels only (Mike 2026-10-31) */}
-            <ProfileSection title="Marina map">
-              <MarinaLayoutMap marinaId={marina.id} highlights={mySpaces} />
-            </ProfileSection>
-
             {/* About */}
             {m?.description && (
               <ProfileSection title="About">
