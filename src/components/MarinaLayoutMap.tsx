@@ -98,8 +98,10 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
     return { x: mx - (px / r.width) * w, y: my - (py / r.height) * h, w, h }
   })
   const lp = (e: { clientX: number; clientY: number }) => { const r = rect()!; return { x: e.clientX - r.left, y: e.clientY - r.top } }
-  const onDown = (e: React.PointerEvent) => { (e.currentTarget as Element).setPointerCapture(e.pointerId); pointers.current.set(e.pointerId, lp(e)) }
+  const downAt = useRef<{ x: number; y: number } | null>(null)
+  const onDown = (e: React.PointerEvent) => { downAt.current = { x: e.clientX, y: e.clientY }; if (!expanded) return; (e.currentTarget as Element).setPointerCapture(e.pointerId); pointers.current.set(e.pointerId, lp(e)) }
   const onMove = (e: React.PointerEvent) => {
+    if (!expanded) return // the small preview does not pan: the page scrolls, a tap opens it full screen
     const prev = pointers.current.get(e.pointerId); if (!prev) return
     const p = lp(e); pointers.current.set(e.pointerId, p)
     if (pointers.current.size === 1) {
@@ -111,7 +113,20 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
       lastDist.current = d
     }
   }
-  const onUp = (e: React.PointerEvent) => { pointers.current.delete(e.pointerId); lastDist.current = 0 }
+  const onUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId); lastDist.current = 0
+    const d = downAt.current; downAt.current = null
+    if (!expanded && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) openFull()
+  }
+  // Full screen (Mike 2026-11-06): tap the map to open it, Close or the phone Back button shrinks it again.
+  const openFull = () => { try { window.history.pushState({ marinaMapFull: 1 }, '') } catch { /* ignore */ } setExpanded(true) }
+  const closeFull = () => { if (typeof window !== 'undefined' && window.history.state && (window.history.state as any).marinaMapFull) window.history.back(); else setExpanded(false) }
+  useEffect(() => {
+    if (!expanded) return
+    const onPop = () => setExpanded(false)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [expanded])
   const onWheel = (e: React.WheelEvent) => { const p = lp(e); zoomAt(p.x, p.y, e.deltaY < 0 ? 1.25 : 0.8) }
 
   const match = useMemo(() => {
@@ -143,11 +158,12 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
         {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
         {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>My spot</button>}
         <button onClick={fit} style={btn()}>Reset</button>
-        <button onClick={() => setExpanded(v => !v)} style={btn()}>{expanded ? 'Close' : 'Expand'}</button>
+        <button onClick={() => (expanded ? closeFull() : openFull())} style={btn(expanded)}>{expanded ? 'Close map' : 'Full screen'}</button>
       </div>
+      {!expanded && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Tap the map to open it full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
       <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
-        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#dff1fb', touchAction: 'none', cursor: 'grab' }}>
+        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#dff1fb', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
         {vb && (
           <svg width="100%" height="100%" viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h} preserveAspectRatio="none" style={{ display: 'block' }}>
             {m.shore.length > 2 && <polygon points={m.shore.map(p => p.x + ',' + p.y).join(' ')} fill="#ece3cc" stroke="#cdbf9b" strokeWidth={0.8} />}
