@@ -23,6 +23,59 @@ type VB = { x: number; y: number; w: number; h: number }
 // The logged-in customer's own spaces (from /api/my-spaces): lit up on the map. Only their own, never anyone else's.
 export type Highlight = { label: string; kind?: string; space_type?: string | null; asset_name?: string | null }
 
+
+// Land = closed rings of bulkhead/shoreline segments, same rule as the Chart Room 2D (DockConfigurator buildPolylines + even-odd fill).
+type Seg = { x1: number; y1: number; x2: number; y2: number }
+type Poly = { points: Pt[]; closed: boolean; nSegs: number }
+function buildPolylines(segsIn: Seg[], W = 3000): Poly[] {
+  const TOL = 10
+  const segs = segsIn.filter(g => Math.hypot(g.x2 - g.x1, g.y2 - g.y1) >= 1)
+  const used = new Set<number>()
+  const out: Poly[] = []
+  const close = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by) <= TOL
+  const nb = (x: number, y: number) => {
+    for (let i = 0; i < segs.length; i++) {
+      if (used.has(i)) continue
+      if (close(x, y, segs[i].x1, segs[i].y1)) return { i, end: 1 }
+      if (close(x, y, segs[i].x2, segs[i].y2)) return { i, end: 2 }
+    }
+    return null
+  }
+  for (let k = 0; k < segs.length; k++) {
+    if (used.has(k)) continue
+    used.add(k)
+    const pts: Pt[] = [{ x: segs[k].x1, y: segs[k].y1 }, { x: segs[k].x2, y: segs[k].y2 }]
+    let n = 1
+    for (;;) { const t = pts[pts.length - 1]; const f = nb(t.x, t.y); if (!f) break; used.add(f.i); n++; pts.push(f.end === 1 ? { x: segs[f.i].x2, y: segs[f.i].y2 } : { x: segs[f.i].x1, y: segs[f.i].y1 }) }
+    for (;;) { const h = pts[0]; const f = nb(h.x, h.y); if (!f) break; used.add(f.i); n++; pts.unshift(f.end === 1 ? { x: segs[f.i].x2, y: segs[f.i].y2 } : { x: segs[f.i].x1, y: segs[f.i].y1 }) }
+    const closed = pts.length >= 3 && Math.hypot(pts[0].x - pts[pts.length - 1].x, pts[0].y - pts[pts.length - 1].y) <= TOL
+    let finalPts = pts, virt = false
+    if (!closed && pts.length >= 2) {
+      const E = 50, H = W
+      const edgeOf = (q: Pt) => q.x <= E ? 'left' : q.x >= W - E ? 'right' : q.y <= E ? 'top' : q.y >= H - E ? 'bottom' : null
+      const p0 = pts[0], pn = pts[pts.length - 1]
+      const e0 = edgeOf(p0), eN = edgeOf(pn)
+      if (e0 && eN) {
+        const corners: Pt[] = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }]
+        const snap = (q: Pt, e: string): Pt => e === 'left' ? { x: 0, y: q.y } : e === 'right' ? { x: W, y: q.y } : e === 'top' ? { x: q.x, y: 0 } : { x: q.x, y: H }
+        const sN = snap(pn, eN), s0 = snap(p0, e0)
+        const idx: Record<string, number> = { top: 0, right: 1, bottom: 2, left: 3 }
+        const walk = (cw: boolean): Pt[] => {
+          const path: Pt[] = [sN]; let cur = idx[eN]; const end = idx[e0]; let safety = 0
+          while (cur !== end && safety < 4) { path.push(corners[cw ? cur : (cur + 3) % 4]); cur = (cur + (cw ? 1 : -1) + 4) % 4; safety++ }
+          path.push(s0); return path
+        }
+        const cw = walk(true), ccw = walk(false)
+        const cx = pts.reduce((a, q) => a + q.x, 0) / pts.length, cy = pts.reduce((a, q) => a + q.y, 0) / pts.length
+        const mid = (w: Pt[]) => { const m = w[Math.floor(w.length / 2)]; return Math.hypot(m.x - cx, m.y - cy) }
+        finalPts = [...pts, ...(mid(cw) >= mid(ccw) ? cw : ccw)]; virt = true
+      }
+    }
+    out.push({ points: finalPts, closed: closed || virt, nSegs: n })
+  }
+  return out
+}
+
 const DOCK_FILL: Record<string, string> = { walnut: '#9a7b55', driftwood: '#b49b78', slate: '#7b8794' }
 const toPts = (p: any): Pt[] => (Array.isArray(p) ? p.map((q: any) => (Array.isArray(q) ? { x: q[0], y: q[1] } : { x: q?.x, y: q?.y })).filter(q => typeof q.x === 'number' && typeof q.y === 'number') : [])
 
@@ -71,6 +124,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
   }, [m, highlights])
   const mineKey = mine.map(x => x.type + ':' + x.p.label).join('|')
 
+  const polys = useMemo(() => (m ? buildPolylines(m.bulkheads) : []), [m])
   const rect = () => boxRef.current?.getBoundingClientRect()
   // Fit the whole marina into the box (keeps the box's aspect ratio).
   const fit = () => {
@@ -206,12 +260,19 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
       {!expanded && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Use two fingers to zoom and move the map. Tap it to open full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
       <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
-        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: '#8ccbe8', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
+        style={{ width: '100%', height: expanded ? undefined : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: 'linear-gradient(180deg, #0f3a5c 0%, #061828 100%)', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
         {vb && (
           <svg width="100%" height="100%" viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h} preserveAspectRatio="none" style={{ display: 'block' }}>
-            {m.shore.length > 2 && <polygon points={m.shore.map(p => p.x + ',' + p.y).join(' ')} fill="#ece3cc" stroke="#cdbf9b" strokeWidth={0.8} />}
-            {m.hardscapes.map((h, i) => { const pts = toPts(h.points); return pts.length > 2 ? <polygon key={i} points={pts.map(p => p.x + ',' + p.y).join(' ')} fill="#cfd4d9" stroke="#aeb4ba" strokeWidth={0.5} /> : null })}
-            {m.bulkheads.map((b, i) => <line key={i} x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2} stroke="#5b6670" strokeWidth={1.4} />)}
+            {/* Land: closed bulkhead/shoreline rings, even-odd (same as Chart Room 2D) */}
+            {polys.some(pl => pl.closed) && <path d={polys.filter(pl => pl.closed).map(pl => 'M' + pl.points.map(q => q.x + ' ' + q.y).join(' L') + ' Z').join(' ')} fill="rgba(72,105,68,0.85)" fillRule="evenodd" />}
+            {polys.map((pl, i) => { const pts = pl.points.slice(0, pl.nSegs + 1); return pts.length > 1 ? (<g key={'sand' + i} fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points={pts.map(q => q.x + ',' + q.y).join(' ')} stroke="rgba(200,170,90,0.16)" strokeWidth={17.6} /><polyline points={pts.map(q => q.x + ',' + q.y).join(' ')} stroke="rgba(200,170,90,0.30)" strokeWidth={8} /></g>) : null })}
+            {m.hardscapes.map((h, i) => {
+              const pts = toPts(h.points); if (pts.length < 2) return null
+              const str = pts.map(p => p.x + ',' + p.y).join(' ')
+              if (h.type === 'road') return (<g key={i} fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points={str} stroke="#2a2a2a" strokeWidth={15} /><polyline points={str} stroke="#d4c060" strokeWidth={0.8} strokeDasharray="4 3" /></g>)
+              return pts.length > 2 ? <polygon key={i} points={str} fill={h.type === 'parking' ? '#3a3a3a' : '#b8b8b8'} stroke={h.type === 'parking' ? '#555555' : '#888888'} strokeWidth={0.6} /> : null
+            })}
+            {m.bulkheads.map((b, i) => <line key={i} x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2} stroke="#9aa5ae" strokeWidth={1.2} />)}
             {m.fenceItems.map((f, i) => <line key={i} x1={f.x1} y1={f.y1} x2={f.x2} y2={f.y2} stroke="#8a8f94" strokeWidth={0.6} strokeDasharray="2 2" />)}
             {m.sections.map(s => (
               <rect key={s.id} x={s.x - s.width / 2} y={s.y - s.height / 2} width={s.width} height={s.height} fill={DOCK_FILL[s.color] || '#8a8f94'} stroke="#3d4650" strokeWidth={0.4}
