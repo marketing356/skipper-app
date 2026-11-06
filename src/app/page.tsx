@@ -548,6 +548,26 @@ export default function SkipperApp() {
   // Keep a ref to the active user so loadUserData can always access the latest value
   const userRef = useRef<User | null>(null)
 
+  // New version check (Mike 2026-11-06): when the app comes back to the front, see if a newer build was published and reload to get it.
+  // Only on resume (never mid-typing). PIN is skipped by the 12h rule above. At most one reload a minute so it can never loop.
+  useEffect(() => {
+    const mine = process.env.NEXT_PUBLIC_BUILD_ID
+    if (!mine) return
+    const check = async () => {
+      try {
+        const last = Number(sessionStorage.getItem('skipper_ver_reload') || 0)
+        if (Date.now() - last < 60000) return
+        const r = await fetch('/api/app-version', { cache: 'no-store' }); if (!r.ok) return
+        const d = await r.json()
+        if (d?.build && d.build !== mine) { sessionStorage.setItem('skipper_ver_reload', String(Date.now())); window.location.reload() }
+      } catch { /* offline: ignore */ }
+    }
+    const onVis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('pageshow', onVis)
+    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pageshow', onVis) }
+  }, [])
+
   // Remember when the app was last used so a quick reload does not ask for the PIN again (see splash init below).
   useEffect(() => {
     const stamp = () => { try { localStorage.setItem('skipper_last_active', String(Date.now())) } catch { /* ignore */ } }
