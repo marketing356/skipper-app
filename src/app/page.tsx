@@ -3171,6 +3171,16 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   // skip the request-and-wait flow entirely and let the boater book + pay right now.
   const [hotSlips,      setHotSlips]      = useState<HotSlip[]>([])
   const [hotSlipsLoading, setHotSlipsLoading] = useState(false)
+  // Agreement (Mike 2026-11-06): one required checkbox for the marina's Cancellation Policy and Stay Terms plus Skipper Terms/Privacy.
+  const [agreed, setAgreed] = useState(false)
+  const [openTerm, setOpenTerm] = useState<'cancel'|'stay'|null>(null)
+  const [termsData, setTermsData] = useState<{ cancel: string|null; stay: string|null }>({ cancel: null, stay: null })
+  useEffect(() => {
+    fetch(`/api/marinas/${marina.id}/storefront`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setTermsData({ cancel: d?.cancellation_policy?.summary ?? null, stay: d?.stay_terms?.text ?? null }))
+      .catch(() => {})
+  }, [marina.id])
   // Marina layout while requesting (Mike 2026-11-06): look at the slips and moorings before you ask.
   const [showLayout, setShowLayout] = useState(false)
   const [booking,       setBooking]       = useState<string|null>(null)
@@ -3195,12 +3205,13 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
 
   async function handleInstantBook(slipId: string) {
     if (!vessel) return
+    if (!agreed) { setBookError('Please tick the box to agree to the policies first'); return }
     setBooking(slipId); setBookError(null)
     try {
       const res = await fetch(`/api/marinas/${marina.id}/transient-slips/${slipId}/instant-book`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id }),
+        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id, terms_accepted: true }),
       })
       const data = await res.json()
       if (!res.ok || data.error) {
@@ -3243,12 +3254,13 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
 
   async function handleInstantBookMooring(mooringId: string) {
     if (!vessel) return
+    if (!agreed) { setBookError('Please tick the box to agree to the policies first'); return }
     setBookingMooring(mooringId); setBookError(null)
     try {
       const res = await fetch(`/api/marinas/${marina.id}/transient-moorings/${mooringId}/instant-book`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id }),
+        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id, terms_accepted: true }),
       })
       const data = await res.json()
       if (!res.ok || data.error) {
@@ -3281,6 +3293,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (vessels.length > 0 && !vessel) { setError('Please choose which vessel you\'re bringing'); return }
+    if (!agreed) { setError('Please tick the box to agree to the policies first'); return }
     setSubmitting(true); setError(null)
     try {
       const res = await fetch('/api/transient-request', {
@@ -3302,6 +3315,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
           departure_date: departure,
           nights:        calcNights(),
           notes:         notes || null,
+          terms_accepted: true,
         }),
       })
       const json = await res.json()
@@ -3380,6 +3394,28 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
           </button>
           {showLayout && <div style={{ marginTop: 10 }}><MarinaLayoutMap marinaId={marina.id} highlights={[]} /></div>}
         </div>
+        {/* Agreement: one required checkbox, links open the marina's own text (Cancellation Policy = marina_settings; Stay Terms = marina text or Skipper starter). */}
+        <div style={{ marginBottom:18, padding:'12px 14px', borderRadius:12, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)' }}>
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:12, color:C.white, lineHeight:1.5 }}>
+            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop:3, width:18, height:18, flexShrink:0 }} />
+            <span>
+              I agree to {marina.name}{'\u2019'}s{' '}
+              <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'cancel' ? null : 'cancel') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Cancellation Policy</button>
+              {' '}and{' '}
+              <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'stay' ? null : 'stay') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Stay Terms</button>
+              , and to Skipper{'\u2019'}s{' '}
+              <a href="https://ayeayeskipper.com/terms" target="_blank" rel="noreferrer" style={{ color:C.teal }}>Terms</a>
+              {' '}and{' '}
+              <a href="https://ayeayeskipper.com/privacy" target="_blank" rel="noreferrer" style={{ color:C.teal }}>Privacy Policy</a>.
+            </span>
+          </label>
+          {openTerm && (
+            <div style={{ marginTop:10, padding:'10px 12px', borderRadius:10, background:'rgba(0,0,0,0.25)', fontSize:12, color:C.muted2, whiteSpace:'pre-wrap', lineHeight:1.5, maxHeight:220, overflowY:'auto' }}>
+              {openTerm === 'cancel' ? (termsData.cancel || 'Cancellations are reviewed by the marina.') : (termsData.stay || 'Loading...')}
+            </div>
+          )}
+        </div>
+
         {vessel?.length_ft && hotSlipsLoading && (
           <div style={{ marginBottom:16, fontSize:12, color:C.muted, textAlign:'center', padding:'10px 0' }}>Checking for instant-book slips…</div>
         )}
@@ -3436,7 +3472,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 ) : slip.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
                 )}
-                <button type="button" onClick={() => handleInstantBook(slip.id)} disabled={booking === slip.id}
+                <button type="button" onClick={() => handleInstantBook(slip.id)} disabled={booking === slip.id || !agreed}
                   style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: booking === slip.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: booking === slip.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
                   {booking === slip.id ? 'Booking…' : '💳 Book & Pay Now'}
                 </button>
@@ -3467,7 +3503,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 {m.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${m.estimated_cost.toFixed(2)} for {m.nights} night{m.nights !== 1 ? 's' : ''}</div>
                 )}
-                <button type="button" onClick={() => handleInstantBookMooring(m.id)} disabled={bookingMooring === m.id}
+                <button type="button" onClick={() => handleInstantBookMooring(m.id)} disabled={bookingMooring === m.id || !agreed}
                   style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: bookingMooring === m.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: bookingMooring === m.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
                   {bookingMooring === m.id ? 'Booking…' : '💳 Book & Pay Now'}
                 </button>
@@ -3547,7 +3583,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
           </div>
         )}
 
-        <button type="submit" disabled={submitting}
+        <button type="submit" disabled={submitting || !agreed}
           style={{ width:'100%', padding:'14px', fontSize:15, fontWeight:700, color:C.bg, background: submitting ? 'rgba(77,214,200,0.4)' : C.teal, border:'none', borderRadius:14, cursor: submitting ? 'default' : 'pointer', fontFamily:'inherit' }}>
           {submitting ? 'Sending…' : 'Send Request'}
         </button>

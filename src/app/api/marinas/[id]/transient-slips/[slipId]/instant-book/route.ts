@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
         'x-skipper-api-key': K,
         'x-boater-auth':     auth_user_id,
       },
-      body: JSON.stringify({ check_in, check_out, vessel_id }),
+      body: JSON.stringify({ check_in, check_out, vessel_id, terms_accepted: body.terms_accepted === true }),
     })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
