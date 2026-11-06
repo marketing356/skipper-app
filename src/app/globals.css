@@ -65,3 +65,6 @@ select optgroup {
   background-color: #0d2b4b;
   color: #ffffff;
 }
+
+/* Stop pull-down-to-refresh from reloading the app by accident (Mike 2026-11-06) */
+html, body { overscroll-behavior-y: none; }

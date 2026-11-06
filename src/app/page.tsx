@@ -548,6 +548,18 @@ export default function SkipperApp() {
   // Keep a ref to the active user so loadUserData can always access the latest value
   const userRef = useRef<User | null>(null)
 
+  // Remember when the app was last used so a quick reload does not ask for the PIN again (see splash init below).
+  useEffect(() => {
+    const stamp = () => { try { localStorage.setItem('skipper_last_active', String(Date.now())) } catch { /* ignore */ } }
+    stamp()
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') stamp() }, 15000)
+    const onVis = () => stamp()
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('pagehide', onVis)
+    window.addEventListener('pointerdown', stamp, { passive: true })
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', onVis); window.removeEventListener('pointerdown', stamp) }
+  }, [])
+
   // ── Splash init: check real Supabase Auth session ─────────────────────────
   // Replaces the old custom-UUID localStorage check. With Supabase Auth OTP,
   // sessions persist in localStorage automatically. auth.uid() works client-side.
@@ -579,7 +591,14 @@ export default function SkipperApp() {
       setUser(u)
       userRef.current = u
 
-      if (localStorage.getItem(`skipper_pin_${u.id}`)) {
+      // Accidental reload / pull-down (Mike 2026-11-06): if the app was used in the last 10 minutes and the
+      // PIN was already entered on this device, go straight back in. Longer gaps still ask for the PIN.
+      let recent = false
+      try {
+        const la = Number(localStorage.getItem('skipper_last_active') || 0)
+        recent = !!localStorage.getItem(`skipper_unlocked_${u.id}`) && la > 0 && Date.now() - la < 10 * 60 * 1000
+      } catch { /* ignore */ }
+      if (localStorage.getItem(`skipper_pin_${u.id}`) && !recent) {
         setScreen('pin_login')
       } else {
         routeAfterAuth(u)
