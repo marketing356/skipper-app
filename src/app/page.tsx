@@ -3390,9 +3390,9 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
         <div style={{ marginBottom: 16 }}>
           <button type="button" data-request-map-toggle="1" onClick={() => setShowLayout(v => !v)}
             style={{ width: '100%', textAlign: 'left', padding: '11px 14px', background: C.tealDim, border: '1px solid ' + C.tealBorder, borderRadius: 12, color: C.teal, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-            {showLayout ? 'Hide the marina map' : 'See the marina map (slips and moorings)'}
+            {showLayout ? 'Hide the marina map' : 'See the marina map (available slips are lit up)'}
           </button>
-          {showLayout && <div style={{ marginTop: 10 }}><MarinaLayoutMap marinaId={marina.id} highlights={[]} /></div>}
+          {showLayout && <div style={{ marginTop: 10 }}><MarinaLayoutMap marinaId={marina.id} highlights={[...hotSlips.filter(x => x.label).map(x => ({ label: x.label as string, kind: 'available', space_type: 'slip' })), ...hotMoorings.filter(x => (x as any).label).map(x => ({ label: (x as any).label as string, kind: 'available', space_type: 'mooring' }))]} /></div>}
         </div>
         {/* Agreement: one required checkbox, links open the marina's own text (Cancellation Policy = marina_settings; Stay Terms = marina text or Skipper starter). */}
         <div style={{ marginBottom:18, padding:'12px 14px', borderRadius:12, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)' }}>

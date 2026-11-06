@@ -169,7 +169,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a slip, e.g. A12"
           style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontFamily: 'inherit', fontSize: 13 }} />
         {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
-        {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>My spot</button>}
+        {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>{mine.some(x => x.h.kind === 'available') ? 'Available' : 'My spot'}</button>}
         {expanded && <button onClick={fit} style={btn()}>Whole marina</button>}
         {!expanded && <button onClick={openFull} style={btn()}>Full screen</button>}
       </div>
@@ -206,14 +206,14 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
                 <text x={p.x} y={p.y - 5} fontSize={labelSize * 1.5} fontWeight={800} textAnchor="middle" fill="#9a3412" style={halo}>{p.label}</text>
               </g>
             ))}
-            {mine.map(({ p }, i) => (
+            {mine.map(({ h, p }, i) => (
               <g key={'mine' + i} pointerEvents="none">
-                <circle cx={p.x} cy={p.y} r={5} fill="none" stroke="#e11d48" strokeWidth={1.4}>
+                <circle cx={p.x} cy={p.y} r={5} fill="none" stroke={h.kind === 'available' ? '#22c55e' : '#e11d48'} strokeWidth={1.4}>
                   <animate attributeName="r" values="5;14;5" dur="1.8s" repeatCount="indefinite" />
                   <animate attributeName="opacity" values="1;0.1;1" dur="1.8s" repeatCount="indefinite" />
                 </circle>
-                <circle cx={p.x} cy={p.y} r={3.2} fill="#e11d48" stroke="#fff" strokeWidth={0.9} />
-                <text x={p.x} y={p.y - 6.5} fontSize={labelSize * 1.35} fontWeight={800} textAnchor="middle" fill="#9f1239" style={halo}>{p.label}</text>
+                <circle cx={p.x} cy={p.y} r={3.2} fill={h.kind === 'available' ? '#22c55e' : '#e11d48'} stroke="#fff" strokeWidth={0.9} />
+                <text x={p.x} y={p.y - 6.5} fontSize={labelSize * 1.35} fontWeight={800} textAnchor="middle" fill={h.kind === 'available' ? '#166534' : '#9f1239'} style={halo}>{p.label}</text>
               </g>
             ))}
             {m.sections.filter(s => m.dockLabels[s.id]).map(s => <text key={'d' + s.id} x={s.x} y={s.y} fontSize={13} fontWeight={800} textAnchor="middle" fill="#1f2937" style={halo}>{m.dockLabels[s.id]}</text>)}
@@ -225,8 +225,8 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {mine.map(({ h, p, type }, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#fff' }}>
-              <span style={{ width: 10, height: 10, borderRadius: 5, background: '#e11d48', flexShrink: 0 }} />
-              <span style={{ fontWeight: 700 }}>{h.kind === 'transient' ? 'Your booked slip ' : type === 'yard' ? 'Your yard space ' : type === 'mooring' ? 'Your mooring ' : 'Your slip '}{p.label}</span>
+              <span style={{ width: 10, height: 10, borderRadius: 5, background: h.kind === 'available' ? '#22c55e' : '#e11d48', flexShrink: 0 }} />
+              <span style={{ fontWeight: 700 }}>{h.kind === 'available' ? (type === 'mooring' ? 'Available mooring ' : 'Available slip ') : h.kind === 'transient' ? 'Your booked slip ' : type === 'yard' ? 'Your yard space ' : type === 'mooring' ? 'Your mooring ' : 'Your slip '}{p.label}</span>
               {h.asset_name && <span style={{ color: 'rgba(255,255,255,0.6)' }}>{h.asset_name}</span>}
             </div>
           ))}
