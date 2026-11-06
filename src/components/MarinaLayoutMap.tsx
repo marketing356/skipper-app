@@ -170,8 +170,8 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
           style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontFamily: 'inherit', fontSize: 13 }} />
         {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
         {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>My spot</button>}
-        <button onClick={fit} style={btn()}>Reset</button>
-        <button onClick={() => (expanded ? closeFull() : openFull())} style={btn(expanded)}>{expanded ? 'Close map' : 'Full screen'}</button>
+        {expanded && <button onClick={fit} style={btn()}>Whole marina</button>}
+        {!expanded && <button onClick={openFull} style={btn()}>Full screen</button>}
       </div>
       {!expanded && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Tap the map to open it full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
