@@ -3129,13 +3129,92 @@ type HotSlip = {
   power_amps: string|null; water: boolean|null; daily_rate: number|null
   electric: string[]|null; pump_out: boolean|null; wifi: boolean|null
   nights: number|null; estimated_cost: number|null; holder_first_name: string|null; notes: string|null
-  price?: { nights: number; nightly: number; dockage_subtotal: number; tax_rate: number; tax_amount: number; marina_total: number; booking_fee: number; total_due: number } | null
+  price?: PlanPrice | null
+}
+
+type PlanPrice = {
+  nights: number; nightly: number; dockage_subtotal: number; tax_rate: number; tax_amount: number; marina_total: number; booking_fee: number; total_due: number
+  lines?: { key: string; kind: string; description: string; quantity: number; unit_price: number; amount: number }[]
+  tax_lines?: { type: string; rate: number; amount: number }[]
+  addon_options?: { id: string; name: string; kind: string; per: string; price: number; amount: number; required: boolean; choice_group: string|null; selected: boolean }[]
+  multihull_offered?: boolean; stay_rule?: string|null
 }
 
 type HotMooring = {
   id: string; label: string|null; dock: string|null
   max_loa_ft: number|null; max_weight_lbs: number|null; depth_ft: number|null; max_air_draft_ft: number|null
   daily_rate: number|null; nights: number|null; estimated_cost: number|null; notes: string|null
+  price?: PlanPrice | null
+}
+
+// Price lines exactly as the marina's pricing plan produced them (dockage by rate period, add-ons, fees, tax, total).
+function PriceLines({ price }: { price: PlanPrice }) {
+  const rows = price.lines && price.lines.length > 0 ? price.lines : null
+  return (
+    <div style={{ fontSize:12, color:C.white, marginBottom:10, borderTop:'1px solid rgba(255,255,255,0.12)', paddingTop:8 }}>
+      {rows ? rows.map(l => (
+        <div key={l.key} style={{ display:'flex', justifyContent:'space-between', gap:10, marginBottom:3 }}>
+          <span style={{ color:C.muted }}>{l.description}{l.kind === 'dockage' && l.quantity > 1 ? ' x $' + l.unit_price.toFixed(2) : ''}</span>
+          <span>{'$' + l.amount.toFixed(2)}</span>
+        </div>
+      )) : (
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+          <span style={{ color:C.muted }}>{price.nights} night{price.nights !== 1 ? 's' : ''} x {'$' + price.nightly.toFixed(2)}</span>
+          <span>{'$' + price.dockage_subtotal.toFixed(2)}</span>
+        </div>
+      )}
+      {price.tax_lines && price.tax_lines.length > 0 ? price.tax_lines.map(t => (
+        <div key={t.type} style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+          <span style={{ color:C.muted }}>Tax on {t.type === 'addon' ? 'add-ons' : t.type === 'fee' ? 'fees' : 'dockage'} ({t.rate}%)</span>
+          <span>{'$' + t.amount.toFixed(2)}</span>
+        </div>
+      )) : price.tax_amount > 0 && (
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+          <span style={{ color:C.muted }}>Tax ({price.tax_rate}%)</span>
+          <span>{'$' + price.tax_amount.toFixed(2)}</span>
+        </div>
+      )}
+      {price.booking_fee > 0 && (
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+          <span style={{ color:C.muted }}>Skipper booking fee</span>
+          <span>{'$' + price.booking_fee.toFixed(2)}</span>
+        </div>
+      )}
+      <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800, marginTop:4 }}>
+        <span>Total</span>
+        <span>{'$' + price.total_due.toFixed(2)}</span>
+      </div>
+    </div>
+  )
+}
+
+// Optional add-ons the marina offers (electric choices are pick-one). Choices are remembered across slips by add-on id.
+function AddonPicker({ price, picked, setPicked }: { price: PlanPrice; picked: string[]; setPicked: (v: string[]) => void }) {
+  const opts = (price.addon_options || []).filter(o => !o.required)
+  if (opts.length === 0) return null
+  const groups: Record<string, typeof opts> = {}
+  const singles: typeof opts = []
+  opts.forEach(o => { if (o.choice_group) { (groups[o.choice_group] = groups[o.choice_group] || []).push(o) } else singles.push(o) })
+  const toggle = (id: string, groupIds: string[]) => setPicked(picked.includes(id) ? picked.filter(x => x !== id) : [...picked.filter(x => !groupIds.includes(x)), id])
+  const row = (o: typeof opts[number], groupIds: string[], radio: boolean) => (
+    <label key={o.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:C.white, padding:'4px 0', cursor:'pointer' }}>
+      <input type={radio ? 'radio' : 'checkbox'} checked={picked.includes(o.id)} onChange={() => toggle(o.id, groupIds)} />
+      <span style={{ flex:1 }}>{o.name}</span>
+      <span style={{ color:C.muted }}>{o.amount > 0 ? '+$' + o.amount.toFixed(2) : 'Included'}</span>
+    </label>
+  )
+  return (
+    <div style={{ marginBottom:8, borderTop:'1px solid rgba(255,255,255,0.12)', paddingTop:6 }}>
+      {Object.entries(groups).map(([g, items]) => (
+        <div key={g}>
+          <div style={{ fontSize:11, color:C.muted2, textTransform:'capitalize' }}>{g} (pick one)</div>
+          {items.map(o => row(o, items.map(x => x.id), true))}
+          {items.some(x => picked.includes(x.id)) && <button type="button" onClick={() => setPicked(picked.filter(x => !items.some(y => y.id === x)))} style={{ fontSize:11, background:'none', border:'none', color:C.muted2, textDecoration:'underline', cursor:'pointer', padding:0 }}>No {g}</button>}
+        </div>
+      ))}
+      {singles.map(o => row(o, [], false))}
+    </div>
+  )
 }
 
 function TransientRequestForm({ marina, user, profile, vessels, onBack, onSuccess }: {
@@ -3173,6 +3252,9 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   const [hotSlipsLoading, setHotSlipsLoading] = useState(false)
   // Agreement (Mike 2026-11-06): one required checkbox for the marina's Cancellation Policy and Stay Terms plus Skipper Terms/Privacy.
   const [agreed, setAgreed] = useState(false)
+  const [multihull, setMultihull] = useState(false)
+  const [pickedAddons, setPickedAddons] = useState<string[]>([])
+  const [stayError, setStayError] = useState<string|null>(null)
   const [openTerm, setOpenTerm] = useState<'cancel'|'stay'|null>(null)
   const [termsData, setTermsData] = useState<{ cancel: string|null; stay: string|null }>({ cancel: null, stay: null })
   useEffect(() => {
@@ -3195,13 +3277,15 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       ...(vessel.beam_ft ? { beam_ft: String(vessel.beam_ft) } : {}),
       ...(vessel.draft_ft ? { draft_ft: String(vessel.draft_ft) } : {}),
       ...(vessel.air_draft_ft ? { air_draft_ft: String(vessel.air_draft_ft) } : {}),
+      ...(multihull ? { multihull: '1' } : {}),
+      ...(pickedAddons.length ? { addon_ids: pickedAddons.join(',') } : {}),
     })
     fetch(`/api/marinas/${marina.id}/available-hot-slips?${qs}`)
       .then(r => r.json())
-      .then(d => setHotSlips(d.slips ?? []))
+      .then(d => { setHotSlips(d.slips ?? []); setStayError(d.stay_error ?? null) })
       .catch(() => setHotSlips([]))
       .finally(() => setHotSlipsLoading(false))
-  }, [marina.id, vessel?.length_ft, vessel?.beam_ft, vessel?.draft_ft, vessel?.air_draft_ft, arrival, departure])
+  }, [marina.id, vessel?.length_ft, vessel?.beam_ft, vessel?.draft_ft, vessel?.air_draft_ft, arrival, departure, multihull, pickedAddons.join(',')])
 
   async function handleInstantBook(slipId: string) {
     if (!vessel) return
@@ -3211,7 +3295,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       const res = await fetch(`/api/marinas/${marina.id}/transient-slips/${slipId}/instant-book`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id, terms_accepted: true }),
+        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id, terms_accepted: true, multihull, addon_ids: pickedAddons }),
       })
       const data = await res.json()
       if (!res.ok || data.error) {
@@ -3244,13 +3328,15 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       ...(vessel.weight_lbs ? { weight_lbs: String(vessel.weight_lbs) } : {}),
       ...(vessel.draft_ft ? { draft_ft: String(vessel.draft_ft) } : {}),
       ...(vessel.air_draft_ft ? { air_draft_ft: String(vessel.air_draft_ft) } : {}),
+      ...(multihull ? { multihull: '1' } : {}),
+      ...(pickedAddons.length ? { addon_ids: pickedAddons.join(',') } : {}),
     })
     fetch(`/api/marinas/${marina.id}/available-hot-moorings?${qs}`)
       .then(r => r.json())
-      .then(d => setHotMoorings(d.moorings ?? []))
+      .then(d => { setHotMoorings(d.moorings ?? []); if (d.stay_error) setStayError(d.stay_error) })
       .catch(() => setHotMoorings([]))
       .finally(() => setHotMooringsLoading(false))
-  }, [marina.id, vessel?.length_ft, vessel?.weight_lbs, vessel?.draft_ft, vessel?.air_draft_ft, arrival, departure])
+  }, [marina.id, vessel?.length_ft, vessel?.weight_lbs, vessel?.draft_ft, vessel?.air_draft_ft, arrival, departure, multihull, pickedAddons.join(',')])
 
   async function handleInstantBookMooring(mooringId: string) {
     if (!vessel) return
@@ -3260,7 +3346,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       const res = await fetch(`/api/marinas/${marina.id}/transient-moorings/${mooringId}/instant-book`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id, terms_accepted: true }),
+        body: JSON.stringify({ auth_user_id: user.id, check_in: arrival, check_out: departure, vessel_id: vessel.id, terms_accepted: true, multihull, addon_ids: pickedAddons }),
       })
       const data = await res.json()
       if (!res.ok || data.error) {
@@ -3416,6 +3502,15 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
           )}
         </div>
 
+        {vessel?.length_ft && stayError && (
+          <div style={{ marginBottom:14, padding:'10px 12px', borderRadius:10, background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.4)', fontSize:13, color:C.white }}>{stayError}</div>
+        )}
+        {vessel?.length_ft && (hotSlips.some(x => x.price?.multihull_offered) || hotMoorings.some(x => x.price?.multihull_offered)) && (
+          <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, fontSize:13, color:C.white, cursor:'pointer' }}>
+            <input type="checkbox" checked={multihull} onChange={e => setMultihull(e.target.checked)} />
+            <span>My boat is a catamaran or other multihull</span>
+          </label>
+        )}
         {vessel?.length_ft && hotSlipsLoading && (
           <div style={{ marginBottom:16, fontSize:12, color:C.muted, textAlign:'center', padding:'10px 0' }}>Checking for instant-book slips…</div>
         )}
@@ -3447,28 +3542,10 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                   ].filter(Boolean).join(' · ') || 'Amenities: contact marina'}
                 </div>
                 {slip.price && slip.price.nights > 0 ? (
-                  <div style={{ fontSize:12, color:C.white, marginBottom:10, borderTop:'1px solid rgba(255,255,255,0.12)', paddingTop:8 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                      <span style={{ color:C.muted }}>{slip.price.nights} night{slip.price.nights !== 1 ? 's' : ''} x ${slip.price.nightly.toFixed(2)}</span>
-                      <span>${slip.price.dockage_subtotal.toFixed(2)}</span>
-                    </div>
-                    {slip.price.tax_amount > 0 && (
-                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                        <span style={{ color:C.muted }}>Tax ({slip.price.tax_rate}%)</span>
-                        <span>${slip.price.tax_amount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {slip.price.booking_fee > 0 && (
-                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                        <span style={{ color:C.muted }}>Skipper booking fee</span>
-                        <span>${slip.price.booking_fee.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800, marginTop:4 }}>
-                      <span>Total</span>
-                      <span>${slip.price.total_due.toFixed(2)}</span>
-                    </div>
-                  </div>
+                  <>
+                    {slip.price.addon_options && <AddonPicker price={slip.price} picked={pickedAddons} setPicked={setPickedAddons} />}
+                    <PriceLines price={slip.price} />
+                  </>
                 ) : slip.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
                 )}
@@ -3500,7 +3577,12 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>
                   {[m.max_loa_ft && `Fits up to ${m.max_loa_ft}ft`, m.max_weight_lbs && `Max ${m.max_weight_lbs}lbs`, m.depth_ft && `${m.depth_ft}ft depth`].filter(Boolean).join(' · ')}
                 </div>
-                {m.estimated_cost != null && (
+                {m.price && m.price.nights > 0 ? (
+                  <>
+                    {m.price.addon_options && <AddonPicker price={m.price} picked={pickedAddons} setPicked={setPickedAddons} />}
+                    <PriceLines price={m.price} />
+                  </>
+                ) : m.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${m.estimated_cost.toFixed(2)} for {m.nights} night{m.nights !== 1 ? 's' : ''}</div>
                 )}
                 <button type="button" onClick={() => handleInstantBookMooring(m.id)} disabled={bookingMooring === m.id || !agreed}
