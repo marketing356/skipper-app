@@ -279,7 +279,8 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
                 transform={'rotate(' + s.rotation + ' ' + s.x + ' ' + s.y + ')'} />
             ))}
             {m.accessories.map((a, i) => <circle key={i} cx={a.x} cy={a.y} r={a.kind === 'piling' ? 0.8 : 1.4} fill={a.kind === 'fire_box' ? '#dc2626' : '#475569'} />)}
-            {m.yard.map((p, i) => (
+            {/* Yard spaces are not a transient offering: only the logged-in customer's OWN yard space is drawn (Mike 2026-11-06) */}
+            {m.yard.filter(p => mine.some(x => x.type === 'yard' && x.p.label === p.label)).map((p, i) => (
               <g key={'y' + i}>
                 <rect x={p.x - 2} y={p.y - 2} width={4} height={4} fill="#fff" stroke="#6b7280" strokeWidth={0.4} />
                 {zoomedIn && <text x={p.x} y={p.y - 3} fontSize={labelSize} textAnchor="middle" fill="#374151" style={halo}>{p.label}</text>}
