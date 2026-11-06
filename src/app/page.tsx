@@ -3203,7 +3203,7 @@ function AddonPicker({ price, picked, setPicked }: { price: PlanPrice; picked: s
         onClick={() => toggle(o.id, groupIds)}
         onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(o.id, groupIds) } }}
         style={{ display:'flex', alignItems:'center', gap:12, fontSize:14, color:C.white, padding:'10px 12px', margin:'6px 0', cursor:'pointer', borderRadius:10, background: on ? 'rgba(77,214,200,0.14)' : 'rgba(255,255,255,0.06)', border: '1.5px solid ' + (on ? C.teal : 'rgba(255,255,255,0.35)') }}>
-        <span style={{ width:24, height:24, flexShrink:0, borderRadius:6, border:'2px solid ' + (on ? C.teal : 'rgba(255,255,255,0.7)'), background: on ? C.teal : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', color:'#042b2a', fontSize:16, fontWeight:900 }}>{on ? '2713' : ''}</span>
+        <span style={{ width:24, height:24, flexShrink:0, borderRadius:6, border:'2px solid ' + (on ? C.teal : 'rgba(255,255,255,0.7)'), background: on ? C.teal : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', color:'#042b2a', fontSize:16, fontWeight:900 }}>{on ? '\u2713' : ''}</span>
         <span style={{ flex:1, fontWeight:600 }}>Add {o.name}</span>
         <span style={{ color: on ? C.teal : C.muted, fontWeight:700 }}>{o.amount > 0 ? '+$' + o.amount.toFixed(2) : 'Included'}</span>
       </div>
