@@ -147,11 +147,11 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
       if (e.cancelable) e.preventDefault()
       const now = pair(e); skipTap.current = true
       if (last && last.d > 0) {
-        const r = el.getBoundingClientRect(); const f = now.d / last.d; const dx = now.cx - last.cx, dy = now.cy - last.cy
+        const r = el.getBoundingClientRect(); const f = now.d / last.d; const lcx = last.cx, lcy = last.cy
         setVb(v => {
-          if (!v || !bounds) return v
+          if (!v || !bounds || !r.width || !r.height || !isFinite(f) || f <= 0) return v
           const w = Math.max(bounds.w / 30, Math.min(v.w / f, bounds.w * 1.6)); const h = w * (r.height / r.width)
-          const mx = v.x + (last!.cx / r.width) * v.w, my = v.y + (last!.cy / r.height) * v.h
+          const mx = v.x + (lcx / r.width) * v.w, my = v.y + (lcy / r.height) * v.h
           return { x: mx - (now.cx / r.width) * w, y: my - (now.cy / r.height) * h, w, h }
         })
       }

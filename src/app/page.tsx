@@ -3252,6 +3252,8 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   const [hotSlipsLoading, setHotSlipsLoading] = useState(false)
   // Agreement (Mike 2026-11-06): one required checkbox for the marina's Cancellation Policy and Stay Terms plus Skipper Terms/Privacy.
   const [agreed, setAgreed] = useState(false)
+  const [checkout, setCheckout] = useState<{ kind: 'slip'|'mooring'|'request'; id?: string } | null>(null)
+  const openCheckout = (kind: 'slip'|'mooring'|'request', id?: string) => { setAgreed(false); setOpenTerm(null); setCheckout({ kind, id }) }
   const [multihull, setMultihull] = useState(false)
   const [pickedAddons, setPickedAddons] = useState<string[]>([])
   const [stayError, setStayError] = useState<string|null>(null)
@@ -3429,7 +3431,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={e => { e.preventDefault(); if (vessels.length > 0 && !vessel) { setError('Please choose which vessel you are bringing'); return } setError(null); openCheckout('request') }}>
         {/* Which vessel? — only shown when the boater has more than one boat. Must pick
             before fit checks run (availability is gated on a selected vessel below). */}
         {vessels.length > 1 && (
@@ -3480,28 +3482,6 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
           </button>
           {showLayout && <div style={{ marginTop: 10 }}><MarinaLayoutMap marinaId={marina.id} highlights={[...hotSlips.filter(x => x.label).map(x => ({ label: x.label as string, kind: 'available', space_type: 'slip' })), ...hotMoorings.filter(x => (x as any).label).map(x => ({ label: (x as any).label as string, kind: 'available', space_type: 'mooring' }))]} /></div>}
         </div>
-        {/* Agreement: one required checkbox, links open the marina's own text (Cancellation Policy = marina_settings; Stay Terms = marina text or Skipper starter). */}
-        <div style={{ marginBottom:18, padding:'12px 14px', borderRadius:12, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)' }}>
-          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:12, color:C.white, lineHeight:1.5 }}>
-            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop:3, width:18, height:18, flexShrink:0 }} />
-            <span>
-              I agree to {marina.name}{'\u2019'}s{' '}
-              <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'cancel' ? null : 'cancel') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Cancellation Policy</button>
-              {' '}and{' '}
-              <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'stay' ? null : 'stay') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Stay Terms</button>
-              , and to Skipper{'\u2019'}s{' '}
-              <a href="https://ayeayeskipper.com/terms" target="_blank" rel="noreferrer" style={{ color:C.teal }}>Terms</a>
-              {' '}and{' '}
-              <a href="https://ayeayeskipper.com/privacy" target="_blank" rel="noreferrer" style={{ color:C.teal }}>Privacy Policy</a>.
-            </span>
-          </label>
-          {openTerm && (
-            <div style={{ marginTop:10, padding:'10px 12px', borderRadius:10, background:'rgba(0,0,0,0.25)', fontSize:12, color:C.muted2, whiteSpace:'pre-wrap', lineHeight:1.5, maxHeight:220, overflowY:'auto' }}>
-              {openTerm === 'cancel' ? (termsData.cancel || 'Cancellations are reviewed by the marina.') : (termsData.stay || 'Loading...')}
-            </div>
-          )}
-        </div>
-
         {vessel?.length_ft && stayError && (
           <div style={{ marginBottom:14, padding:'10px 12px', borderRadius:10, background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.4)', fontSize:13, color:C.white }}>{stayError}</div>
         )}
@@ -3549,7 +3529,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 ) : slip.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
                 )}
-                <button type="button" onClick={() => handleInstantBook(slip.id)} disabled={booking === slip.id || !agreed}
+                <button type="button" onClick={() => openCheckout('slip', slip.id)} disabled={booking === slip.id}
                   style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: booking === slip.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: booking === slip.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
                   {booking === slip.id ? 'Booking…' : '💳 Book & Pay Now'}
                 </button>
@@ -3585,7 +3565,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 ) : m.estimated_cost != null && (
                   <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${m.estimated_cost.toFixed(2)} for {m.nights} night{m.nights !== 1 ? 's' : ''}</div>
                 )}
-                <button type="button" onClick={() => handleInstantBookMooring(m.id)} disabled={bookingMooring === m.id || !agreed}
+                <button type="button" onClick={() => openCheckout('mooring', m.id)} disabled={bookingMooring === m.id}
                   style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: bookingMooring === m.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: bookingMooring === m.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
                   {bookingMooring === m.id ? 'Booking…' : '💳 Book & Pay Now'}
                 </button>
@@ -3665,11 +3645,47 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
           </div>
         )}
 
-        <button type="submit" disabled={submitting || !agreed}
+        <button type="submit" disabled={submitting}
           style={{ width:'100%', padding:'14px', fontSize:15, fontWeight:700, color:C.bg, background: submitting ? 'rgba(77,214,200,0.4)' : C.teal, border:'none', borderRadius:14, cursor: submitting ? 'default' : 'pointer', fontFamily:'inherit' }}>
           {submitting ? 'Sending…' : 'Send Request'}
         </button>
       </form>
+
+      {checkout && (
+        <div onClick={() => setCheckout(null)} style={{ position:'fixed', inset:0, zIndex:3000, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:560, background:'#0d1f2d', borderTop:'1px solid rgba(255,255,255,0.2)', borderRadius:'18px 18px 0 0', padding:'18px 16px calc(env(safe-area-inset-bottom, 0px) + 18px)', maxHeight:'85vh', overflowY:'auto' }}>
+            <div style={{ fontSize:16, fontWeight:800, color:C.white, marginBottom:10 }}>{checkout.kind === 'request' ? 'Before you send your request' : 'Before you pay'}</div>
+        <div style={{ padding:'4px 0 12px' }}>
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:12, color:C.white, lineHeight:1.5 }}>
+            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop:3, width:18, height:18, flexShrink:0 }} />
+            <span>
+              I agree to {marina.name}{'\u2019'}s{' '}
+              <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'cancel' ? null : 'cancel') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Cancellation Policy</button>
+              {' '}and{' '}
+              <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'stay' ? null : 'stay') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Stay Terms</button>
+              , and to Skipper{'\u2019'}s{' '}
+              <a href="https://ayeayeskipper.com/terms" target="_blank" rel="noreferrer" style={{ color:C.teal }}>Terms</a>
+              {' '}and{' '}
+              <a href="https://ayeayeskipper.com/privacy" target="_blank" rel="noreferrer" style={{ color:C.teal }}>Privacy Policy</a>.
+            </span>
+          </label>
+          {openTerm && (
+            <div style={{ marginTop:10, padding:'10px 12px', borderRadius:10, background:'rgba(0,0,0,0.25)', fontSize:12, color:C.muted2, whiteSpace:'pre-wrap', lineHeight:1.5, maxHeight:220, overflowY:'auto' }}>
+              {openTerm === 'cancel' ? (termsData.cancel || 'Cancellations are reviewed by the marina.') : (termsData.stay || 'Loading...')}
+            </div>
+          )}
+        </div>
+
+
+            <button type="button" disabled={!agreed}
+              onClick={() => { const c = checkout; setCheckout(null); if (c.kind === 'slip' && c.id) handleInstantBook(c.id); else if (c.kind === 'mooring' && c.id) handleInstantBookMooring(c.id); else handleSubmit({ preventDefault() {} } as unknown as React.FormEvent) }}
+              style={{ width:'100%', padding:'14px', fontSize:15, fontWeight:800, color:'#0d2b4b', background: agreed ? '#4ade80' : 'rgba(255,255,255,0.18)', border:'none', borderRadius:14, cursor: agreed ? 'pointer' : 'default', fontFamily:'inherit', marginBottom:8 }}>
+              {checkout.kind === 'request' ? 'Agree and send request' : 'Agree and continue to payment'}
+            </button>
+            <button type="button" onClick={() => setCheckout(null)} style={{ width:'100%', padding:'10px', fontSize:13, color:C.muted2, background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
