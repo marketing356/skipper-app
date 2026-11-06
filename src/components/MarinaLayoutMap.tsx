@@ -104,6 +104,16 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
     m.sections.forEach(s => add(s.x, s.y, Math.max(s.width, s.height) / 2))
     m.slips.forEach(p => add(p.x, p.y, 4)); m.moorings.forEach(p => add(p.x, p.y, 6)); m.yard.forEach(p => add(p.x, p.y, 4))
     if (x0 > x1) return null
+    // The land square (closed shoreline ring) is the map's frame: nothing outside it is shown (Mike 2026-11-06).
+    // Only used when it really contains the docks and spaces, otherwise fall back to the old padded box.
+    try {
+      const rings = buildPolylines(m.bulkheads).filter(pl => pl.closed)
+      if (rings.length) {
+        let rx0 = 1e9, ry0 = 1e9, rx1 = -1e9, ry1 = -1e9
+        rings.forEach(pl => pl.points.forEach(q => { rx0 = Math.min(rx0, q.x); ry0 = Math.min(ry0, q.y); rx1 = Math.max(rx1, q.x); ry1 = Math.max(ry1, q.y) }))
+        if (rx0 <= x0 + 2 && ry0 <= y0 + 2 && rx1 >= x1 - 2 && ry1 >= y1 - 2 && rx1 - rx0 < 3000 && ry1 - ry0 < 3000) return { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0 }
+      }
+    } catch { /* fall through */ }
     const pad = 20
     return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + 2 * pad, h: y1 - y0 + 2 * pad }
   }, [m])
@@ -148,7 +158,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
 
   const zoomAt = (px: number, py: number, factor: number) => setVb(v => {
     const r = rect(); if (!v || !r || !bounds) return v
-    const w = Math.max(bounds.w / 30, Math.min(v.w / factor, bounds.w * 1.6)); const h = w * (r.height / r.width)
+    const w = Math.max(bounds.w / 30, Math.min(v.w / factor, bounds.w * 1.15)); const h = w * (r.height / r.width)
     const mx = v.x + (px / r.width) * v.w, my = v.y + (py / r.height) * v.h
     return { x: mx - (px / r.width) * w, y: my - (py / r.height) * h, w, h }
   })
@@ -260,7 +270,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
       {!expanded && !compact && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Use two fingers to zoom and move the map. Tap it to open full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
       <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
-        style={{ width: '100%', height: expanded ? undefined : compact ? 190 : 380, flex: expanded ? 1 : undefined, minHeight: 200, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: 'linear-gradient(180deg, #0f3a5c 0%, #061828 100%)', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
+        style={{ width: '100%', height: expanded ? undefined : (compact || true) ? undefined : 380, aspectRatio: expanded ? undefined : (bounds.w + ' / ' + bounds.h), maxHeight: expanded ? undefined : '70vh', flex: expanded ? 1 : undefined, minHeight: expanded ? 200 : undefined, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: 'linear-gradient(180deg, #0f3a5c 0%, #061828 100%)', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
         {vb && (
           <svg width="100%" height="100%" viewBox={vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h} preserveAspectRatio="none" style={{ display: 'block' }}>
             {/* Land: closed bulkhead/shoreline rings, even-odd (same as Chart Room 2D) */}
