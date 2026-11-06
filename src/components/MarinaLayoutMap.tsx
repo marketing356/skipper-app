@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 // Public, read-only marina layout (Mike 2026-10-31): docks plus slip and mooring LABELS only.
 // No vessel/owner names and no occupied/vacant status - the engine never sends them.
@@ -123,6 +124,12 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
   const closeFull = () => { if (typeof window !== 'undefined' && window.history.state && (window.history.state as any).marinaMapFull) window.history.back(); else setExpanded(false) }
   useEffect(() => {
     if (!expanded) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [expanded])
+  useEffect(() => {
+    if (!expanded) return
     const onPop = () => setExpanded(false)
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -150,9 +157,15 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
     : { position: 'relative' }
   const btn = (on?: boolean): React.CSSProperties => ({ padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', color: on ? '#0d2b4b' : '#4dd6c8', background: on ? '#4dd6c8' : 'rgba(77,214,200,0.1)', border: '1px solid rgba(77,214,200,0.4)' })
   const halo: React.CSSProperties = { paintOrder: 'stroke', stroke: '#fff', strokeWidth: 1.4, strokeLinejoin: 'round' }
-  return (
+  const content = (
     <div style={box}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      {expanded && (
+        <button data-map-close="1" onClick={closeFull} aria-label="Close map"
+          style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 12, zIndex: 5, padding: '10px 16px', borderRadius: 24, border: 'none', background: '#4dd6c8', color: '#042b2a', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.4)' }}>
+          Close map
+        </button>
+      )}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center', paddingRight: expanded ? 120 : 0, paddingTop: expanded ? 'env(safe-area-inset-top, 0px)' : 0 }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a slip, e.g. A12"
           style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontFamily: 'inherit', fontSize: 13 }} />
         {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
@@ -222,4 +235,5 @@ export default function MarinaLayoutMap({ marinaId, highlights = [] }: { marinaI
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 6 }}>Pinch or scroll to zoom, drag to move. Zoom in to see slip numbers. Layout only — no vessel information is shown.</div>
     </div>
   )
+  return expanded && typeof document !== 'undefined' ? createPortal(content, document.body) : content
 }
