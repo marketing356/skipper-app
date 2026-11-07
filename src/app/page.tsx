@@ -52,6 +52,10 @@ const GLOBAL_CSS = `
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Screen = 'splash' | 'auth' | 'otp_verify' | 'contact_setup' | 'pin_setup' | 'pin_login' | 'pin_session_refresh' | 'pin_email_login' | 'home'
 type HomeTab = 'home' | 'vessel' | 'weather' | 'marinas' | 'messages' | 'log' | 'account'
+// 2026-11-07 (Mike): standard booking-app behaviour - leave the app, come back, you are on the same step (6 hours).
+const RESUME_KEY = 'skipper_resume_v1'
+function readResume(): any { try { const r = JSON.parse(localStorage.getItem(RESUME_KEY) || 'null'); if (r && Date.now() - (r.ts || 0) < 6 * 3600 * 1000) return r } catch { /* ignore */ } return null }
+function writeResume(patch: Record<string, unknown>) { try { localStorage.setItem(RESUME_KEY, JSON.stringify({ ...(readResume() || {}), ...patch, ts: Date.now() })) } catch { /* ignore */ } }
 type MarinaProfile = { id: string; name: string; address: string | null; phone: string | null; email: string | null }
 type SpaceProfile  = { id: string; label: string | null; dock: string | null; spaceType: string | null }
 type LeaseProfile  = { id: string; startDate: string | null; endDate: string | null; status: string; monthlyRate: number | null }
@@ -536,6 +540,8 @@ export default function SkipperApp() {
   const [vessels,        setVessels]        = useState<Vessel[]>([])
   const [vesselIds,      setVesselIds]      = useState<string[]>([])
   const [homeTab,        setHomeTab]        = useState<HomeTab>('home')
+  useEffect(() => { const r = readResume(); if (r?.tab) setHomeTab(r.tab as HomeTab) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { writeResume({ tab: homeTab }) }, [homeTab])
   const [marinaProfile,  setMarinaProfile]  = useState<MarinaProfile | null>(null)
   const [spaceProfile,   setSpaceProfile]   = useState<SpaceProfile | null>(null)
   const [leaseProfile,   setLeaseProfile]   = useState<LeaseProfile | null>(null)
@@ -2513,6 +2519,11 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
   const [profileMarina,   setProfileMarina]   = useState<Marina|null>(null)
   const [filterTransientOnly, setFilterTransientOnly] = useState(false)
   const [showFilters,     setShowFilters]     = useState(false)
+  useEffect(() => {
+    if (transientMarina || !marinas.length || !vessels.length) return
+    const r = readResume(); if (!r?.bookingMarinaId) return
+    const mm = marinas.find(x => x.id === r.bookingMarinaId); if (mm) setTransientMarina(mm)
+  }, [marinas.length, vessels.length])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function load() {
@@ -2605,8 +2616,8 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
   if (transientMarina) return (
     <TransientRequestForm
       marina={transientMarina} user={user} profile={profile} vessels={vessels}
-      onBack={() => setTransientMarina(null)}
-      onSuccess={() => { setTransientMarina(null); showToast('✅ Request sent! Marina will respond shortly.') }}
+      onBack={() => { writeResume({ bookingMarinaId: null, draft: null }); setTransientMarina(null) }}
+      onSuccess={() => { writeResume({ bookingMarinaId: null, draft: null }); setTransientMarina(null); showToast('✅ Request sent! Marina will respond shortly.') }}
     />
   )
 
@@ -3271,13 +3282,15 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   // they're bringing before we check slip fit or send anything. One-boat owners auto-select.
   // The chosen vessel's full specs (LOA, beam, draft, air draft, weight) drive every fit
   // check and the request payload, so availability is always accurate to that exact boat.
-  const [selectedVesselId, setSelectedVesselId] = useState<string|null>(vessels.length === 1 ? vessels[0].id : null)
+  const _rs = (() => { const r = readResume(); return r?.bookingMarinaId === marina.id ? (r.draft || null) : null })()
+  const [selectedVesselId, setSelectedVesselId] = useState<string|null>(_rs?.vesselId && vessels.some(v => v.id === _rs.vesselId) ? _rs.vesselId : (vessels.length === 1 ? vessels[0].id : null))
   const vessel = vessels.find(v => v.id === selectedVesselId) ?? null
   const today = new Date().toISOString().split('T')[0]
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
 
-  const [arrival,    setArrival]    = useState(today)
-  const [departure,  setDeparture]  = useState(tomorrow)
+  const _okDates = !!(_rs?.arrival && _rs?.departure && _rs.arrival >= today && _rs.departure > _rs.arrival)
+  const [arrival,    setArrival]    = useState(_okDates ? _rs.arrival : today)
+  const [departure,  setDeparture]  = useState(_okDates ? _rs.departure : tomorrow)
   const [shorePower, setShorePower] = useState(false)
   const [fuelType,   setFuelType]   = useState('')
   // Auto-fill shore power + fuel from the chosen vessel's saved specs (no re-asking what we
@@ -3298,10 +3311,13 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
   const [hotSlipsLoading, setHotSlipsLoading] = useState(false)
   // Agreement (Mike 2026-11-06): one required checkbox for the marina's Cancellation Policy and Stay Terms plus Skipper Terms/Privacy.
   const [agreed, setAgreed] = useState(false)
-  const [checkout, setCheckout] = useState<{ kind: 'slip'|'mooring'|'request'; id?: string } | null>(null)
+  const [checkout, setCheckout] = useState<{ kind: 'slip'|'mooring'|'request'; id?: string } | null>(_rs?.checkout ?? null)
   const openCheckout = (kind: 'slip'|'mooring'|'request', id?: string) => { setAgreed(false); setOpenTerm(null); setCheckout({ kind, id }) }
-  const [multihull, setMultihull] = useState(false)
-  const [pickedAddons, setPickedAddons] = useState<string[]>([])
+  const [multihull, setMultihull] = useState(!!_rs?.multihull)
+  const [pickedAddons, setPickedAddons] = useState<string[]>(Array.isArray(_rs?.pickedAddons) ? _rs.pickedAddons : [])
+  useEffect(() => {
+    writeResume({ bookingMarinaId: marina.id, draft: { vesselId: selectedVesselId, arrival, departure, multihull, pickedAddons, checkout } })
+  }, [marina.id, selectedVesselId, arrival, departure, multihull, pickedAddons.join(','), checkout?.kind, checkout?.id])  // eslint-disable-line react-hooks/exhaustive-deps
   const [stayError, setStayError] = useState<string|null>(null)
   const [openTerm, setOpenTerm] = useState<'cancel'|'stay'|null>(null)
   const [termsData, setTermsData] = useState<{ cancel: string|null; stay: string|null }>({ cancel: null, stay: null })
@@ -3567,17 +3583,12 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                     slip.wifi ? '📶 WiFi' : null,
                   ].filter(Boolean).join(' · ') || 'Amenities: contact marina'}
                 </div>
-                {slip.price && slip.price.nights > 0 ? (
-                  <>
-                    {slip.price.addon_options && <AddonPicker price={slip.price} picked={pickedAddons} setPicked={setPickedAddons} />}
-                    <PriceLines price={slip.price} />
-                  </>
-                ) : slip.estimated_cost != null && (
-                  <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${slip.estimated_cost.toFixed(2)} for {slip.nights} night{slip.nights !== 1 ? 's' : ''}</div>
+                {(slip.price && slip.price.nights > 0 ? slip.price.dockage_subtotal : slip.estimated_cost) != null && (
+                  <div style={{ fontSize:13, color:C.white, fontWeight:700, marginBottom:8 }}>${Number(slip.price && slip.price.nights > 0 ? slip.price.dockage_subtotal : slip.estimated_cost).toFixed(2)} for {slip.price && slip.price.nights > 0 ? slip.price.nights : slip.nights} night{(slip.price && slip.price.nights > 0 ? slip.price.nights : slip.nights) !== 1 ? 's' : ''}</div>
                 )}
                 <button type="button" onClick={() => openCheckout('slip', slip.id)} disabled={booking === slip.id}
                   style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: booking === slip.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: booking === slip.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
-                  {booking === slip.id ? 'Booking…' : '💳 Book & Pay Now'}
+                  {booking === slip.id ? 'Booking…' : 'Select'}
                 </button>
               </div>
             ))}
@@ -3603,17 +3614,12 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>
                   {[m.max_loa_ft && `Fits up to ${m.max_loa_ft}ft`, m.max_weight_lbs && `Max ${m.max_weight_lbs}lbs`, m.depth_ft && `${m.depth_ft}ft depth`].filter(Boolean).join(' · ')}
                 </div>
-                {m.price && m.price.nights > 0 ? (
-                  <>
-                    {m.price.addon_options && <AddonPicker price={m.price} picked={pickedAddons} setPicked={setPickedAddons} />}
-                    <PriceLines price={m.price} />
-                  </>
-                ) : m.estimated_cost != null && (
-                  <div style={{ fontSize:12, color:C.white, fontWeight:600, marginBottom:8 }}>Total: ${m.estimated_cost.toFixed(2)} for {m.nights} night{m.nights !== 1 ? 's' : ''}</div>
+                {(m.price && m.price.nights > 0 ? m.price.dockage_subtotal : m.estimated_cost) != null && (
+                  <div style={{ fontSize:13, color:C.white, fontWeight:700, marginBottom:8 }}>${Number(m.price && m.price.nights > 0 ? m.price.dockage_subtotal : m.estimated_cost).toFixed(2)} for {m.price && m.price.nights > 0 ? m.price.nights : m.nights} night{(m.price && m.price.nights > 0 ? m.price.nights : m.nights) !== 1 ? 's' : ''}</div>
                 )}
                 <button type="button" onClick={() => openCheckout('mooring', m.id)} disabled={bookingMooring === m.id}
                   style={{ width:'100%', padding:'10px 0', fontSize:13, fontWeight:800, color:'#0d2b4b', background: bookingMooring === m.id ? 'rgba(74,222,128,0.5)' : '#4ade80', border:'none', borderRadius:10, cursor: bookingMooring === m.id ? 'default' : 'pointer', fontFamily:'inherit' }}>
-                  {bookingMooring === m.id ? 'Booking…' : '💳 Book & Pay Now'}
+                  {bookingMooring === m.id ? 'Booking…' : 'Select'}
                 </button>
               </div>
             ))}
@@ -3698,9 +3704,33 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       </form>
 
       {checkout && (
-        <div onClick={() => setCheckout(null)} style={{ position:'fixed', inset:0, zIndex:3000, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:560, background:'#0d1f2d', borderTop:'1px solid rgba(255,255,255,0.2)', borderRadius:'18px 18px 0 0', padding:'18px 16px calc(env(safe-area-inset-bottom, 0px) + 18px)', maxHeight:'85vh', overflowY:'auto' }}>
-            <div style={{ fontSize:16, fontWeight:800, color:C.white, marginBottom:10 }}>{checkout.kind === 'request' ? 'Before you send your request' : 'Before you pay'}</div>
+        <div onClick={() => { if (checkout.kind === 'request') setCheckout(null) }} style={checkout.kind === 'request' ? { position:'fixed', inset:0, zIndex:3000, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'flex-end', justifyContent:'center' } : { position:'fixed', inset:0, zIndex:3000, background:'#0d1f2d', overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:560, margin: checkout.kind === 'request' ? undefined : '0 auto', background:'#0d1f2d', borderTop: checkout.kind === 'request' ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: checkout.kind === 'request' ? '18px 18px 0 0' : 0, padding:'18px 16px calc(env(safe-area-inset-bottom, 0px) + 28px)', maxHeight:'85vh', overflowY:'auto' }}>
+            {checkout.kind !== 'request' && (() => {
+              const it: any = checkout.kind === 'slip' ? hotSlips.find(x => x.id === checkout.id) : hotMoorings.find(x => x.id === checkout.id)
+              const pr: any = it?.price
+              const fmtD = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              return (
+                <>
+                  <button type="button" onClick={() => setCheckout(null)} style={{ background:'none', border:'none', color:C.teal, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', padding:'4px 0 10px' }}>← Back to results</button>
+                  <div style={{ fontSize:20, fontWeight:800, color:C.white }}>Review your stay</div>
+                  <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>{marina.name}</div>
+                  <div style={{ background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:12, padding:'12px 14px', marginBottom:14 }}>
+                    <div style={{ fontSize:15, fontWeight:800, color:C.white, marginBottom:4 }}>{checkout.kind === 'slip' ? 'Slip' : 'Mooring'} {it?.label ?? ''}</div>
+                    <div style={{ fontSize:12, color:C.white, marginBottom:2 }}>{fmtD(arrival)} to {fmtD(departure)} · {calcNights()} night{calcNights() !== 1 ? 's' : ''}</div>
+                    <div style={{ fontSize:12, color:C.muted2 }}>{vessel?.name || 'Your boat'}{vessel?.length_ft ? ' · ' + vessel.length_ft + 'ft' : ''}</div>
+                  </div>
+                  {!it && <div style={{ fontSize:13, color:C.muted, marginBottom:14 }}>This spot is no longer available for those dates. Go back and pick another.</div>}
+                  {it && pr && pr.nights > 0 && (
+                    <div style={{ marginBottom:14 }}>
+                      {pr.addon_options && <AddonPicker price={pr} picked={pickedAddons} setPicked={setPickedAddons} />}
+                      <PriceLines price={pr} />
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+            {checkout.kind === 'request' && <div style={{ fontSize:16, fontWeight:800, color:C.white, marginBottom:10 }}>Before you send your request</div>}
         <div style={{ padding:'4px 0 12px' }}>
           <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:12, color:C.white, lineHeight:1.5 }}>
             <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop:3, width:18, height:18, flexShrink:0 }} />
@@ -3726,9 +3756,9 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
             <button type="button" disabled={!agreed}
               onClick={() => { const c = checkout; setCheckout(null); if (c.kind === 'slip' && c.id) handleInstantBook(c.id); else if (c.kind === 'mooring' && c.id) handleInstantBookMooring(c.id); else handleSubmit({ preventDefault() {} } as unknown as React.FormEvent) }}
               style={{ width:'100%', padding:'14px', fontSize:15, fontWeight:800, color:'#0d2b4b', background: agreed ? '#4ade80' : 'rgba(255,255,255,0.18)', border:'none', borderRadius:14, cursor: agreed ? 'pointer' : 'default', fontFamily:'inherit', marginBottom:8 }}>
-              {checkout.kind === 'request' ? 'Agree and send request' : 'Agree and continue to payment'}
+              {checkout.kind === 'request' ? 'Agree and send request' : 'Agree and pay'}
             </button>
-            <button type="button" onClick={() => setCheckout(null)} style={{ width:'100%', padding:'10px', fontSize:13, color:C.muted2, background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
+            <button type="button" onClick={() => setCheckout(null)} style={{ width:'100%', padding:'10px', fontSize:13, color:C.muted2, background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>{checkout.kind === 'request' ? 'Cancel' : 'Back to results'}</button>
           </div>
         </div>
       )}
