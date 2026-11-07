@@ -4714,35 +4714,78 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
   const [manageError,     setManageError]     = useState<string|null>(null)
   const [manageResult,    setManageResult]    = useState<string|null>(null)
   const [confirmCancel,   setConfirmCancel]   = useState(false)
+  const [newStartDate, setNewStartDate] = useState('')
+  const [showChange, setShowChange] = useState(false)
+  const [modQuote, setModQuote] = useState<any|null>(null)
+  const [cancelQuote, setCancelQuote] = useState<any|null>(null)
 
 
   function openManage(b: any) {
     setManagingBooking(b); setManageError(null); setManageResult(null)
-    setConfirmCancel(false)
+    setConfirmCancel(false); setShowChange(false); setModQuote(null); setCancelQuote(null)
+    setNewStartDate(b.arrival_date || ''); setNewEndDate(b.departure_date || '')
   }
   function closeManage() {
     setManagingBooking(null); setManageError(null); setManageResult(null)
-    setConfirmCancel(false)
+    setConfirmCancel(false); setShowChange(false); setModQuote(null); setCancelQuote(null)
   }
 
-  async function handleExtendBooking() {
-    // Standard 'modify reservation': change the departure date (arrival stays). Same engine pipeline staff use.
-    if (!managingBooking || !newEndDate) return
-    setManageBusy(true); setManageError(null)
+  async function handleQuoteChange() {
+    // Standard "change reservation": see the new price first, nothing changes until you confirm.
+    if (!managingBooking) return
+    const ci = newStartDate || managingBooking.arrival_date
+    const co = newEndDate || managingBooking.departure_date
+    setManageBusy(true); setManageError(null); setModQuote(null)
     try {
-      const res = await fetch('/api/transient-requests/' + managingBooking.id + '/extend', {
+      const res = await fetch('/api/transient-requests/' + managingBooking.id + '/modify-quote', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_user_id: user.id, new_end_date: newEndDate }),
+        body: JSON.stringify({ auth_user_id: user.id, new_check_in: ci, new_check_out: co }),
       })
       const data = await res.json()
-      if (!res.ok || data.success === false || data.error) throw new Error(data.detail || data.error || data.message || 'That date is not available')
-      setManageResult('Departure date changed to ' + newEndDate + '. Your marina will bill or credit any difference.')
-      refetchBookings()
+      if (!res.ok || data.error) throw new Error(data.detail || data.error || 'Those dates are not available')
+      setModQuote(data)
     } catch (e: any) {
       setManageError(e.message || 'Something went wrong')
     } finally {
       setManageBusy(false)
     }
+  }
+
+  async function handleConfirmChange() {
+    if (!managingBooking || !modQuote) return
+    setManageBusy(true); setManageError(null)
+    try {
+      const res = await fetch('/api/transient-requests/' + managingBooking.id + '/modify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, new_check_in: modQuote.new.check_in, new_check_out: modQuote.new.check_out }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.detail || data.error || 'Could not change your dates')
+      if (data.requires_payment && data.checkout_url) {
+        setManageResult((data.message || 'Opening payment') + ' Opening payment now.')
+        setTimeout(() => { window.location.href = data.checkout_url }, 1200)
+      } else {
+        setManageResult(data.message || 'Your dates were changed.')
+        refetchBookings()
+      }
+    } catch (e: any) {
+      setManageError(e.message || 'Something went wrong')
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function handleOpenCancel() {
+    if (!managingBooking) return
+    setConfirmCancel(true); setCancelQuote(null); setManageError(null)
+    try {
+      const res = await fetch('/api/transient-requests/' + managingBooking.id + '/cancel-quote', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id }),
+      })
+      const data = await res.json()
+      if (res.ok && !data.error) setCancelQuote(data)
+    } catch { /* quote is informational; cancel still works */ }
   }
 
   async function handleCancelBooking() {
@@ -5004,7 +5047,13 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
               <>
                 <div style={{ fontSize:14, color:C.white, fontWeight:700, marginBottom:6 }}>Cancel this stay?</div>
                 <div style={{ fontSize:12.5, color:C.muted, marginBottom:16, lineHeight:1.5 }}>
-                  If you're within the marina's refund window you'll be refunded automatically. Otherwise the marina will review and follow up on any refund.
+                  {!cancelQuote ? 'Checking your refund...' : (cancelQuote.paid > 0
+                    ? ('You paid $' + Number(cancelQuote.paid).toFixed(2) + '. ' + (cancelQuote.auto
+                        ? ('If you cancel now you will be refunded $' + Number(cancelQuote.refund_amount || 0).toFixed(2) + (cancelQuote.refund_pct != null && Number(cancelQuote.refund_pct) < 100 ? ' (' + Number(cancelQuote.refund_pct) + ' percent).' : '.'))
+                        : 'The marina reviews refunds for cancellations this close to arrival and will follow up with you.'))
+                    : 'You have not paid for this stay, so there is nothing to refund.')}
+                  {cancelQuote && cancelQuote.reason && cancelQuote.paid > 0 ? <span style={{ display:'block', marginTop:6 }}>{cancelQuote.reason}</span> : null}
+                  {cancelQuote && cancelQuote.policy_text ? <span style={{ display:'block', marginTop:6 }}>{cancelQuote.policy_text}</span> : null}
                 </div>
                 {manageError && <div style={{ fontSize:12, color:C.danger, marginBottom:12 }}>{manageError}</div>}
                 <button onClick={handleCancelBooking} disabled={manageBusy}
@@ -5026,15 +5075,62 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
 
                 {['confirmed','accepted','assigned','checked_in'].includes((managingBooking.status || '').toLowerCase()) && (
                   <div style={{ marginBottom:14 }}>
-                    <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Change departure date</div>
-                    <div style={{ display:'flex', gap:8 }}>
-                      <input type="date" value={newEndDate} min={managingBooking.arrival_date} onChange={e => setNewEndDate(e.target.value)}
-                        style={{ flex:1, padding:'11px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.06)', color:C.white, fontSize:14, fontFamily:'inherit' }} />
-                      <button onClick={handleExtendBooking} disabled={manageBusy || !newEndDate || newEndDate === managingBooking.departure_date}
-                        style={{ padding:'11px 16px', borderRadius:10, border:'none', background: (manageBusy || !newEndDate || newEndDate === managingBooking.departure_date) ? 'rgba(255,255,255,0.12)' : C.teal, color:'#0d2b4b', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
-                        {manageBusy ? 'Saving' : 'Update'}
+                    {!showChange ? (
+                      <button onClick={() => setShowChange(true)} disabled={manageBusy}
+                        style={{ width:'100%', padding:'13px', background:'rgba(77,214,200,0.12)', border:'1px solid ' + C.tealBorder, borderRadius:12, color:C.teal, fontSize:14, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
+                        Change dates
                       </button>
-                    </div>
+                    ) : (
+                      <div style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'12px 14px' }}>
+                        <div style={{ fontSize:13, fontWeight:800, color:C.white, marginBottom:10 }}>Change dates</div>
+                        <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>Arrival</div>
+                            <input type="date" value={newStartDate} disabled={(managingBooking.status || '').toLowerCase() === 'checked_in'}
+                              min={new Date().toISOString().slice(0,10)}
+                              onChange={e => { setNewStartDate(e.target.value); setModQuote(null) }}
+                              style={{ width:'100%', boxSizing:'border-box', padding:'10px', borderRadius:10, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.06)', color:C.white, fontSize:14, fontFamily:'inherit', opacity: (managingBooking.status || '').toLowerCase() === 'checked_in' ? 0.5 : 1 }} />
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>Departure</div>
+                            <input type="date" value={newEndDate} min={newStartDate || managingBooking.arrival_date}
+                              onChange={e => { setNewEndDate(e.target.value); setModQuote(null) }}
+                              style={{ width:'100%', boxSizing:'border-box', padding:'10px', borderRadius:10, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.06)', color:C.white, fontSize:14, fontFamily:'inherit' }} />
+                          </div>
+                        </div>
+                        {!modQuote && (
+                          <button onClick={handleQuoteChange}
+                            disabled={manageBusy || !newEndDate || !newStartDate || (newStartDate === managingBooking.arrival_date && newEndDate === managingBooking.departure_date)}
+                            style={{ width:'100%', padding:'12px', borderRadius:10, border:'none', background: (manageBusy || !newEndDate || !newStartDate || (newStartDate === managingBooking.arrival_date && newEndDate === managingBooking.departure_date)) ? 'rgba(255,255,255,0.12)' : C.teal, color:'#0d2b4b', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
+                            {manageBusy ? 'Checking...' : 'See the new price'}
+                          </button>
+                        )}
+                        {modQuote && (
+                          <div>
+                            <div style={{ fontSize:12.5, color:C.white, lineHeight:1.7, marginBottom:10 }}>
+                              <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:C.muted }}>New stay</span><span>{modQuote.new.check_in} to {modQuote.new.check_out} ({modQuote.new.nights} night{modQuote.new.nights === 1 ? '' : 's'})</span></div>
+                              <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:C.muted }}>Current price</span><span>{'$' + Number(modQuote.old.total).toFixed(2)}</span></div>
+                              <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:C.muted }}>New price</span><span>{'$' + Number(modQuote.new.total).toFixed(2)}</span></div>
+                              {modQuote.action === 'pay' && <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800 }}><span>Extra to pay now</span><span>{'$' + Number(modQuote.amount_to_pay).toFixed(2)}</span></div>}
+                              {modQuote.action === 'refund' && (modQuote.refund.auto
+                                ? <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800 }}><span>Refund to your card</span><span>{'$' + Number(modQuote.refund.amount).toFixed(2)}</span></div>
+                                : <div style={{ color:C.muted }}>The marina will review any refund for the nights removed.</div>)}
+                              {modQuote.action === 'none' && <div style={{ color:C.muted }}>No change in price.</div>}
+                              {modQuote.action === 'refund' && modQuote.refund.auto && modQuote.refund.pct != null && Number(modQuote.refund.pct) < 100 && <div style={{ color:C.muted, fontSize:11.5 }}>{modQuote.refund.reason}</div>}
+                              {modQuote.action === 'pay' && <div style={{ color:C.muted, fontSize:11.5 }}>Your current dates stay until the payment goes through.</div>}
+                            </div>
+                            <button onClick={handleConfirmChange} disabled={manageBusy}
+                              style={{ width:'100%', padding:'12px', borderRadius:10, border:'none', background: manageBusy ? 'rgba(77,214,200,0.3)' : C.teal, color:'#0d2b4b', fontSize:14, fontWeight:800, cursor: manageBusy ? 'default' : 'pointer', fontFamily:'inherit', marginBottom:8 }}>
+                              {manageBusy ? 'Working...' : (modQuote.action === 'pay' ? ('Pay $' + Number(modQuote.amount_to_pay).toFixed(2) + ' and change dates') : (modQuote.action === 'refund' && modQuote.refund.auto ? 'Confirm and get my refund' : 'Confirm change'))}
+                            </button>
+                            <button onClick={() => setModQuote(null)} disabled={manageBusy}
+                              style={{ width:'100%', padding:'10px', background:'none', border:'none', color:C.muted, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>Pick different dates</button>
+                          </div>
+                        )}
+                        <button onClick={() => { setShowChange(false); setModQuote(null) }} disabled={manageBusy}
+                          style={{ width:'100%', padding:'10px', background:'none', border:'none', color:C.muted, fontSize:12, cursor:'pointer', fontFamily:'inherit', marginTop:4 }}>Never mind</button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -5049,7 +5145,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                   style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'none', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
                   Contact marina
                 </button>
-                <button onClick={() => setConfirmCancel(true)} disabled={manageBusy}
+                <button onClick={handleOpenCancel} disabled={manageBusy}
                   style={{ width:'100%', padding:'13px', background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:12, color:'#f87171', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:8 }}>
                   Cancel stay
                 </button>
