@@ -7,3 +7,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const res = await fetch(`${E}/api/v1/boater/asset-notes/${params.id}`, { method: 'PATCH', headers: H(), body: JSON.stringify(await req.json()) })
   return NextResponse.json(await res.json(), { status: res.status })
 }
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const res = await fetch(`${E}/api/v1/boater/asset-notes/${params.id}`, { method: 'DELETE', headers: H() })
+  return NextResponse.json(await res.json(), { status: res.status })
+}
