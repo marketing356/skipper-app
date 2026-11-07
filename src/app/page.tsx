@@ -4762,8 +4762,8 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.detail || data.error || 'Could not change your dates')
       if (data.requires_payment && data.checkout_url) {
-        setManageResult((data.message || 'Opening payment') + ' Opening payment now.')
-        setTimeout(() => { window.location.href = data.checkout_url }, 1200)
+        setManageResult('Taking you to secure payment. Your new dates are confirmed as soon as you pay.')
+        setTimeout(() => { window.location.href = data.checkout_url }, 2500)
       } else {
         setManageResult(data.message || 'Your dates were changed.')
         refetchBookings()
