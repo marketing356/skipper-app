@@ -539,8 +539,7 @@ export default function SkipperApp() {
   const [realtimeVersion, setRealtimeVersion] = useState(0)  // increments on any realtime event → triggers child refreshes
   const [vessels,        setVessels]        = useState<Vessel[]>([])
   const [vesselIds,      setVesselIds]      = useState<string[]>([])
-  const [homeTab,        setHomeTab]        = useState<HomeTab>('home')
-  useEffect(() => { const r = readResume(); if (r?.tab) setHomeTab(r.tab as HomeTab) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  const [homeTab,        setHomeTab]        = useState<HomeTab>(() => { try { const r = readResume(); return (r?.tab as HomeTab) || 'home' } catch { return 'home' } })
   useEffect(() => { writeResume({ tab: homeTab }) }, [homeTab])
   const [marinaProfile,  setMarinaProfile]  = useState<MarinaProfile | null>(null)
   const [spaceProfile,   setSpaceProfile]   = useState<SpaceProfile | null>(null)
@@ -3732,8 +3731,9 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
             })()}
             {checkout.kind === 'request' && <div style={{ fontSize:16, fontWeight:800, color:C.white, marginBottom:10 }}>Before you send your request</div>}
         <div style={{ padding:'4px 0 12px' }}>
-          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:12, color:C.white, lineHeight:1.5 }}>
-            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop:3, width:18, height:18, flexShrink:0 }} />
+          <label style={{ position:'relative', display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:13, color:C.white, lineHeight:1.5 }}>
+            <span aria-hidden="true" style={{ marginTop:1, width:24, height:24, flexShrink:0, borderRadius:6, border:'2px solid ' + (agreed ? '#4ade80' : 'rgba(255,255,255,0.55)'), background: agreed ? '#4ade80' : 'transparent', color:'#0d2b4b', fontSize:16, fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center' }}>{agreed ? '✓' : ''}</span>
+            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ position:'absolute', opacity:0, width:1, height:1, pointerEvents:'none' }} />
             <span>
               I agree to {marina.name}{'\u2019'}s{' '}
               <button type="button" onClick={e => { e.preventDefault(); setOpenTerm(openTerm === 'cancel' ? null : 'cancel') }} style={{ background:'none', border:'none', padding:0, color:C.teal, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit', fontSize:12 }}>Cancellation Policy</button>
