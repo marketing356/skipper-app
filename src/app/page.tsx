@@ -326,11 +326,11 @@ function daysUntil(dateStr: string | null): number | null {
 // ─── Dynamic vessel icon by type ─────────────────────────────────────────────
 function vesselIcon(type: string | null | undefined): string {
   const t = (type || '').toLowerCase()
-  if (t.includes('sail')) return '⛵'
-  if (t.includes('pwc') || t.includes('jet')) return '🛥️'
-  if (t.includes('kayak') || t.includes('canoe')) return '🛶'
-  if (t.includes('power') || t.includes('motor')) return '🚤'
-  return '⚓'
+  if (t.includes('sail')) return ''
+  if (t.includes('pwc') || t.includes('jet')) return ''
+  if (t.includes('kayak') || t.includes('canoe')) return ''
+  if (t.includes('power') || t.includes('motor')) return ''
+  return ''
 }
 
 // ─── Contacts → Profile mapper ─────────────────────────────────────────────────
@@ -803,7 +803,7 @@ export default function SkipperApp() {
     setScreen('auth')
   }
 
-  // ── 🔴 SKIPPER UNIVERSE REALTIME DOCTRINE (LOCKED 2026-06-23) ──
+  // ── SKIPPER UNIVERSE REALTIME DOCTRINE (LOCKED 2026-06-23) ──
   // Full spec: memory/OPERATION-SKIPPER.md § 19. Canonical hook — do not modify.
   // Boater scope: receives all broadcasts routed to this boater's private channel.
   useSkipperRealtime({
@@ -1730,7 +1730,7 @@ function SkipperWelcomeTour({ linked, marinaName, firstName, onDone, onGo }: { l
   const ghost: React.CSSProperties = { flex: 1, padding: '12px 14px', background: 'transparent', color: C.white, border: '1px solid ' + C.inputBorder, borderRadius: 12, fontFamily: FONT, fontSize: 14, fontWeight: 600, cursor: 'pointer' }
   const bubble = (text: React.ReactNode) => (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 18 }}>
-      <div style={{ width: 38, height: 38, borderRadius: '50%', background: C.tealDim, border: '1px solid ' + C.tealBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>⚓</div>
+      <div style={{ width: 38, height: 38, borderRadius: '50%', background: C.tealDim, border: '1px solid ' + C.tealBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}></div>
       <div style={{ background: C.card, border: '1px solid ' + C.cardBorder, borderRadius: '4px 16px 16px 16px', padding: '12px 14px', fontSize: 14, lineHeight: 1.5 }}>{text}</div>
     </div>
   )
@@ -1894,7 +1894,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
         </div>
       ) : vessels.length === 0 ? (
         <div style={{ textAlign:'center', padding:'48px 20px' }}>
-          <div style={{ fontSize:52, marginBottom:14 }}>⛵</div>
+          <div style={{ fontSize:52, marginBottom:14 }}></div>
           <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>No vessels on file</div>
           <div style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.7, maxWidth:260, margin:'0 auto 24px' }}>
             Add your vessel so marinas know who&apos;s coming and what slip fits you.
@@ -1926,7 +1926,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                           </div>
                           {(v.shore_power || v.fuel_type) && (
                             <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
-                              {[v.shore_power && `⚡ ${v.shore_power}`, v.fuel_type && `⛽ ${v.fuel_type}`].filter(Boolean).join('  ')}
+                              {[v.shore_power && `${v.shore_power}`, v.fuel_type && `${v.fuel_type}`].filter(Boolean).join('  ')}
                             </div>
                           )}
                         </div>
@@ -1993,20 +1993,20 @@ function BerthCard({ berth, onShowOnMap }: { berth: BerthData; onShowOnMap?: (ma
       {/* Payment due banner */}
       {isExpired && (
         <div style={{ background:'rgba(248,113,113,0.13)', border:'1px solid rgba(248,113,113,0.35)', borderRadius:10, padding:'8px 12px', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
-          <span>🚨</span>
+          <span></span>
           <span style={{ fontSize:12, color:'#fca5a5', fontWeight:700 }}>Lease expired {Math.abs(days!)} day{Math.abs(days!) !== 1 ? 's' : ''} ago — contact your marina</span>
         </div>
       )}
       {!isExpired && isDueSoon && (
         <div style={{ background:'rgba(251,191,36,0.10)', border:'1px solid rgba(251,191,36,0.30)', borderRadius:10, padding:'8px 12px', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
-          <span>⏳</span>
+          <span></span>
           <span style={{ fontSize:12, color:'#fde68a', fontWeight:700 }}>Lease ends in {days} day{days !== 1 ? 's' : ''}</span>
         </div>
       )}
       {!isExpired && isPaymentDue && berth.monthlyRate && (
         <div style={{ background:'rgba(77,214,200,0.10)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:10, padding:'8px 12px', marginBottom:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <span>🔔</span>
+            <span></span>
             <span style={{ fontSize:12, color:C.teal, fontWeight:700 }}>Monthly payment due — ${Number(berth.monthlyRate).toLocaleString()}</span>
           </div>
         </div>
@@ -2014,7 +2014,7 @@ function BerthCard({ berth, onShowOnMap }: { berth: BerthData; onShowOnMap?: (ma
 
       {/* Marina + slip header */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
-        <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>⚓</div>
+        <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}></div>
         <div>
           <div style={{ fontSize:16, fontWeight:800, letterSpacing:-0.3 }}>{berth.marinaName}</div>
           {berth.slipNumber && (
@@ -2392,15 +2392,15 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.white }}>{fmtDate(e.log_date)}</div>
                 <span style={{ fontSize: 10, fontWeight: 700, color: C.teal, background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '2px 8px' }}>
-                  {e.source === 'skipper' ? '🤖 Skipper' : e.source === 'helm_event' ? '⚓ Marina' : 'You'}
+                  {e.source === 'skipper' ? 'Skipper' : e.source === 'helm_event' ? 'Marina' : 'You'}
                 </span>
               </div>
               {e.notes && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 4 }}>{e.notes}</div>}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {(e.departed_from || e.arrived_at) && <span style={{ fontSize: 11, color: C.muted2 }}>{[e.departed_from, e.arrived_at].filter(Boolean).join(' → ')}</span>}
-                {e.distance_nm != null && <span style={{ fontSize: 11, color: C.muted2 }}>📍 {e.distance_nm} nm</span>}
-                {e.fuel_used_gallons != null && <span style={{ fontSize: 11, color: C.muted2 }}>⛽ {e.fuel_used_gallons} gal</span>}
-                {e.weather && <span style={{ fontSize: 11, color: C.muted2 }}>🌤 {e.weather}</span>}
+                {e.distance_nm != null && <span style={{ fontSize: 11, color: C.muted2 }}>{e.distance_nm} nm</span>}
+                {e.fuel_used_gallons != null && <span style={{ fontSize: 11, color: C.muted2 }}>{e.fuel_used_gallons} gal</span>}
+                {e.weather && <span style={{ fontSize: 11, color: C.muted2 }}>{e.weather}</span>}
               </div>
             </div>
           ))}
@@ -2450,14 +2450,14 @@ type TransientReq = {
 // (awaiting_payment -> confirmed/accepted -> checked_in -> departed; declined/cancelled).
 function transientStatusMeta(status: string): { color: string; label: string; phase: 'upcoming'|'current'|'past'|'action'|'dead' } {
   const s = (status || '').toLowerCase()
-  if (s === 'checked_in')                      return { color:'#4dd6c8', label:'⚓ In marina now', phase:'current' }
-  if (s === 'checked_out' || s === 'departed') return { color:'rgba(255,255,255,0.5)', label:'🏁 Departed', phase:'past' }
+  if (s === 'checked_in')                      return { color:'#4dd6c8', label:'In marina now', phase:'current' }
+  if (s === 'checked_out' || s === 'departed') return { color:'rgba(255,255,255,0.5)', label:'Departed', phase:'past' }
   if (s === 'declined')                        return { color:'#f87171', label:'✗ Declined', phase:'dead' }
   if (s === 'cancelled' || s === 'canceled')   return { color:'#f87171', label:'✗ Cancelled', phase:'dead' }
-  if (s === 'confirmed')                        return { color:'#4ade80', label:'💳 Paid · Confirmed', phase:'upcoming' }
-  if (s === 'accepted' || s === 'assigned')     return { color:'#4ade80', label:'✅ Confirmed', phase:'upcoming' }
-  if (s === 'awaiting_payment')                 return { color:'#f59e0b', label:'💳 Payment due', phase:'action' }
-  return { color:'#f59e0b', label:'⏳ Pending', phase:'upcoming' }
+  if (s === 'confirmed')                        return { color:'#4ade80', label:'Paid · Confirmed', phase:'upcoming' }
+  if (s === 'accepted' || s === 'assigned')     return { color:'#4ade80', label:'Confirmed', phase:'upcoming' }
+  if (s === 'awaiting_payment')                 return { color:'#f59e0b', label:'Payment due', phase:'action' }
+  return { color:'#f59e0b', label:'Pending', phase:'upcoming' }
 }
 
 function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile, marinaProfile, openMarinaId, onOpenHandled }: { user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; spaceProfile: SpaceProfile|null; leaseProfile: LeaseProfile|null; marinaProfile: MarinaProfile|null; openMarinaId?: string|null; onOpenHandled?: () => void }) {
@@ -2578,7 +2578,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
       const data = await res.json().catch(() => ({}))
       if (res.ok && data.linked) {
         setCoupledIds(prev => { const s = new Set<string>(prev); s.add(marinaId); return s })
-        showToast(`✅ Reconnected to ${marinaName}`)
+        showToast(`Reconnected to ${marinaName}`)
       } else {
         showToast(`No existing record at ${marinaName} — use "Request to Connect"`)
       }
@@ -2616,7 +2616,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
     <TransientRequestForm
       marina={transientMarina} user={user} profile={profile} vessels={vessels}
       onBack={() => { writeResume({ bookingMarinaId: null, draft: null }); setTransientMarina(null) }}
-      onSuccess={() => { writeResume({ bookingMarinaId: null, draft: null }); setTransientMarina(null); showToast('✅ Request sent! Marina will respond shortly.') }}
+      onSuccess={() => { writeResume({ bookingMarinaId: null, draft: null }); setTransientMarina(null); showToast('Request sent! Marina will respond shortly.') }}
     />
   )
 
@@ -2657,7 +2657,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
         <SectionTitle>Discovery</SectionTitle>
         <div style={{ display:'flex', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, overflow:'hidden' }}>
           <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='list' ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='list' ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>≡ List</button>
-          <button onClick={() => setViewMode('map')}  style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='map'  ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='map'  ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>🗺 Map</button>
+          <button onClick={() => setViewMode('map')}  style={{ padding:'6px 14px', fontSize:12, fontWeight:700, background: viewMode==='map'  ? 'rgba(77,214,200,0.2)' : 'transparent', color: viewMode==='map'  ? '#4dd6c8' : 'rgba(255,255,255,0.45)', border:'none', cursor:'pointer', fontFamily:'inherit' }}>Map</button>
         </div>
       </div>
       {/* Discovery sub-tabs */}
@@ -2732,7 +2732,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
             return (
               <button key={thread.marina_id} onClick={() => setSelected(m)}
                 style={{ width:'100%', display:'flex', alignItems:'center', gap:12, background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:14, padding:'12px 14px', marginBottom:8, color:C.white, fontFamily:FONT, cursor:'pointer', textAlign:'left', animation:`fadeUp 0.3s ease ${i*0.05}s both` }}>
-                <div style={{ width:38, height:38, borderRadius:10, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
+                <div style={{ width:38, height:38, borderRadius:10, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}></div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:14, fontWeight:700 }}>{m.name}</div>
                   <div style={{ fontSize:12, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{thread.body}</div>
@@ -2771,7 +2771,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
                 {(req.status === 'accepted' || req.status === 'awaiting_payment') && req.invoice_id && (
                   <button onClick={() => handlePayTransientInvoice(req.invoice_id!)} disabled={payingReqInvoice === req.invoice_id}
                     style={{ marginTop:10, width:'100%', padding:'9px 0', fontSize:12.5, fontWeight:700, color:'#0d2b4b', background: payingReqInvoice === req.invoice_id ? 'rgba(77,214,200,0.5)' : '#4dd6c8', border:'none', borderRadius:10, cursor: payingReqInvoice === req.invoice_id ? 'default' : 'pointer', fontFamily:'inherit' }}>
-                    {payingReqInvoice === req.invoice_id ? 'Opening checkout…' : '💳 Pay for This Stay'}
+                    {payingReqInvoice === req.invoice_id ? 'Opening checkout…' : 'Pay for This Stay'}
                   </button>
                 )}
                 {req.status === 'accepted' && reqPayError && payingReqInvoice === null && (
@@ -2789,7 +2789,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
 
       {!vessel && (
         <div style={{ marginBottom:14, background:'rgba(77,214,200,0.07)', border:'1px solid rgba(77,214,200,0.2)', borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
-          <span style={{ fontSize:16 }}>⛵</span>
+          <span style={{ fontSize:16 }}></span>
           <span style={{ fontSize:12, color:'#4dd6c8', lineHeight:1.5 }}>Add your vessel under <strong>My Vessel</strong> so Skipper can match you to available slips.</span>
         </div>
       )}
@@ -2802,7 +2802,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
             background: filterTransientOnly ? 'rgba(77,214,200,0.18)' : 'rgba(255,255,255,0.06)',
             color: filterTransientOnly ? '#4dd6c8' : 'rgba(255,255,255,0.6)',
             border: `1px solid ${filterTransientOnly ? 'rgba(77,214,200,0.4)' : 'rgba(255,255,255,0.12)'}`, cursor:'pointer', fontFamily:'inherit' }}>
-          🛥️ Transient Welcome {filterTransientOnly ? '✓' : ''}
+          Transient Welcome {filterTransientOnly ? '✓' : ''}
         </button>
       </div>
       {/* Map view */}
@@ -2830,7 +2830,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
             <button onClick={() => setProfileMarina(m)}
               style={{ width:'100%', display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:'transparent', border:'none', color:'#ffffff', fontFamily:'inherit', cursor:'pointer', textAlign:'left' }}>
               <div style={{ width:44, height:44, borderRadius:12, background: coupled ? 'rgba(74,222,128,0.12)' : 'rgba(77,214,200,0.15)', border:`1px solid ${coupled ? 'rgba(74,222,128,0.35)' : 'rgba(77,214,200,0.3)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
-                ⚓
+                
               </div>
               <div style={{ flex:1 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -2849,13 +2849,13 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
             <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'8px 16px 10px', display:'flex', gap:8 }}>
               {myBerthMap[m.id] !== undefined ? (
                 <div style={{ flex:1, padding:'7px 12px', fontSize:12, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:9, display:'flex', alignItems:'center', gap:6 }}>
-                  ⚓ {myBerthMap[m.id] ? `Slip ${myBerthMap[m.id]}` : 'Active Berth'}
+                  {myBerthMap[m.id] ? `Slip ${myBerthMap[m.id]}` : 'Active Berth'}
                 </div>
               ) : (
                 <button
                   onClick={e => { e.stopPropagation(); setTransientMarina(m) }}
                   style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#ffffff', background:'linear-gradient(135deg,rgba(77,214,200,0.25),rgba(77,214,200,0.15))', border:'1px solid rgba(77,214,200,0.4)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
-                  🛥️ Request a Slip
+                  Request a Slip
                 </button>
               )}
               {/* Coupling actions — only when NOT connected */}
@@ -2864,7 +2864,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
                   <button
                     onClick={e => { e.stopPropagation(); setSelected(m) }}
                     style={{ flex:1, padding:'7px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.25)', borderRadius:9, cursor:'pointer', fontFamily:'inherit' }}>
-                    💬 Contact this marina
+                    Contact this marina
                   </button>
                   <button
                     onClick={e => handleRequestConnect(m.id, m.name, e)}
@@ -2898,14 +2898,14 @@ const AMENITY_LABELS: Record<string, string> = {
   ship_store: 'Ship Store', restaurant_on_property: 'Restaurant On-Site',
 }
 const AMENITY_ICONS: Record<string, string> = {
-  dockage:'⚓', water_hookup:'💧', transient_storage:'📦', long_term_storage:'🏬', service_maintenance:'🔧',
-  wifi:'📶', restrooms:'🚻', showers:'🚿', laundry:'🧺', trash:'🗑️', ice:'🧊', security:'🔒',
-  swimming_pool:'🏊', alcohol:'🍷', hotels:'🏨', restaurants:'🍽️', fixed_docks:'🛠️', floating_docks:'🌊',
-  repair_crane:'🏗️', engine_service:'⚙️', propeller_service:'🔩', land_storage:'🅿️', travel_lift:'🚧',
-  pet_friendly:'🐾', fuel_dock:'⛽', pump_out:'🚰', groceries:'🛒', medical:'⚕️', pharmacy:'💊',
-  beach:'🏖️', dog_park:'🐕', golf:'⛳',
-  atm:'🏦', water_taxi:'🚤', dinghy_dock:'🛶', dry_stack:'🏗️',
-  ship_store:'🏪', restaurant_on_property:'🍽️',
+  dockage:'', water_hookup:'', transient_storage:'', long_term_storage:'', service_maintenance:'',
+  wifi:'', restrooms:'', showers:'', laundry:'', trash:'', ice:'', security:'',
+  swimming_pool:'', alcohol:'', hotels:'', restaurants:'', fixed_docks:'', floating_docks:'',
+  repair_crane:'', engine_service:'', propeller_service:'', land_storage:'', travel_lift:'',
+  pet_friendly:'', fuel_dock:'', pump_out:'', groceries:'', medical:'', pharmacy:'',
+  beach:'', dog_park:'', golf:'',
+  atm:'', water_taxi:'', dinghy_dock:'', dry_stack:'',
+  ship_store:'', restaurant_on_property:'',
 }
 // Grouped categories — matches the marketing site's marina detail page layout exactly
 const AMENITY_GROUPS: [string,string[]][] = [
@@ -2987,16 +2987,16 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
         </div>
 
         <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-          <StatPill icon="⚓" label={`${marina.total_slips ?? m?.total_slips ?? 0} Slips`} />
-          {(m?.transient_available ?? marina.transient_available) && <StatPill icon="🛥️" label="Transient Welcome" highlight />}
-          {m?.transient_daily_rate ? <StatPill icon="💵" label={`$${m.transient_daily_rate}/night`} /> : null}
-          {m?.vhf_channel && <StatPill icon="📻" label={`VHF ${m.vhf_channel}`} />}
+          <StatPill icon="" label={`${marina.total_slips ?? m?.total_slips ?? 0} Slips`} />
+          {(m?.transient_available ?? marina.transient_available) && <StatPill icon="" label="Transient Welcome" highlight />}
+          {m?.transient_daily_rate ? <StatPill icon="" label={`$${m.transient_daily_rate}/night`} /> : null}
+          {m?.vhf_channel && <StatPill icon="" label={`VHF ${m.vhf_channel}`} />}
         </div>
 
         {/* Action buttons */}
         {berth !== undefined ? (
           <div style={{ marginBottom:20, padding:'11px 12px', fontSize:13, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-            ⚓ {berth ? `Slip ${berth}` : 'Active Berth'}
+            {berth ? `Slip ${berth}` : 'Active Berth'}
           </div>
         ) : (
           <div style={{ marginBottom:20 }}>
@@ -3005,10 +3005,10 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
             <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.45)', textTransform:'uppercase', letterSpacing:1.2, marginBottom:8 }}>What do you need?</div>
             <button onClick={onRequestSlip}
               style={{ width:'100%', padding:'12px 0', fontSize:13, fontWeight:700, color:'#fff', background:'linear-gradient(135deg,rgba(77,214,200,0.35),rgba(77,214,200,0.2))', border:'1px solid rgba(77,214,200,0.5)', borderRadius:12, cursor:'pointer', fontFamily:'inherit', marginBottom:8 }}>
-              🛥️ Transient slip — book & pay now
+              Transient slip — book & pay now
             </button>
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              {[['☀️ Seasonal slip','seasonal'],['❄️ Winter storage','storage'],['🔧 Repair / haul-out','repair']].map(([label,intent]) => (
+              {[['Seasonal slip','seasonal'],['❄Winter storage','storage'],['Repair / haul-out','repair']].map(([label,intent]) => (
                 <button key={intent} onClick={onMessage}
                   style={{ flex:'1 1 45%', padding:'10px 0', fontSize:12, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
                   {label}
@@ -3018,7 +3018,7 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
             <div style={{ display:'flex', gap:8, marginTop:8 }}>
               <button onClick={onMessage}
                 style={{ flex:1, padding:'11px 0', fontSize:13, fontWeight:700, color:'#4dd6c8', background:'rgba(77,214,200,0.1)', border:'1px solid rgba(77,214,200,0.3)', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
-                💬 Message
+                Message
               </button>
               {!coupled && (
                 <button onClick={onConnect} disabled={connecting}
@@ -3115,9 +3115,9 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
             {/* Contact info */}
             <ProfileSection title="Contact">
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {m?.phone && <ContactRow icon="📞" label={m.phone} href={`tel:${m.phone}`} />}
-                {m?.email && <ContactRow icon="✉️" label={m.email} href={`mailto:${m.email}`} />}
-                {m?.website && <ContactRow icon="🌐" label={m.website.replace(/^https?:\/\//,'')} href={m.website} />}
+                {m?.phone && <ContactRow icon="" label={m.phone} href={`tel:${m.phone}`} />}
+                {m?.email && <ContactRow icon="" label={m.email} href={`mailto:${m.email}`} />}
+                {m?.website && <ContactRow icon="" label={m.website.replace(/^https?:\/\//,'')} href={m.website} />}
               </div>
             </ProfileSection>
           </>
@@ -3558,7 +3558,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
         {vessel?.length_ft && !hotSlipsLoading && hotSlips.length > 0 && (
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:12, fontWeight:800, color:'#4ade80', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-              ⚡ Book Instantly — Fits Your Boat
+              Book Instantly — Fits Your Boat
             </div>
             {hotSlips.map(slip => (
               <div key={slip.id} style={{ background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:12, padding:'12px 14px', marginBottom:8 }}>
@@ -3568,7 +3568,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 </div>
                 <div style={{ fontSize:11, color:C.muted2, marginBottom:4 }}>
                   {[
-                    slip.max_loa_ft && `📏 up to ${slip.max_loa_ft}ft LOA`,
+                    slip.max_loa_ft && `up to ${slip.max_loa_ft}ft LOA`,
                     slip.max_beam_ft && `${slip.max_beam_ft}ft beam`,
                     slip.depth_ft && `${slip.depth_ft}ft depth`,
                     slip.max_air_draft_ft && `${slip.max_air_draft_ft}ft clearance`,
@@ -3576,10 +3576,10 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
                 </div>
                 <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>
                   {[
-                    (slip.electric && slip.electric.length > 0) ? `⚡ ${slip.electric.join('/')}` : (slip.power_amps || null),
-                    slip.water ? '💧 Water' : null,
-                    slip.pump_out ? '🚽 Pump-out' : null,
-                    slip.wifi ? '📶 WiFi' : null,
+                    (slip.electric && slip.electric.length > 0) ? `${slip.electric.join('/')}` : (slip.power_amps || null),
+                    slip.water ? 'Water' : null,
+                    slip.pump_out ? 'Pump-out' : null,
+                    slip.wifi ? 'WiFi' : null,
                   ].filter(Boolean).join(' · ') || 'Amenities: contact marina'}
                 </div>
                 {(slip.price && slip.price.nights > 0 ? slip.price.dockage_subtotal : slip.estimated_cost) != null && (
@@ -3602,7 +3602,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
         {vessel?.length_ft && !hotMooringsLoading && hotMoorings.length > 0 && (
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:12, fontWeight:800, color:'#4ade80', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-              ⚓ Moorings — Fits Your Boat
+              Moorings — Fits Your Boat
             </div>
             {hotMoorings.map(m => (
               <div key={m.id} style={{ background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:12, padding:'12px 14px', marginBottom:8 }}>
@@ -3647,12 +3647,12 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
         )}
         {vessels.length === 0 && (
           <div style={{ ...sectionStyle, background:'rgba(248,113,113,0.07)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, padding:'12px 14px', fontSize:12, color:'#f87171' }}>
-            ⚠️ Add your vessel under My Vessel so the marina knows your specs
+            Add your vessel under My Vessel so the marina knows your specs
           </div>
         )}
         {vessels.length > 1 && !vessel && (
           <div style={{ ...sectionStyle, background:'rgba(248,113,113,0.07)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, padding:'12px 14px', fontSize:12, color:'#f87171' }}>
-            ⚠️ Choose which vessel you're bringing above
+            Choose which vessel you're bringing above
           </div>
         )}
 
@@ -3945,7 +3945,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
     <div style={{ padding:'0 20px', animation:'fadeUp 0.3s ease both' }}>
       <div style={{ padding:'14px 0 10px', display:'flex', alignItems:'center', gap:10, borderBottom:`1px solid rgba(255,255,255,0.08)`, marginBottom:14 }}>
         <button onClick={onBack} style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20, padding:'0 4px 0 0', fontFamily:FONT }}>←</button>
-        <div style={{ width:36, height:36, borderRadius:10, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
+        <div style={{ width:36, height:36, borderRadius:10, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}></div>
         <div>
           <div style={{ fontSize:15, fontWeight:700 }}>{marina.name}</div>
           <div style={{ fontSize:11, color:C.teal, fontWeight:600 }}>Skipper-powered™</div>
@@ -3963,7 +3963,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
               </div>
             )}
             {m.role==='staff' && (
-              <div style={{ width:30, height:30, borderRadius:'50%', background:C.tealDim, border:`2px solid ${C.teal}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>⚓</div>
+              <div style={{ width:30, height:30, borderRadius:'50%', background:C.tealDim, border:`2px solid ${C.teal}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}></div>
             )}
             <div style={{ maxWidth:'78%', borderRadius:m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px', overflow:'hidden', border:m.role!=='user'?`1px solid ${C.cardBorder}`:'none' }}>
               <div style={{ padding:'11px 14px', background:m.role==='user'?`linear-gradient(135deg,${C.teal},#2fb3a3)`:C.card, color:m.role==='user'?C.navy:C.white, fontSize:14, lineHeight:1.55, fontWeight:m.role==='user'?600:400 }}>
@@ -3978,7 +3978,7 @@ function MarinaChat({ marina, user, profile, vessel, coupled, onBack, onAddVesse
               {(m as any).checkout_url && (
                 <a href={(m as any).checkout_url} target="_blank" rel="noopener noreferrer"
                   style={{ display:'block', padding:'12px 16px', background:'#0d9488', color:'#fff', textAlign:'center', fontWeight:700, fontSize:14, textDecoration:'none' }}>
-                  💳 Book &amp; Pay Now
+                  Book &amp; Pay Now
                 </a>
               )}
             </div>
@@ -4099,10 +4099,10 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
   function sourceBadge(source: string) {
     const map: Record<string, { label: string; color: string }> = {
       manual:      { label: 'You', color: C.teal },
-      skipper:     { label: '🤖 Skipper', color: '#a78bfa' },
-      helm_event:  { label: '⚓ Marina', color: '#60a5fa' },
-      fuel:        { label: '⛽ Fuel', color: '#fb923c' },
-      work_order:  { label: '🔧 Service', color: '#facc15' },
+      skipper:     { label: 'Skipper', color: '#a78bfa' },
+      helm_event:  { label: 'Marina', color: '#60a5fa' },
+      fuel:        { label: 'Fuel', color: '#fb923c' },
+      work_order:  { label: 'Service', color: '#facc15' },
     }
     const b = map[source] ?? { label: source, color: C.muted }
     return <span style={{ fontSize:10, fontWeight:700, color:b.color, background:'rgba(255,255,255,0.06)', borderRadius:10, padding:'2px 8px' }}>{b.label}</span>
@@ -4115,7 +4115,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
 
       {/* ── Header ── */}
       <div style={{ padding:'16px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div style={{ fontSize:18, fontWeight:800, color:C.white, letterSpacing:-0.4 }}>📓 Ship&apos;s Log</div>
+        <div style={{ fontSize:18, fontWeight:800, color:C.white, letterSpacing:-0.4 }}>Ship&apos;s Log</div>
         {activeVesselId && (
           <button onClick={() => { setShowForm(s => !s); setSaveErr(''); if (showForm) { setEditingId(null); setForm({ ...BLANK_FORM }) } }}
             style={{ background:showForm ? 'rgba(255,255,255,0.08)' : C.teal, color:showForm ? C.white : '#0d2b4b', border:'none', borderRadius:8, padding:'8px 14px', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:FONT }}>
@@ -4139,7 +4139,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
       {/* ── No vessels ── */}
       {vessels.length === 0 && (
         <div style={{ padding:'60px 20px', textAlign:'center' }}>
-          <div style={{ fontSize:40, marginBottom:12 }}>⚓</div>
+          <div style={{ fontSize:40, marginBottom:12 }}></div>
           <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No vessel on file</div>
           <div style={{ fontSize:13, color:C.muted, lineHeight:1.65 }}>Add your vessel in the Vessel tab first.</div>
         </div>
@@ -4186,7 +4186,7 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
 
       {!loading && !showForm && entries.length === 0 && activeVesselId && (
         <div style={{ padding:'60px 20px', textAlign:'center' }}>
-          <div style={{ fontSize:40, marginBottom:12 }}>📓</div>
+          <div style={{ fontSize:40, marginBottom:12 }}></div>
           <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No log entries yet</div>
           <div style={{ fontSize:13, color:C.muted, lineHeight:1.65, maxWidth:260, margin:'0 auto' }}>
             Start the record. Every marina visit, fuel stop, and trip Skipper logs automatically.
@@ -4225,13 +4225,13 @@ function TabShipLog({ vessels, vessel: primaryVessel, vesselIds }: { vessels: Ve
                 {[e.departed_from, e.arrived_at].filter(Boolean).join(' → ')}
               </span>
             )}
-            {e.distance_nm && <span style={{ fontSize:11, color:C.muted2 }}>📍 {e.distance_nm} nm</span>}
+            {e.distance_nm && <span style={{ fontSize:11, color:C.muted2 }}>{e.distance_nm} nm</span>}
             {(e.engine_hours_start != null || e.engine_hours_end != null) && (
-              <span style={{ fontSize:11, color:C.muted2 }}>⚙️ {e.engine_hours_start ?? '?'} → {e.engine_hours_end ?? '?'} hrs</span>
+              <span style={{ fontSize:11, color:C.muted2 }}>{e.engine_hours_start ?? '?'} → {e.engine_hours_end ?? '?'} hrs</span>
             )}
-            {e.fuel_used_gallons && <span style={{ fontSize:11, color:C.muted2 }}>⛽ {e.fuel_used_gallons} gal</span>}
-            {e.crew_count && <span style={{ fontSize:11, color:C.muted2 }}>👥 {e.crew_count}</span>}
-            {e.weather && <span style={{ fontSize:11, color:C.muted2 }}>🌤 {e.weather}</span>}
+            {e.fuel_used_gallons && <span style={{ fontSize:11, color:C.muted2 }}>{e.fuel_used_gallons} gal</span>}
+            {e.crew_count && <span style={{ fontSize:11, color:C.muted2 }}>{e.crew_count}</span>}
+            {e.weather && <span style={{ fontSize:11, color:C.muted2 }}>{e.weather}</span>}
           </div>
         </div>
       ))}
@@ -4477,7 +4477,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
           {list.map(m => (
             <button key={m.id} onClick={() => { setActiveMarina({ marina_id: m.id, contact_id: '', marina_name: m.name, tenantType: 'external' }); setBrowseAll(false) }}
               style={{ background:'rgba(255,255,255,0.05)', border:`1px solid rgba(255,255,255,0.09)`, borderRadius:16, padding:'14px 16px', display:'flex', alignItems:'center', gap:14, textAlign:'left', cursor:'pointer', width:'100%' }}>
-              <div style={{ width:40, height:40, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>⚓</div>
+              <div style={{ width:40, height:40, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}></div>
               <div>
                 <div style={{ fontSize:15, fontWeight:700, color:C.white }}>{m.name}</div>
                 {(m.city || m.state) && <div style={{ fontSize:12, color:C.muted }}>{[m.city, m.state].filter(Boolean).join(', ')}</div>}
@@ -4498,7 +4498,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
         {myMarinas.map(m => (
           <button key={m.marina_id} onClick={() => setActiveMarina(m)}
             style={{ background:'rgba(255,255,255,0.05)', border:`1px solid rgba(255,255,255,0.09)`, borderRadius:16, padding:'16px', display:'flex', alignItems:'center', gap:14, textAlign:'left', cursor:'pointer', width:'100%' }}>
-            <div style={{ width:46, height:46, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⚓</div>
+            <div style={{ width:46, height:46, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}></div>
             <div style={{ fontSize:15, fontWeight:700, color:C.white }}>{m.marina_name}</div>
           </button>
         ))}
@@ -4516,7 +4516,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       {/* Header */}
       <div style={{ padding:'16px 20px 12px', borderBottom:`1px solid rgba(255,255,255,0.08)`, display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
         <button onClick={() => { setActiveMarina(null); setMsgs([]); setSendError(null) }} style={{ background:'none', border:'none', color:C.teal, fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1 }}>‹</button>
-        <div style={{ width:36, height:36, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>⚓</div>
+        <div style={{ width:36, height:36, borderRadius:'50%', background:C.tealDim, border:`1.5px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}></div>
         <div>
           <div style={{ fontSize:16, fontWeight:800, color:C.white }}>{activeMarina.marina_name}</div>
           <div style={{ fontSize:11, color:C.muted }}>{circles.length > 1 ? (circles.find(c => c.key === activeCircle)?.name || 'Marina team') : 'Marina team'}</div>
@@ -4585,7 +4585,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
         {msgs.length === 0 && (
           <div style={{ textAlign:'center', color:C.muted, fontSize:13, padding:'40px 0' }}>
-            <div style={{ fontSize:28, marginBottom:10 }}>👋</div>
+            <div style={{ fontSize:28, marginBottom:10 }}></div>
             <div>Send a message to {circles.length > 1 ? (circles.find(c => c.key === activeCircle)?.name || activeMarina.marina_name) : activeMarina.marina_name}.</div>
           </div>
         )}
@@ -4709,6 +4709,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
 
   // ── Manage Booking (Extend / Cancel / Checkout Early) ──────────────────────
   const [managingBooking, setManagingBooking] = useState<any|null>(null)
+  const [newEndDate, setNewEndDate] = useState('')
   const [manageBusy,      setManageBusy]      = useState(false)
   const [manageError,     setManageError]     = useState<string|null>(null)
   const [manageResult,    setManageResult]    = useState<string|null>(null)
@@ -4722,6 +4723,26 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
   function closeManage() {
     setManagingBooking(null); setManageError(null); setManageResult(null)
     setConfirmCancel(false)
+  }
+
+  async function handleExtendBooking() {
+    // Standard 'modify reservation': change the departure date (arrival stays). Same engine pipeline staff use.
+    if (!managingBooking || !newEndDate) return
+    setManageBusy(true); setManageError(null)
+    try {
+      const res = await fetch('/api/transient-requests/' + managingBooking.id + '/extend', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_user_id: user.id, new_end_date: newEndDate }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.success === false || data.error) throw new Error(data.detail || data.error || data.message || 'That date is not available')
+      setManageResult('Departure date changed to ' + newEndDate + '. Your marina will bill or credit any difference.')
+      refetchBookings()
+    } catch (e: any) {
+      setManageError(e.message || 'Something went wrong')
+    } finally {
+      setManageBusy(false)
+    }
   }
 
   async function handleCancelBooking() {
@@ -4849,7 +4870,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
 
         {!invoicesLoading && invoices.length === 0 && (
           <div style={{ padding:'60px 20px', textAlign:'center' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+            <div style={{ fontSize:40, marginBottom:12 }}></div>
             <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No invoices yet</div>
             <div style={{ fontSize:13, color:C.muted }}>Invoices from your marina will appear here.</div>
           </div>
@@ -4869,7 +4890,9 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                     <div style={{ fontSize:14, fontWeight:700, color:C.white, marginBottom:4 }}>{inv.invoiceNumber ?? 'Invoice'}</div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       {statusBadge(inv.status)}
-                      {inv.dueDate && <span style={{ fontSize:11, color:C.muted }}>Due {fmtDate(inv.dueDate)}</span>}
+                      {inv.status === 'paid' && inv.paidAt
+                        ? <span style={{ fontSize:11, color:C.muted }}>Paid {new Date(inv.paidAt).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' })}</span>
+                        : inv.dueDate && inv.status !== 'void' && <span style={{ fontSize:11, color:C.muted }}>Due {fmtDate(inv.dueDate)}</span>}
                     </div>
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
@@ -4901,11 +4924,13 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                 </div>
               )}
 
-              {/* Payment disabled until Clover connected - 2026-10-20 */}
               {payable && owed > 0 && (
-                <div style={{ padding:'12px 16px', background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:12, marginTop:4, textAlign:'center' }}>
-                  <div style={{ fontSize:13, color:'#f87171', fontWeight:600 }}>Online payment not yet available.</div>
-                  <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)', marginTop:4 }}>Contact the marina to arrange payment.</div>
+                <div style={{ marginTop:6 }}>
+                  <button onClick={() => handlePayNow(inv.id)} disabled={paying === inv.id}
+                    style={{ width:'100%', padding:'13px', fontSize:14, fontWeight:800, color:'#0d2b4b', background: paying === inv.id ? 'rgba(74,222,128,0.4)' : '#4ade80', border:'none', borderRadius:12, cursor:'pointer', fontFamily:'inherit' }}>
+                    {paying === inv.id ? 'Opening checkout' : 'Pay $' + owed.toFixed(2)}
+                  </button>
+                  {payError && paying === null && <div style={{ fontSize:12, color:C.danger, marginTop:8, textAlign:'center' }}>{payError}</div>}
                 </div>
               )}
             </div>
@@ -4921,7 +4946,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
 
       {/* Greeting */}
       <div style={{ marginBottom: 22 }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color: C.white, letterSpacing: -0.5, marginBottom: 2 }}>Hey, {firstName} 👋</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: C.white, letterSpacing: -0.5, marginBottom: 2 }}>Hey, {firstName} </div>
         <div style={{ fontSize: 13, color: C.muted }}>{marinaProfile?.name ?? 'Your marina'}</div>
       </div>
 
@@ -4949,7 +4974,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
               {_canManage && (
                 <button onClick={() => openManage(b)}
                   style={{ width:'100%', padding:'8px 0', fontSize:12, fontWeight:700, color:C.teal, background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit' }}>
-                  ⚙️ Manage
+                  Manage
                 </button>
               )}
             </div>
@@ -4993,16 +5018,40 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
               <>
                 {manageError && <div style={{ fontSize:12, color:C.danger, marginBottom:12 }}>{manageError}</div>}
 
+                <div style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:12, padding:'12px 14px', marginBottom:14, fontSize:12.5, color:C.white, lineHeight:1.7 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:C.muted }}>Arrival</span><span>{managingBooking.arrival_date}</span></div>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:C.muted }}>Departure</span><span>{managingBooking.departure_date}</span></div>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:C.muted }}>Status</span><span>{(managingBooking.status || '').toLowerCase() === 'confirmed' ? 'Paid and confirmed' : (managingBooking.status || '').replace(/_/g, ' ')}</span></div>
+                </div>
+
+                {['confirmed','accepted','assigned','checked_in'].includes((managingBooking.status || '').toLowerCase()) && (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Change departure date</div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input type="date" value={newEndDate} min={managingBooking.arrival_date} onChange={e => setNewEndDate(e.target.value)}
+                        style={{ flex:1, padding:'11px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.06)', color:C.white, fontSize:14, fontFamily:'inherit' }} />
+                      <button onClick={handleExtendBooking} disabled={manageBusy || !newEndDate || newEndDate === managingBooking.departure_date}
+                        style={{ padding:'11px 16px', borderRadius:10, border:'none', background: (manageBusy || !newEndDate || newEndDate === managingBooking.departure_date) ? 'rgba(255,255,255,0.12)' : C.teal, color:'#0d2b4b', fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:'inherit' }}>
+                        {manageBusy ? 'Saving' : 'Update'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {(managingBooking.status || '').toLowerCase() === 'checked_in' && (
                   <button onClick={handleCheckout} disabled={manageBusy}
                     style={{ width:'100%', padding:'13px', background: manageBusy ? 'rgba(77,214,200,0.3)' : `linear-gradient(135deg,${C.teal},#2fb3a3)`, border:'none', borderRadius:12, color:'#0d2b4b', fontSize:14, fontWeight:800, cursor: manageBusy?'default':'pointer', fontFamily:'inherit', marginBottom:10 }}>
-                    {manageBusy ? 'Checking out…' : '🏳️ Check Out & Settle Up'}
+                    {manageBusy ? 'Checking out…' : 'Check Out & Settle Up'}
                   </button>
                 )}
 
+                <button onClick={() => { closeManage(); onTabChange('messages') }} disabled={manageBusy}
+                  style={{ width:'100%', padding:'13px', background:'rgba(255,255,255,0.08)', border:'none', borderRadius:12, color:C.white, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
+                  Contact marina
+                </button>
                 <button onClick={() => setConfirmCancel(true)} disabled={manageBusy}
                   style={{ width:'100%', padding:'13px', background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:12, color:'#f87171', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:8 }}>
-                  ✕ Cancel Stay
+                  Cancel stay
                 </button>
                 <button onClick={closeManage} disabled={manageBusy}
                   style={{ width:'100%', padding:'13px', background:'none', border:'none', color:C.muted, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>Close</button>
@@ -5043,7 +5092,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       {(!leaseProfile || leaseProfile.status !== 'active') && upcomingBookings.length === 0 && (
         <button onClick={() => onTabChange('marinas')}
           style={{ width:'100%', textAlign:'left', cursor:'pointer', fontFamily:FONT, background:'rgba(255,255,255,0.05)', border:`1px dashed ${C.tealBorder}`, borderRadius:18, padding:'18px', marginBottom:14 }}>
-          <div style={{ fontSize:15, fontWeight:800, color:C.white, marginBottom:3 }}>🧭 Find a slip</div>
+          <div style={{ fontSize:15, fontWeight:800, color:C.white, marginBottom:3 }}>Find a slip</div>
           <div style={{ fontSize:12, color:C.muted }}>Browse marinas and book a transient stay.</div>
         </button>
       )}
@@ -5062,12 +5111,12 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
               {!invoicesLoading && !hasOverdue && unpaidTotal <= 0 && <div style={{ fontSize:11, color:'#4ade80', fontWeight:600, marginTop:4 }}>All paid up — tap for history</div>}
               {profile?.cardBrand && profile?.cardLast4 && (
                 <div style={{ fontSize:11, color:C.muted, fontWeight:600, marginTop:6, display:'flex', alignItems:'center', gap:5 }}>
-                  💳 {profile.cardBrand} ···· {profile.cardLast4} on file
+                  {profile.cardBrand} ···· {profile.cardLast4} on file
                 </div>
               )}
             </div>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
-              <div style={{ fontSize:32 }}>{hasOverdue ? '⚠️' : unpaidTotal > 0 ? '📋' : '✅'}</div>
+              <div style={{ fontSize:32 }}>{hasOverdue ? '' : unpaidTotal > 0 ? '' : ''}</div>
               <div style={{ fontSize:10, color:C.muted2, fontWeight:600 }}>View all →</div>
             </div>
           </div>
@@ -5078,10 +5127,10 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
         {(['messages','log','vessel','weather'] as HomeTab[]).map(tab => {
           const info: Record<string,[string,string,string]> = {
-            messages: ['💬','Messages','Marina team'],
-            log:      ['📓',"Ship's Log",'Add entry'],
-            vessel:   ['⚓','My Vessel','Details & docs'],
-            weather:  ['🌊','Weather','Marine forecast'],
+            messages: ['','Messages','Marina team'],
+            log:      ['',"Ship's Log",'Add entry'],
+            vessel:   ['','My Vessel','Details & docs'],
+            weather:  ['','Weather','Marine forecast'],
           }
           const [emoji, label, sub] = info[tab] ?? ['','','']
           return (
@@ -5099,13 +5148,13 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
       {marinaProfile && (
         <div style={{ background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:20, padding:'16px 18px' }}>
           <div style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:2, marginBottom:10 }}>Your Marina</div>
-          <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:4 }}>⚓ {marinaProfile.name}</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:4 }}>{marinaProfile.name}</div>
           {marinaProfile.address && <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>{marinaProfile.address}</div>}
           <div style={{ display:'flex', gap:8 }}>
             {marinaProfile.phone && (
-              <a href={`tel:${marinaProfile.phone}`} style={{ flex:1, textAlign:'center', padding:'8px', background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontSize:12, fontWeight:700, textDecoration:'none', display:'block' }}>📞 Call</a>
+              <a href={`tel:${marinaProfile.phone}`} style={{ flex:1, textAlign:'center', padding:'8px', background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontSize:12, fontWeight:700, textDecoration:'none', display:'block' }}>Call</a>
             )}
-            <button onClick={() => onTabChange('messages')} style={{ flex:1, padding:'8px', background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:FONT }}>💬 Message</button>
+            <button onClick={() => onTabChange('messages')} style={{ flex:1, padding:'8px', background:'rgba(77,214,200,0.1)', border:`1px solid ${C.tealBorder}`, borderRadius:10, color:C.teal, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:FONT }}>Message</button>
           </div>
         </div>
       )}
@@ -5187,7 +5236,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
       return
     }
     setUploading(true)
-    setMsgs(m => [...m, { role:'user', text:`📎 ${file.name}` }])
+    setMsgs(m => [...m, { role:'user', text:`${file.name}` }])
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior:'smooth' }), 50)
 
     try {
@@ -5206,7 +5255,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
       if (!res.ok) {
         setMsgs(m => [...m, { role:'skipper', text:`Couldn\'t save that file — ${data.error ?? 'upload failed'}. Try again.` }])
       } else {
-        setMsgs(m => [...m, { role:'skipper', text:`Document saved ✅ — ${file.name} is on file. Marinas will have access to it when you check in.` }])
+        setMsgs(m => [...m, { role:'skipper', text:`Document saved — ${file.name} is on file. Marinas will have access to it when you check in.` }])
       }
     } catch {
       setMsgs(m => [...m, { role:'skipper', text:`Upload hit a snag — check your connection and try again.` }])
@@ -5306,7 +5355,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
       {isDragging && (
         <div style={{ position:'absolute', inset:0, zIndex:500, background:'rgba(77,214,200,0.12)', border:`2px dashed ${C.teal}`, borderRadius:16, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:40, marginBottom:8 }}>📂</div>
+            <div style={{ fontSize:40, marginBottom:8 }}></div>
             <div style={{ fontSize:16, fontWeight:700, color:C.teal }}>Drop to upload</div>
             <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>Registration, insurance, any document</div>
           </div>
@@ -5334,7 +5383,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
         <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12, flexShrink:0 }}>
           {coupledMarinas.map(m => (
             <div key={m.id} style={{ fontSize:10, fontWeight:700, color:'#4ade80', background:'rgba(74,222,128,0.1)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:20, padding:'3px 9px' }}>
-              ⚓ {m.name}
+              {m.name}
             </div>
           ))}
         </div>
@@ -5385,7 +5434,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
             title="Upload a document"
             style={{ width:46, height:46, flexShrink:0, background:C.inputBg, border:`1.5px solid ${C.inputBorder}`, borderRadius:13, color:uploading ? C.muted2 : C.teal, cursor:uploading?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}
           >
-            {uploading ? <Spinner size={16} color={C.teal} /> : '📎'}
+            {uploading ? <Spinner size={16} color={C.teal} /> : ''}
           </button>
           <input
             type="text" value={draft}
@@ -5401,7 +5450,7 @@ function SkipperChat({ user, profile, vessel, msgs, setMsgs, onClose, onRefreshV
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
         </div>
-        <div style={{ fontSize:10, color:C.muted2, textAlign:'center', marginTop:5 }}>Tap 📎 to upload · Desktop: drag &amp; drop files here</div>
+        <div style={{ fontSize:10, color:C.muted2, textAlign:'center', marginTop:5 }}>Tap to upload · Desktop: drag &amp; drop files here</div>
       </div>
     </div>
   )
@@ -5518,7 +5567,7 @@ function TabAccount({ user, profile, vessels, onSignOut, onProfileUpdated }: {
 
       <button data-show-tour="1" onClick={() => window.dispatchEvent(new Event('skipper:show-tour'))}
         style={{ width: '100%', textAlign: 'left', background: C.tealDim, border: '1px solid ' + C.tealBorder, borderRadius: 14, padding: '12px 14px', marginBottom: 14, color: C.teal, fontFamily: FONT, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-        ⚓ Show me around
+        Show me around
       </button>
 
       {/* Profile card */}
@@ -5721,7 +5770,7 @@ function WeatherStrip({ data, onTap }: { data: WeatherData | null; onTap: () => 
   if (!data?.current?.temp_f) {
     return (
       <button onClick={onTap} style={stripBase}>
-        <span style={{ fontSize:12, color:C.muted2, fontWeight:500 }}>📍 Tap for marine weather</span>
+        <span style={{ fontSize:12, color:C.muted2, fontWeight:500 }}>Tap for marine weather</span>
       </button>
     )
   }
@@ -5739,7 +5788,7 @@ function WeatherStrip({ data, onTap }: { data: WeatherData | null; onTap: () => 
       </span>
       {nextTide && tideTime && (
         <span style={{ fontSize:13, color:C.teal, fontWeight:600 }}>
-          🌊{tideDir} {nextTide.type} {tideTime}
+          {tideDir} {nextTide.type} {tideTime}
         </span>
       )}
     </button>
@@ -5752,7 +5801,7 @@ function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | nul
 
   if (!w) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'60px 20px', gap:16 }}>
-      <div style={{ fontSize:48 }}>🌤️</div>
+      <div style={{ fontSize:48 }}></div>
       <div style={{ fontSize:16, fontWeight:700, color:C.white }}>Getting your weather…</div>
       <div style={{ fontSize:13, color:C.muted, textAlign:'center', lineHeight:1.6, maxWidth:260 }}>
         Allow location access for live marine weather at your current position.
@@ -5778,7 +5827,7 @@ function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | nul
       </div>
       {w.location_name && (
         <div style={{ fontSize:13, color:C.muted, marginBottom:16, display:'flex', alignItems:'center', gap:6 }}>
-          <span style={{ fontSize:14 }}>📍</span>{w.location_name}
+          <span style={{ fontSize:14 }}></span>{w.location_name}
         </div>
       )}
 
@@ -5786,7 +5835,7 @@ function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | nul
       <div style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.16) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
           <div>
-            <div style={{ fontSize:52, lineHeight:1 }}>{c.icon || '🌤️'}</div>
+            <div style={{ fontSize:52, lineHeight:1 }}>{c.icon || ''}</div>
             <div style={{ fontSize:44, fontWeight:800, letterSpacing:-2, lineHeight:1.1, marginTop:8 }}>{c.temp_f}°<span style={{ fontSize:20 }}>F</span></div>
             <div style={{ fontSize:15, color:C.muted, marginTop:4 }}>{c.description}</div>
           </div>
@@ -5819,7 +5868,7 @@ function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | nul
         {tides.status === 'ok' ? (
           <>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-              <div style={{ fontSize:32 }}>{tides.is_rising ? '🌊↑' : '🌊↓'}</div>
+              <div style={{ fontSize:32 }}>{tides.is_rising ? '↑' : '↓'}</div>
               <div>
                 <div style={{ fontSize:18, fontWeight:800 }}>{tides.is_rising ? 'Rising' : 'Falling'}</div>
                 {tides.next && (
@@ -5890,7 +5939,7 @@ function TabWeather({ weatherData, onRefresh }: { weatherData: WeatherData | nul
                 <div style={{ fontSize:22, width:32, textAlign:'center' }}>{day.icon}</div>
                 <div style={{ flex:1, paddingLeft:10 }}>
                   <div style={{ fontSize:12, color:C.muted }}>{day.description}</div>
-                  <div style={{ fontSize:11, color:C.muted2 }}>{day.wind_dir} {day.wind_kts} kts{day.precip_pct > 20 ? ` · 🌧️ ${day.precip_pct}%` : ''}</div>
+                  <div style={{ fontSize:11, color:C.muted2 }}>{day.wind_dir} {day.wind_kts} kts{day.precip_pct > 20 ? ` · ${day.precip_pct}%` : ''}</div>
                 </div>
                 <div style={{ textAlign:'right' }}>
                   <span style={{ fontSize:15, fontWeight:700 }}>{day.high_f}°</span>

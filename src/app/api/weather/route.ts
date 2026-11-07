@@ -42,17 +42,17 @@ function degToCompass(deg: number): string {
 }
 
 function wmoToCondition(code: number): { desc: string; icon: string } {
-  if (code === 0)                   return { desc: 'Clear',          icon: '☀️' }
-  if (code === 1)                   return { desc: 'Mostly Clear',   icon: '🌤️' }
-  if (code === 2)                   return { desc: 'Partly Cloudy',  icon: '⛅' }
-  if (code === 3)                   return { desc: 'Overcast',       icon: '☁️' }
-  if (code >= 45 && code <= 48)     return { desc: 'Foggy',          icon: '🌫️' }
-  if (code >= 51 && code <= 55)     return { desc: 'Drizzle',        icon: '🌦️' }
-  if (code >= 61 && code <= 65)     return { desc: 'Rain',           icon: '🌧️' }
-  if (code >= 71 && code <= 75)     return { desc: 'Snow',           icon: '❄️' }
-  if (code >= 80 && code <= 82)     return { desc: 'Showers',        icon: '🌦️' }
-  if (code >= 95 && code <= 99)     return { desc: 'Thunderstorm',   icon: '⛈️' }
-  return { desc: 'Mixed',           icon: '🌡️' }
+  if (code === 0)                   return { desc: 'Clear',          icon: '' }
+  if (code === 1)                   return { desc: 'Mostly Clear',   icon: '' }
+  if (code === 2)                   return { desc: 'Partly Cloudy',  icon: '' }
+  if (code === 3)                   return { desc: 'Overcast',       icon: '' }
+  if (code >= 45 && code <= 48)     return { desc: 'Foggy',          icon: '' }
+  if (code >= 51 && code <= 55)     return { desc: 'Drizzle',        icon: '' }
+  if (code >= 61 && code <= 65)     return { desc: 'Rain',           icon: '' }
+  if (code >= 71 && code <= 75)     return { desc: 'Snow',           icon: '❄' }
+  if (code >= 80 && code <= 82)     return { desc: 'Showers',        icon: '' }
+  if (code >= 95 && code <= 99)     return { desc: 'Thunderstorm',   icon: '' }
+  return { desc: 'Mixed',           icon: '' }
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────

@@ -178,7 +178,7 @@ export default function DocumentList({
                 <a href={row.file_url} target="_blank" rel="noopener noreferrer"
                   className="text-teal-500 text-sm underline overflow-hidden text-ellipsis whitespace-nowrap"
                   style={{ maxWidth: 160 }}>
-                  📄 {row.file_name || 'View document'}
+                  {row.file_name || 'View document'}
                 </a>
                 <button type="button" onClick={() => fileInputRefs.current[idx]?.click()}
                   className="bg-transparent border-none text-slate-400 text-xs cursor-pointer underline hover:text-slate-600">
@@ -193,7 +193,7 @@ export default function DocumentList({
               <button type="button" onClick={() => fileInputRefs.current[idx]?.click()}
                 disabled={!row.doc_type}
                 className="bg-transparent border border-dashed border-slate-300 rounded px-3 py-1 text-slate-500 text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:border-slate-400">
-                📎 Choose file
+                Choose file
               </button>
             )}
             <input
