@@ -165,7 +165,6 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
   const lp = (e: { clientX: number; clientY: number }) => { const r = rect()!; return { x: e.clientX - r.left, y: e.clientY - r.top } }
   const downAt = useRef<{ x: number; y: number } | null>(null)
   const skipTap = useRef(false)
-  const zoomedRef = useRef(false)
   const onDown = (e: React.PointerEvent) => { downAt.current = { x: e.clientX, y: e.clientY }; if (!expanded) return; (e.currentTarget as Element).setPointerCapture(e.pointerId); pointers.current.set(e.pointerId, lp(e)) }
   const onMove = (e: React.PointerEvent) => {
     if (!expanded) return // the small preview does not pan: the page scrolls, a tap opens it full screen
@@ -205,22 +204,9 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
     const el = boxRef.current
     if (!el || expanded) return
     let last: { d: number; cx: number; cy: number } | null = null
-    let one: { x: number; y: number; moved: boolean } | null = null  // 2026-11-07 one-finger drag when zoomed in
     const pair = (e: TouchEvent) => { const r = el.getBoundingClientRect(); const a = e.touches[0], c = e.touches[1]; return { d: Math.hypot(a.clientX - c.clientX, a.clientY - c.clientY), cx: (a.clientX + c.clientX) / 2 - r.left, cy: (a.clientY + c.clientY) / 2 - r.top } }
-    const ts = (e: TouchEvent) => { last = e.touches.length === 2 ? pair(e) : null; if (last) skipTap.current = true; one = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, moved: false } : null }
+    const ts = (e: TouchEvent) => { last = e.touches.length === 2 ? pair(e) : null; if (last) skipTap.current = true }
     const tm = (e: TouchEvent) => {
-      if (e.touches.length === 1 && one) {
-        const t = e.touches[0]; const dx = t.clientX - one.x, dy = t.clientY - one.y
-        const r = el.getBoundingClientRect()
-        if (!zoomedRef.current && !one.moved) return  // not zoomed in: leave it to the page scroll
-        if (Math.hypot(dx, dy) > 6) one.moved = true
-        if (!one.moved) return
-        if (e.cancelable) e.preventDefault()
-        skipTap.current = true
-        one.x = t.clientX; one.y = t.clientY
-        setVb(v => (v && r.width && r.height) ? ({ ...v, x: v.x - dx * (v.w / r.width), y: v.y - dy * (v.h / r.height) }) : v)
-        return
-      }
       if (e.touches.length !== 2) return
       if (e.cancelable) e.preventDefault()
       const now = pair(e); skipTap.current = true
@@ -235,7 +221,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
       }
       last = now
     }
-    const te = (e: TouchEvent) => { last = e.touches.length === 2 ? pair(e) : null; if (e.touches.length === 0) { one = null; setTimeout(() => { skipTap.current = false }, 350) } }
+    const te = (e: TouchEvent) => { last = e.touches.length === 2 ? pair(e) : null; if (e.touches.length === 0) setTimeout(() => { skipTap.current = false }, 350) }
     el.addEventListener('touchstart', ts, { passive: true })
     el.addEventListener('touchmove', tm, { passive: false })
     el.addEventListener('touchend', te, { passive: true })
@@ -259,7 +245,6 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
   if (!m || !bounds) return <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>This marina has not published a map yet.</div>
 
   const zoomedIn = !!vb && vb.w < bounds.w / 2.2
-  zoomedRef.current = zoomedIn
   const labelSize = 4.6
   const box: React.CSSProperties = expanded
     ? { position: 'fixed', inset: 0, zIndex: 2000, background: '#0d1f2d', display: 'flex', flexDirection: 'column', padding: 12 }
@@ -282,7 +267,7 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
         <button onClick={fit} style={btn()}>Whole marina</button>
         {!expanded && <button onClick={openFull} style={btn()}>Full screen</button>}
       </div>}
-      {!expanded && !compact && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Zoom in, then drag with one finger to move the map. Pinch to zoom. Tap to open full screen.</div>}
+      {!expanded && !compact && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginBottom: 6 }}>Use two fingers to zoom and move the map. Tap it to open full screen.</div>}
       {query.trim() && !match && <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 6 }}>No space labelled "{query.trim()}" on this map.</div>}
       <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel}
         style={{ width: '100%', height: expanded ? undefined : (compact || true) ? undefined : 380, aspectRatio: expanded ? undefined : (bounds.w + ' / ' + bounds.h), maxHeight: expanded ? undefined : '70vh', flex: expanded ? 1 : undefined, minHeight: expanded ? 200 : undefined, borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', background: 'linear-gradient(180deg, #0f3a5c 0%, #061828 100%)', touchAction: expanded ? 'none' : 'pan-y', cursor: expanded ? 'grab' : 'pointer' }}>
