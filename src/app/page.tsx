@@ -71,7 +71,16 @@ type WeatherData = {
   tides:    Record<string, any>
   location_name?: string
 }
-type Marina = { id:string; name:string; city:string; state:string; total_slips:number; transient_available?:boolean; lat:number|null; lng:number|null; amenities?: Record<string, boolean|string|null> }
+type Marina = { id:string; name:string; city:string; state:string; total_slips:number; slip_count?:number|null; mooring_count?:number|null; transient_available?:boolean; lat:number|null; lng:number|null; amenities?: Record<string, boolean|string|null> }
+// Real counts from the marina's spaces (engine slip_count / mooring_count); falls back to the typed-in total.
+function spaceCountsText(mm: { total_slips?: number|null; slip_count?: number|null; mooring_count?: number|null }, fallback?: number|null): string {
+  const s = (mm.slip_count != null ? mm.slip_count : (mm.total_slips || fallback || 0))
+  const mo = mm.mooring_count || 0
+  const parts: string[] = []
+  if (s > 0 || mo === 0) parts.push(s + (s === 1 ? ' slip' : ' slips'))
+  if (mo > 0) parts.push(mo + (mo === 1 ? ' mooring' : ' moorings'))
+  return parts.join(' · ')
+}
 type MarinaPhoto = { id:string; url:string; caption:string|null; is_hero:boolean }
 type MarinaStorefront = {
   marina: {
@@ -1455,6 +1464,27 @@ function useIsDesktop(breakpoint = 768) {
 }
 
 // ─── Home ──────────────────────────────────────────────────────────────────────
+// A render error inside one tab used to blank the whole body (header + nav only). Now it shows what failed and lets the boater go on.
+class TabErrorBoundary extends React.Component<{ tab: string; children: React.ReactNode }, { err: Error | null }> {
+  state = { err: null as Error | null }
+  static getDerivedStateFromError(err: Error) { return { err } }
+  componentDidCatch(err: Error, info: { componentStack?: string }) {
+    try { fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tab: this.props.tab, message: String(err && err.message), stack: String(err && err.stack || '').slice(0, 1500), component: String(info && info.componentStack || '').slice(0, 1500), ua: typeof navigator !== 'undefined' ? navigator.userAgent : '' }) }).catch(() => {}) } catch { /* ignore */ }
+  }
+  render() {
+    if (!this.state.err) return this.props.children
+    return (
+      <div style={{ padding: 24, color: '#fff', fontFamily: 'inherit' }}>
+        <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8 }}>Something went wrong on this screen</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 14 }}>It has been reported. Please try again, or send us a screenshot of this message.</div>
+        <div style={{ fontSize: 11, color: '#fbbf24', background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 10, marginBottom: 14, wordBreak: 'break-word' }}>{this.props.tab}: {String(this.state.err.message || this.state.err)}</div>
+        <button onClick={() => { try { localStorage.removeItem('skipper_resume_v1') } catch { /* ignore */ } this.setState({ err: null }) }} style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: '#4dd6c8', color: '#042b2a', fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', marginRight: 8 }}>Try again</button>
+        <button onClick={() => { try { localStorage.removeItem('skipper_resume_v1') } catch { /* ignore */ } window.location.reload() }} style={{ padding: '10px 18px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#fff', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>Reload app</button>
+      </div>
+    )
+  }
+}
+
 function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTabChange, onSignOut, onVesselSaved, onVesselDeleted, onProfileUpdated, vesselsLoading, onRefreshVessels, marinaProfile, spaceProfile, leaseProfile, coupledMarinas }: {
   user: User; profile: Profile|null; vessel: Vessel|null; vessels: Vessel[]; vesselIds: string[]; activeTab: HomeTab
   onTabChange: (t: HomeTab) => void; onSignOut: () => void
@@ -1673,6 +1703,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
 
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
+          <TabErrorBoundary key={activeTab} tab={activeTab}>
           {activeTab === 'home'     && <TabHome user={user} profile={profile} vessel={vessel} marinaProfile={marinaProfile} spaceProfile={spaceProfile} leaseProfile={leaseProfile} weatherData={weatherData} onTabChange={onTabChange} onShowOnMap={showOnMap} />}
           {activeTab === 'vessel'   && <TabVessel   vessels={vessels} vesselIds={vesselIds} user={user} profile={profile} onVesselSaved={onVesselSaved} onVesselDeleted={onVesselDeleted} vesselsLoading={vesselsLoading} onShowOnMap={showOnMap} />}
           {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
@@ -1686,6 +1717,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
           {activeTab === 'messages' && <TabMessages  user={user} profile={profile} />}
           {activeTab === 'log'      && <TabShipLog vessels={vessels} vessel={vessel} vesselIds={vesselIds} />}
           {activeTab === 'account'  && <TabAccount  user={user} profile={profile} vessels={vessels} onSignOut={onSignOut} onProfileUpdated={onProfileUpdated} />}
+          </TabErrorBoundary>
         </div>
 
         {/* Mobile bottom nav */}
@@ -2841,7 +2873,7 @@ function TabMarinas({ user, profile, vessel, vessels, spaceProfile, leaseProfile
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginTop:3 }}>{m.city}, {m.state} · {m.total_slips} slips</div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginTop:3 }}>{m.city}, {m.state} · {spaceCountsText(m)}</div>
               </div>
               <div style={{ fontSize:12, color:'#4dd6c8', fontWeight:700, flexShrink:0 }}>View →</div>
             </button>
@@ -2987,7 +3019,7 @@ function MarinaProfileScreen({ marina, coupled, berth, userId, onBack, onMessage
         </div>
 
         <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-          <StatPill icon="" label={`${marina.total_slips ?? m?.total_slips ?? 0} Slips`} />
+          <StatPill icon="" label={spaceCountsText(marina, m?.total_slips)} />
           {(m?.transient_available ?? marina.transient_available) && <StatPill icon="" label="Transient Welcome" highlight />}
           {m?.transient_daily_rate ? <StatPill icon="" label={`$${m.transient_daily_rate}/night`} /> : null}
           {m?.vhf_channel && <StatPill icon="" label={`VHF ${m.vhf_channel}`} />}

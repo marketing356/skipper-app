@@ -97,6 +97,23 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
   }, [marinaId])
 
   const m = maps && maps[idx]
+  // Name each map by what is on it (Mike 2026-11-10): a map with only slips = Slips, only moorings = Moorings.
+  const mapName = (mm: MapData, i: number) => mm.label || (mm.slips.length && !mm.moorings.length ? 'Slips' : mm.moorings.length && !mm.slips.length ? 'Moorings' : 'Map ' + (i + 1))
+  // How many highlighted spaces (available ones, or the boater's own) sit on each map.
+  const perMap = useMemo(() => (maps || []).map(mm => {
+    const has = (lab: string) => [...mm.slips, ...mm.moorings, ...mm.yard].some(q => q.label.toLowerCase() === lab)
+    let avail = 0, mineN = 0
+    for (const h of highlights) { const lab = (h.label || '').trim().toLowerCase(); if (!lab || !has(lab)) continue; if (h.kind === 'available') avail++; else mineN++ }
+    return { avail, mineN }
+  }), [maps, highlights])
+  // Open on the map that holds the boater's own space, else the one with available spaces (not always map 1).
+  const userPicked = useRef(false)
+  useEffect(() => {
+    if (!maps || maps.length < 2 || userPicked.current) return
+    let best = perMap.findIndex(x => x.mineN > 0); if (best < 0) best = perMap.findIndex(x => x.avail > 0)
+    if (best >= 0 && best !== idx) setIdx(best)
+  }, [maps, perMap]) // eslint-disable-line
+  const pickMap = (i: number) => { userPicked.current = true; setIdx(i) }
   const bounds = useMemo(() => {
     if (!m) return null
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
@@ -259,11 +276,14 @@ export default function MarinaLayoutMap({ marinaId, highlights = [], compact = f
           Close map
         </button>
       )}
+      {compact && !expanded && maps.length > 1 && <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        {maps.map((mm, i) => <button key={i} onClick={() => pickMap(i)} style={btn(i === idx)}>{mapName(mm, i)}{perMap[i] && perMap[i].avail > 0 ? ' · ' + perMap[i].avail + ' available' : ''}</button>)}
+      </div>}
       {!(compact && !expanded) && <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center', paddingRight: expanded ? 120 : 0, paddingTop: expanded ? 'env(safe-area-inset-top, 0px)' : 0 }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a slip, e.g. A12"
           style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontFamily: 'inherit', fontSize: 13 }} />
-        {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => setIdx(i)} style={btn(i === idx)}>{mm.label || 'Map ' + (i + 1)}</button>)}
-        {mine.length > 0 && <button onClick={zoomMine} style={btn(true)}>{mine.some(x => x.h.kind === 'available') ? 'Available' : 'My spot'}</button>}
+        {maps.length > 1 && maps.map((mm, i) => <button key={i} onClick={() => pickMap(i)} style={btn(i === idx)}>{mapName(mm, i)}{perMap[i] && perMap[i].avail > 0 ? ' · ' + perMap[i].avail + ' available' : ''}</button>)}
+        {(mine.length > 0 || perMap.some(x => x.avail > 0 || x.mineN > 0)) && <button onClick={() => { if (!mine.length) { const j = perMap.findIndex(x => x.avail > 0 || x.mineN > 0); if (j >= 0) pickMap(j); return } zoomMine() }} style={btn(true)}>{mine.some(x => x.h.kind === 'available') ? 'Available' : 'My spot'}</button>}
         <button onClick={fit} style={btn()}>Whole marina</button>
         {!expanded && <button onClick={openFull} style={btn()}>Full screen</button>}
       </div>}
