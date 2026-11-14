@@ -52,7 +52,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       const bd = await br.json()
       const list = Array.isArray(bd) ? bd : (bd?.berths ?? [])
       if (list.some((x: { assetId?: string | null }) => x?.assetId === params.id)) {
-        return NextResponse.json({ error: 'This boat has an active lease and cannot be deleted. Ask your marina to end the lease first.', code: 'active_lease' }, { status: 409 })
+        return NextResponse.json({ error: 'This boat has an active lease and cannot be removed. Ask your marina to end the lease first.', code: 'active_lease' }, { status: 409 })
       }
     } catch {
       return NextResponse.json({ error: 'Could not check this boat for an active lease. Please try again.', code: 'lease_check_failed' }, { status: 503 })
@@ -62,6 +62,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       headers: { 'Content-Type': 'application/json', 'x-skipper-api-key': K, 'x-boater-auth': authUserId },
     })
     const data = await res.json()
+    if (res.status === 409 && data?.detail === 'active_lease') {
+      return NextResponse.json({ error: 'This boat has an active lease and cannot be removed. Ask your marina to end the lease first.', code: 'active_lease' }, { status: 409 })
+    }
     return NextResponse.json(data, { status: res.status })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

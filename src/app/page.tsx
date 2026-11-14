@@ -1861,10 +1861,10 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
   async function deleteVessel(id: string) {
     // Mike 2026-11-14: active lease = cannot delete; say so plainly (the server also refuses)
     if (berths.some(b => b.assetId === id)) {
-      alert('This boat has an active lease, so it cannot be deleted. Ask your marina to end the lease first.')
+      alert('This boat has an active lease, so it cannot be removed. Ask your marina to end the lease first.')
       return
     }
-    if (!confirm('Delete this vessel? This cannot be undone.')) return
+    if (!confirm('Remove this boat from your app? Your marina keeps its records, so nothing is deleted there. If you get a new boat or sold this one, just add the new one.')) return
     const res = await fetch(`/api/vessels/${id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -1873,7 +1873,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
     if (res.ok) onVesselDeleted(id)
     else {
       const d = await res.json().catch(() => ({}))
-      alert(d?.error || 'Could not delete this vessel. Please try again.')
+      alert(d?.error || 'Could not remove this boat. Please try again.')
     }
   }
 
@@ -2000,7 +2000,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </button>
                   <button onClick={() => deleteVessel(vesselIds[idx])}
                     style={{ background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', borderRadius:10, padding:'6px 12px', color:'#f87171', fontFamily:FONT, fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                    Delete
+                    Remove
                   </button>
                 </div>
               </div>
