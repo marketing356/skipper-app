@@ -20,6 +20,8 @@ export type AppDisplayMode = 'native' | 'standalone' | 'browser'
 /** Same rule as link-contact (commit ee0b31b): native iOS app UA -> ios, anything else -> android. */
 export function isNativeIosUserAgent(ua: string | null | undefined): boolean {
   const s = ua ?? ''
+  // v2 iPhone app is a WebView shell whose UA carries AyeAyeSkipperiOS (Mike 2026-11-14); old v1 native app = CFNetwork/Darwin without Mozilla
+  if (/AyeAyeSkipperiOS/i.test(s)) return true
   return !/Mozilla/i.test(s) && /CFNetwork|Darwin\//i.test(s)
 }
 
