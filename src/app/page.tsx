@@ -1918,14 +1918,19 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       <SectionTitle>My Vessels</SectionTitle>
 
       {/* Active Berths */}
-      {!berthLoading && berths.length > 0 && (
-        <div style={{ marginBottom:24 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>
-            Current Berth{berths.length > 1 ? 's' : ''}
+      {(() => {
+        // Berths that belong to one of the boats show inside that boat's card (one card, Mike 2026-11-14); only loose berths get their own card
+        const loose = berths.filter(b => !(b.assetId && (vesselIds.includes(b.assetId) || vessels.some(vv => vv.id === b.assetId))))
+        if (berthLoading || loose.length === 0) return null
+        return (
+          <div style={{ marginBottom:24 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>
+              Current Berth{loose.length > 1 ? 's' : ''}
+            </div>
+            {loose.map(b => <BerthCard key={b.id} berth={b} onShowOnMap={onShowOnMap} />)}
           </div>
-          {berths.filter(b => !(b.assetId && (vesselIds.includes(b.assetId) || vessels.some(vv => vv.id === b.assetId)))).map(b => <BerthCard key={b.id} berth={b} onShowOnMap={onShowOnMap} />)}
-        </div>
-      )}
+        )
+      })()}
 
       {/* Vessel list */}
       {vesselsLoading ? (
