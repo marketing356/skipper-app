@@ -333,6 +333,15 @@ function daysUntil(dateStr: string | null): number | null {
 }
 
 // ─── Dynamic vessel icon by type ─────────────────────────────────────────────
+// Text tag for the icon tile (emoji were removed 2026-11-07 and left blank tiles; Mike 2026-11-14)
+function vesselTag(type: string | null | undefined): string {
+  const t = (type || '').toLowerCase()
+  if (t.includes('trailer')) return 'TRAILER'
+  if (t.includes('pwc') || t.includes('jet')) return 'PWC'
+  if (t.includes('kayak') || t.includes('canoe')) return 'KAYAK'
+  return 'BOAT'
+}
+
 function vesselIcon(type: string | null | undefined): string {
   const t = (type || '').toLowerCase()
   if (t.includes('sail')) return ''
@@ -1914,7 +1923,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
           <div style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:1.5, marginBottom:10 }}>
             Current Berth{berths.length > 1 ? 's' : ''}
           </div>
-          {berths.map(b => <BerthCard key={b.id} berth={b} onShowOnMap={onShowOnMap} />)}
+          {berths.filter(b => !(b.assetId && (vesselIds.includes(b.assetId) || vessels.some(vv => vv.id === b.assetId)))).map(b => <BerthCard key={b.id} berth={b} onShowOnMap={onShowOnMap} />)}
         </div>
       )}
 
@@ -1942,7 +1951,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
             <div key={vesselIds[idx]} style={{ background:'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border:`1px solid ${C.tealBorder}`, borderRadius:22, padding:22, marginBottom:14 }}>
               <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:16 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12, minWidth:0 }}>
-                  <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26 }}>{vesselIcon(v.vessel_type)}</div>
+                  <div style={{ width:56, height:56, borderRadius:16, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, letterSpacing:1, color:C.teal }}>{vesselTag(v.vessel_type)}</div>
                   <div>
                     <div style={{ fontSize:20, fontWeight:800, letterSpacing:-0.4 }}>{v.name}</div>
                     <div style={{ fontSize:13, color:C.muted }}>{v.vessel_type}{v.year ? ` · ${v.year}` : ''}</div>
@@ -1981,6 +1990,21 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   </button>
                 </div>
               </div>
+              {(() => {
+                const b = berths.find(b => b.assetId === vesselIds[idx] || b.assetId === v.id)
+                if (!b) return null
+                const dl = daysUntil(b.endDate)
+                const expired = dl !== null && dl < 0
+                const soon = dl !== null && dl >= 0 && dl <= 30
+                return (
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:14 }}>
+                    {b.monthlyRate != null && <StatTile label="Monthly" value={'$' + Number(b.monthlyRate).toLocaleString()} />}
+                    {b.leaseType && <StatTile label="Lease Type" value={leaseTypeLabel(b.leaseType)} />}
+                    {b.startDate && <StatTile label="Start" value={fmtDate(b.startDate)} />}
+                    {b.endDate && <StatTile label="Ends" value={fmtDate(b.endDate)} danger={expired} warn={soon} />}
+                  </div>
+                )
+              })()}
 
             </div>
           ))}
@@ -2046,7 +2070,7 @@ function BerthCard({ berth, onShowOnMap }: { berth: BerthData; onShowOnMap?: (ma
 
       {/* Marina + slip header */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
-        <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}></div>
+        <div style={{ width:44, height:44, borderRadius:12, background:C.tealDim, border:`1px solid ${C.tealBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, letterSpacing:0.8, color:C.teal, flexShrink:0 }}>{spaceWord(berth.spaceType).toUpperCase()}</div>
         <div>
           <div style={{ fontSize:16, fontWeight:800, letterSpacing:-0.3 }}>{berth.marinaName}</div>
           {berth.slipNumber && (
@@ -2226,7 +2250,7 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
 
         {/* Vessel hero */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, background: 'linear-gradient(135deg,rgba(77,214,200,0.14) 0%,rgba(13,43,75,0.5) 100%)', border: `1px solid ${C.tealBorder}`, borderRadius: 16, padding: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: C.tealDim, border: `1px solid ${C.tealBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{vesselIcon(vessel.vessel_type)}</div>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: C.tealDim, border: `1px solid ${C.tealBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, letterSpacing: 1, color: C.teal }}>{vesselTag(vessel.vessel_type)}</div>
           <div>
             <div style={{ fontSize: 19, fontWeight: 800, color: C.white }}>{vessel.name}</div>
             <div style={{ fontSize: 13, color: C.muted }}>{vessel.vessel_type}{vessel.year ? ` · ${vessel.year}` : ''}</div>
@@ -5202,7 +5226,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
           {spaceProfile?.label && (
             <div style={{ textAlign:'right', flexShrink:0, marginLeft:12 }}>
               <div style={{ fontSize: 28, fontWeight: 900, color: C.teal, letterSpacing: -1 }}>{spaceProfile.label}</div>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{spaceProfile.dock ? `Dock ${spaceProfile.dock}` : 'Slip'}</div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{spaceProfile.dock ? `Dock ${spaceProfile.dock}` : spaceWord(spaceProfile.spaceType)}</div>
             </div>
           )}
         </div>
