@@ -2005,6 +2005,7 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:14 }}>
                     {b.monthlyRate != null && <StatTile label="Monthly" value={'$' + Number(b.monthlyRate).toLocaleString()} />}
                     {b.leaseType && <StatTile label="Lease Type" value={leaseTypeLabel(b.leaseType)} />}
+                    {b.spaceType === 'yard' && <StatTile label="Trailer" value={['true','yes','1'].includes(String(v.has_trailer).toLowerCase()) ? (v.trailer_type ? String(v.trailer_type) : 'Yes') : 'No trailer'} />}
                     {b.startDate && <StatTile label="Start" value={fmtDate(b.startDate)} />}
                     {b.endDate && <StatTile label="Ends" value={fmtDate(b.endDate)} danger={expired} warn={soon} />}
                   </div>
