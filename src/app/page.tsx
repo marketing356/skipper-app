@@ -651,9 +651,23 @@ export default function SkipperApp() {
   }, [])
 
   // ── Shared data-load function — Rule 2 compliant: all data via Railway ──
-  async function loadUserData(u: User) {
-    setVesselsLoading(true)
+  // Resume / realtime refreshes (Mike 2026-11-14, iPhone slow return): never run two loads at once, refresh
+  // silently (no spinner over data already on screen), and skip a resume refresh if data is under 20s old.
+  const loadInflightRef = useRef<Promise<any> | null>(null)
+  const loadedAtRef = useRef(0)
+  async function loadUserData(u: User, opts?: { silent?: boolean; minAgeMs?: number }): Promise<any> {
+    if (opts?.minAgeMs && Date.now() - loadedAtRef.current < opts.minAgeMs) return undefined
+    if (loadInflightRef.current) return loadInflightRef.current
+    const run = loadUserDataInner(u, opts?.silent === true)
+    loadInflightRef.current = run
+    try { return await run } finally { loadInflightRef.current = null; loadedAtRef.current = Date.now() }
+  }
+  async function loadUserDataInner(u: User, silent: boolean) {
+    if (!silent) setVesselsLoading(true)
     try {
+      // Profile, boats and marinas are independent: ask for all three at once (was one after the other).
+      const assetsP = fetch(`/api/assets?auth_user_id=${u.id}`); assetsP.catch(() => {})
+      const marinasP = fetch(`/api/marinas?auth_user_id=${u.id}`, { cache: 'no-store' }); marinasP.catch(() => {})
       // Step 1: Profile from Railway (contact + marina + vessel + space + lease)
       const profileRes = await fetch(`/api/profile?auth_user_id=${u.id}`)
       const profileData = profileRes.ok ? await profileRes.json() : null
@@ -672,7 +686,7 @@ export default function SkipperApp() {
         engine_model: a.engineModel, horsepower_per_engine: a.horsepowerPerEngine,
         photo_url: a.photoUrl, notes: a.notes,
       })
-      const assetsRes = await fetch(`/api/assets?auth_user_id=${u.id}`)
+      const assetsRes = await assetsP
       if (assetsRes.ok) {
         const assetsData = await assetsRes.json()
         const assetRows: any[] = assetsData.vessels ?? []
@@ -748,7 +762,7 @@ export default function SkipperApp() {
       setLeaseProfile(profileData?.lease ?? null)
 
       // Step 5: Load connected marinas for Skipper AI context
-      const marinasRes = await fetch(`/api/marinas?auth_user_id=${u.id}`, { cache: 'no-store' })
+      const marinasRes = await marinasP
       if (marinasRes.ok) {
         const marinasData = await marinasRes.json()
         setCoupledMarinas(marinasData.marinas ?? [])
@@ -829,7 +843,7 @@ export default function SkipperApp() {
     enabled: !!user?.id,
     onChange: () => {
       const u = userRef.current
-      if (u) loadUserData(u).catch(e => console.error('[Skipper] realtime loadUserData:', e))
+      if (u) loadUserData(u, { silent: true }).catch(e => console.error('[Skipper] realtime loadUserData:', e))
       setRealtimeVersion(v => v + 1)  // triggers ShipLogList/ServiceHistoryList/etc. to re-fetch
     },
   })
@@ -839,7 +853,7 @@ export default function SkipperApp() {
     function onVisibility() {
       if (document.visibilityState === 'visible') {
         const u = userRef.current
-        if (u) loadUserData(u).catch(e => console.error('[Skipper] visibility loadUserData:', e))
+        if (u) loadUserData(u, { silent: true, minAgeMs: 20000 }).catch(e => console.error('[Skipper] visibility loadUserData:', e))
         if (u) reportAppOpen('resume')  // real-time app status on return to foreground
       }
     }
@@ -1527,14 +1541,28 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
   const showOnMap = (marinaId: string) => { setMapMarinaId(marinaId); onTabChange('marinas') }
 
   useEffect(() => {
+    // Mike 2026-11-14: the iPhone app asked "use your location?" on EVERY load. Now: use the saved position
+    // (kept up to 30 days) with no prompt; only ask the phone when nothing is saved yet. The Weather tab's
+    // refresh button still asks for a fresh position.
+    const showWeather = (lat: number, lon: number) => {
+      fetch(`/api/weather?lat=${lat}&lon=${lon}`)
+        .then(r => r.json())
+        .then(d => setWeatherData(d))
+        .catch(() => {})
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('skipper_last_pos') || 'null')
+      if (saved && typeof saved.lat === 'number' && typeof saved.lon === 'number' && Date.now() - Number(saved.t || 0) < 30 * 24 * 3600 * 1000) {
+        showWeather(saved.lat, saved.lon)
+        return
+      }
+    } catch { /* ignore, ask below */ }
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       pos => {
         const { latitude: lat, longitude: lon } = pos.coords
-        fetch(`/api/weather?lat=${lat}&lon=${lon}`)
-          .then(r => r.json())
-          .then(d => setWeatherData(d))
-          .catch(() => {})
+        try { localStorage.setItem('skipper_last_pos', JSON.stringify({ lat, lon, t: Date.now() })) } catch { /* ignore */ }
+        showWeather(lat, lon)
       },
       () => { /* location denied — silent */ },
       { enableHighAccuracy: false, timeout: 10000 }
@@ -1718,6 +1746,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
           {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
             if (typeof navigator === 'undefined' || !navigator.geolocation) return
             navigator.geolocation.getCurrentPosition(pos => {
+              try { localStorage.setItem('skipper_last_pos', JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude, t: Date.now() })) } catch { /* ignore */ }
               fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
