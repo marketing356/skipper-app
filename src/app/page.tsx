@@ -1859,6 +1859,11 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
 
   // ── Delete vessel (soft-delete via Railway — Rule 2) ───────────────────────────
   async function deleteVessel(id: string) {
+    // Mike 2026-11-14: active lease = cannot delete; say so plainly (the server also refuses)
+    if (berths.some(b => b.assetId === id)) {
+      alert('This boat has an active lease, so it cannot be deleted. Ask your marina to end the lease first.')
+      return
+    }
     if (!confirm('Delete this vessel? This cannot be undone.')) return
     const res = await fetch(`/api/vessels/${id}`, {
       method: 'DELETE',
@@ -1866,6 +1871,10 @@ function TabVessel({ vessels, vesselIds, user, profile, onVesselSaved, onVesselD
       body: JSON.stringify({ auth_user_id: user.id }),
     })
     if (res.ok) onVesselDeleted(id)
+    else {
+      const d = await res.json().catch(() => ({}))
+      alert(d?.error || 'Could not delete this vessel. Please try again.')
+    }
   }
 
   // ── Vessel Detail screen ─────────────────────────────────────────────────────

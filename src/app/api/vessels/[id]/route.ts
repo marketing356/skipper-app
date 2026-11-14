@@ -44,6 +44,19 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     const body = await req.json().catch(() => ({}))
     const authUserId = body.auth_user_id || new URL(req.url).searchParams.get('auth_user_id')
     if (!authUserId) return NextResponse.json({ error: 'auth_user_id required' }, { status: 400 })
+    // Mike 2026-11-14: a boat with an ACTIVE LEASE cannot be deleted by the customer (it would also vanish from the marina's records).
+    // Fail closed: if we cannot check the leases, do not delete.
+    try {
+      const br = await fetch(`${E}/api/v1/boater/berths`, { cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-skipper-api-key': K, 'x-boater-auth': authUserId } })
+      if (!br.ok) return NextResponse.json({ error: 'Could not check this boat for an active lease. Please try again.', code: 'lease_check_failed' }, { status: 503 })
+      const bd = await br.json()
+      const list = Array.isArray(bd) ? bd : (bd?.berths ?? [])
+      if (list.some((x: { assetId?: string | null }) => x?.assetId === params.id)) {
+        return NextResponse.json({ error: 'This boat has an active lease and cannot be deleted. Ask your marina to end the lease first.', code: 'active_lease' }, { status: 409 })
+      }
+    } catch {
+      return NextResponse.json({ error: 'Could not check this boat for an active lease. Please try again.', code: 'lease_check_failed' }, { status: 503 })
+    }
     const res = await fetch(`${E}/api/v1/boater/vessels/${params.id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', 'x-skipper-api-key': K, 'x-boater-auth': authUserId },
