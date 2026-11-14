@@ -1558,13 +1558,15 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
       }
     } catch { /* ignore, ask below */ }
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
+    // They already said "Don't Allow": do not ask again on load (the Weather tab refresh button still can).
+    try { if (Date.now() - Number(localStorage.getItem('skipper_geo_denied') || 0) < 30 * 24 * 3600 * 1000) return } catch { /* ignore */ }
     navigator.geolocation.getCurrentPosition(
       pos => {
         const { latitude: lat, longitude: lon } = pos.coords
         try { localStorage.setItem('skipper_last_pos', JSON.stringify({ lat, lon, t: Date.now() })) } catch { /* ignore */ }
         showWeather(lat, lon)
       },
-      () => { /* location denied — silent */ },
+      err => { try { if (err && err.code === 1) localStorage.setItem('skipper_geo_denied', String(Date.now())) } catch { /* ignore */ } },
       { enableHighAccuracy: false, timeout: 10000 }
     )
   }, [])
@@ -1746,7 +1748,7 @@ function HomeScreen({ user, profile, vessel, vessels, vesselIds, activeTab, onTa
           {activeTab === 'weather'  && <TabWeather  weatherData={weatherData} onRefresh={() => {
             if (typeof navigator === 'undefined' || !navigator.geolocation) return
             navigator.geolocation.getCurrentPosition(pos => {
-              try { localStorage.setItem('skipper_last_pos', JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude, t: Date.now() })) } catch { /* ignore */ }
+              try { localStorage.setItem('skipper_last_pos', JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude, t: Date.now() })); localStorage.removeItem('skipper_geo_denied') } catch { /* ignore */ }
               fetch(`/api/weather?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
                 .then(r => r.json()).then(d => setWeatherData(d)).catch(() => {})
             }, () => {})
