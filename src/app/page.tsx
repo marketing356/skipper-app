@@ -5365,6 +5365,13 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
         </div>
       </button>
 
+      {/* Always-visible way into invoices + payment history, even with nothing due (Mike 2026-11-14) */}
+      <button onClick={() => { setInvTab('payments'); setShowInvoices(true) }}
+        style={{ width:'100%', marginTop:-4, marginBottom:14, padding:'12px 16px', borderRadius:14, fontFamily:FONT, fontSize:13, fontWeight:700, cursor:'pointer',
+          color:C.teal, background:'rgba(77,214,200,0.08)', border:'1px solid ' + C.tealBorder, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span>Invoices & payment history</span><span>→</span>
+      </button>
+
       {/* Quick actions */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
         {(['messages','log','vessel','weather'] as HomeTab[]).map(tab => {
