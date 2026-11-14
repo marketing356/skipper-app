@@ -4749,13 +4749,15 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
   const [paying,          setPaying]          = useState<string|null>(null) // invoice id being paid
   const [payError,        setPayError]        = useState<string|null>(null)
   const [expandedInv,     setExpandedInv]     = useState<string|null>(null)
+  const [payments,        setPayments]        = useState<any[]>([])   // payment history, all marinas (Mike 2026-11-14)
+  const [invTab,          setInvTab]          = useState<'invoices'|'payments'>('invoices')
 
   useEffect(() => {
     if (!user.id) return
     setInvoicesLoading(true)
     fetch(`/api/invoices?auth_user_id=${user.id}`)
       .then(r => r.json())
-      .then(d => setInvoices(d.invoices ?? []))
+      .then(d => { setInvoices(d.invoices ?? []); setPayments(d.payments ?? []) })
       .catch(() => {})
       .finally(() => setInvoicesLoading(false))
   }, [user.id])
@@ -5001,9 +5003,51 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
             style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, padding:'7px 14px', color:C.white, fontFamily:FONT, cursor:'pointer', fontSize:13, fontWeight:600 }}>← Back</button>
           <div>
             <div style={{ fontSize:17, fontWeight:800, color:C.white }}>Invoices & Payments</div>
-            <div style={{ fontSize:11, color:C.muted }}>{marinaProfile?.name}</div>
+            <div style={{ fontSize:11, color:C.muted }}>{new Set([...invoices, ...payments].map((x: any) => x.marinaName).filter(Boolean)).size > 1 ? 'All your marinas' : (invoices[0]?.marinaName ?? payments[0]?.marinaName ?? marinaProfile?.name)}</div>
           </div>
         </div>
+
+        {/* Tabs: Invoices / Payment history */}
+        <div style={{ display:'flex', gap:8, padding:'0 16px 12px' }}>
+          {(['invoices','payments'] as const).map(tb => (
+            <button key={tb} onClick={() => setInvTab(tb)}
+              style={{ flex:1, padding:'9px 0', borderRadius:10, fontFamily:FONT, fontSize:13, fontWeight:700, cursor:'pointer',
+                background: invTab===tb ? 'rgba(77,214,200,0.18)' : 'rgba(255,255,255,0.05)',
+                border: invTab===tb ? '1px solid rgba(77,214,200,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                color: invTab===tb ? C.teal : C.muted }}>
+              {tb === 'invoices' ? ('Invoices (' + invoices.length + ')') : ('Payment history (' + payments.length + ')')}
+            </button>
+          ))}
+        </div>
+
+        {invTab === 'payments' && !invoicesLoading && (
+          <div style={{ padding:'0 16px' }}>
+            {payments.length === 0 ? (
+              <div style={{ padding:'50px 4px', textAlign:'center' }}>
+                <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No payments yet</div>
+                <div style={{ fontSize:13, color:C.muted }}>Every payment you make to a marina will be listed here.</div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>Total paid: <span style={{ color:'#4ade80', fontWeight:800 }}>{'$' + payments.reduce((a: number, x: any) => a + (x.amount || 0), 0).toFixed(2)}</span></div>
+                {payments.map((p: any) => (
+                  <div key={p.id} style={{ padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between', gap:12 }}>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:C.white }}>
+                        {p.invoiceNumber ? ('Payment for ' + p.invoiceNumber) : (p.kind === 'fuel' ? 'Fuel purchase' : p.kind === 'retail' ? 'Store purchase' : p.kind === 'credit_applied' ? 'Credit applied' : p.kind === 'deposit_applied' ? 'Deposit applied' : 'Payment')}
+                      </div>
+                      <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
+                        {p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : ''}{p.method ? (' · ' + p.method) : ''}
+                      </div>
+                      <div style={{ fontSize:11, color:C.muted }}>{p.marinaName}{p.description ? (' · ' + p.description) : ''}{p.reference ? (' · Ref ' + p.reference) : ''}</div>
+                    </div>
+                    <div style={{ fontSize:16, fontWeight:900, color:'#4ade80', flexShrink:0 }}>{'$' + (p.amount || 0).toFixed(2)}</div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
 
         {payError && (
           <div style={{ margin:'0 16px 12px', padding:'10px 14px', background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.25)', borderRadius:12, fontSize:13, color:'#f87171' }}>{payError}</div>
@@ -5013,7 +5057,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
           <div style={{ padding:'40px 16px', textAlign:'center', color:C.muted, fontSize:13 }}>Loading…</div>
         )}
 
-        {!invoicesLoading && invoices.length === 0 && (
+        {invTab === 'invoices' && !invoicesLoading && invoices.length === 0 && (
           <div style={{ padding:'60px 20px', textAlign:'center' }}>
             <div style={{ fontSize:40, marginBottom:12 }}></div>
             <div style={{ fontSize:16, fontWeight:700, color:C.white, marginBottom:8 }}>No invoices yet</div>
@@ -5021,7 +5065,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
           </div>
         )}
 
-        {!invoicesLoading && invoices.map((inv, i) => {
+        {invTab === 'invoices' && !invoicesLoading && invoices.map((inv, i) => {
           const payable = ['unpaid','overdue','partial','sent'].includes(inv.status)
           const owed    = Math.max(0, (inv.amountDue ?? 0) - (inv.amountPaid ?? 0))
           const isExpanded = expandedInv === inv.id
@@ -5032,7 +5076,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
                 style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', fontFamily:FONT }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
                   <div>
-                    <div style={{ fontSize:14, fontWeight:700, color:C.white, marginBottom:4 }}>{inv.invoiceNumber ?? 'Invoice'}</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:C.white, marginBottom:4 }}>{inv.invoiceNumber ?? 'Invoice'}{inv.marinaName ? <span style={{ fontSize:11, fontWeight:600, color:C.muted }}>{' · ' + inv.marinaName}</span> : null}</div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       {statusBadge(inv.status)}
                       {inv.status === 'paid' && inv.paidAt
