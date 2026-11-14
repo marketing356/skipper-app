@@ -18,6 +18,7 @@ let lastReport: { uid: string; at: number } | null = null
 let openInFlight = false
 
 export function currentDisplayMode(): 'standalone' | 'browser' {
+  try { if (/AyeAyeSkipperiOS/i.test(navigator.userAgent)) return 'standalone' } catch { /* ignore */ }
   try {
     if (window.matchMedia('(display-mode: standalone)').matches) return 'standalone'
     if (window.matchMedia('(display-mode: fullscreen)').matches) return 'standalone'

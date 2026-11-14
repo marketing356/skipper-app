@@ -41,6 +41,8 @@ const KEY_TWA = 'skipper_twa'
 // icon (navigator.standalone), or Android TWA (referrer android-app://, remembered for the
 // session because the referrer is only set on the first page load).
 function isStandalone(): boolean {
+  // The iPhone app (v2 WebView shell, UA contains AyeAyeSkipperiOS) is already the installed app: never show Add to Home Screen (Mike 2026-11-14)
+  try { if (/AyeAyeSkipperiOS/i.test(navigator.userAgent)) return true } catch { /* ignore */ }
   try {
     if (window.matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui), (display-mode: window-controls-overlay)').matches) return true
   } catch { /* old browser */ }
