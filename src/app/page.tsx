@@ -9,6 +9,7 @@ import Image from 'next/image'
 import { supabase } from '@/lib/supabase-client'
 import { useSkipperRealtime } from '@/lib/useSkipperRealtime'
 import { reportAppOpen } from '@/lib/app-open-client'
+import { cleanErr, friendlyHttp, fmtLabel } from '@/lib/plain-text'
 import type { User } from '@supabase/supabase-js'
 
 const MarinaLayoutMap = dynamic(() => import('@/components/MarinaLayoutMap'), { ssr: false, loading: () => <div style={{ fontSize:13, color:'rgba(255,255,255,0.5)' }}>Loading map…</div> })
@@ -1499,8 +1500,11 @@ class TabErrorBoundary extends React.Component<{ tab: string; children: React.Re
     return (
       <div style={{ padding: 24, color: '#fff', fontFamily: 'inherit' }}>
         <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8 }}>Something went wrong on this screen</div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 14 }}>It has been reported. Please try again, or send us a screenshot of this message.</div>
-        <div style={{ fontSize: 11, color: '#fbbf24', background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 10, marginBottom: 14, wordBreak: 'break-word' }}>{this.props.tab}: {String(this.state.err.message || this.state.err)}</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 14 }}>It has been reported to us. Please try again.</div>
+        <details style={{ marginBottom: 14 }}>
+          <summary style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>Details for support</summary>
+          <div style={{ fontSize: 11, color: '#fbbf24', background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 10, marginTop: 8, wordBreak: 'break-word' }}>{this.props.tab}: {String(this.state.err.message || this.state.err)}</div>
+        </details>
         <button onClick={() => { try { localStorage.removeItem('skipper_resume_v1') } catch { /* ignore */ } this.setState({ err: null }) }} style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: '#4dd6c8', color: '#042b2a', fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', marginRight: 8 }}>Try again</button>
         <button onClick={() => { try { localStorage.removeItem('skipper_resume_v1') } catch { /* ignore */ } window.location.reload() }} style={{ padding: '10px 18px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#fff', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>Reload app</button>
       </div>
@@ -2300,7 +2304,7 @@ function VesselDetailScreen({ vessel, vesselId, onBack, onEdit }: {
           <div>
             <div style={{ fontSize: 19, fontWeight: 800, color: C.white }}>{vessel.name}</div>
             <div style={{ fontSize: 13, color: C.muted }}>{vessel.vessel_type}{vessel.year ? ` · ${vessel.year}` : ''}</div>
-            {vessel.status && <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, marginTop: 3 }}>{vessel.status.toUpperCase()}</div>}
+            {vessel.status && <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, marginTop: 3 }}>{fmtLabel(vessel.status).toUpperCase()}</div>}
           </div>
         </div>
 
@@ -3464,7 +3468,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       })
       const data = await res.json()
       if (!res.ok || data.error) {
-        setBookError(data.error || data.detail || 'Could not book this slip')
+        setBookError(cleanErr(data.error || data.detail, 'Could not book this slip'))
         return
       }
       if (data.checkout_url) {
@@ -3515,7 +3519,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       })
       const data = await res.json()
       if (!res.ok || data.error) {
-        setBookError(data.error || data.detail || 'Could not book this mooring')
+        setBookError(cleanErr(data.error || data.detail, 'Could not book this mooring'))
         return
       }
       if (data.checkout_url) {
@@ -3573,7 +3577,7 @@ function TransientRequestForm({ marina, user, profile, vessels, onBack, onSucces
       if (!res.ok) throw new Error(json.error || 'Submission failed')
       onSuccess()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setError(err instanceof Error ? cleanErr(err.message, 'Something went wrong. Please try again.') : 'Something went wrong')
     } finally {
       setSubmitting(false)
     }
@@ -4516,7 +4520,7 @@ function TabMessages({ user, profile }: { user: User; profile: Profile|null }) {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        errMsg = (j && (j.detail || j.error)) ? String(j.detail || j.error) : `Error ${res.status}`
+        errMsg = cleanErr(j && (j.detail || j.error), friendlyHttp(res.status))
       } else if (circles.length > 1) {
         const j = await res.json().catch(() => ({}))
         if (j && j.circle && j.circle !== activeCircle) {
@@ -4846,7 +4850,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
         body: JSON.stringify({ auth_user_id: user.id, new_check_in: ci, new_check_out: co }),
       })
       const data = await res.json()
-      if (!res.ok || data.error) throw new Error(data.detail || data.error || 'Those dates are not available')
+      if (!res.ok || data.error) throw new Error(cleanErr(data.detail || data.error, 'Those dates are not available'))
       setModQuote(data)
     } catch (e: any) {
       setManageError(e.message || 'Something went wrong')
@@ -4864,7 +4868,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
         body: JSON.stringify({ auth_user_id: user.id, new_check_in: modQuote.new.check_in, new_check_out: modQuote.new.check_out }),
       })
       const data = await res.json()
-      if (!res.ok || data.error) throw new Error(data.detail || data.error || 'Could not change your dates')
+      if (!res.ok || data.error) throw new Error(cleanErr(data.detail || data.error, 'Could not change your dates'))
       if (data.requires_payment && data.checkout_url) {
         setManageResult('Taking you to secure payment. Your new dates are confirmed as soon as you pay.')
         setTimeout(() => { window.location.href = data.checkout_url }, 2500)
@@ -4901,7 +4905,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
         body: JSON.stringify({ auth_user_id: user.id }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || data.error || 'Could not cancel')
+      if (!res.ok) throw new Error(cleanErr(data.detail || data.error, 'Could not cancel'))
       if (data.auto_refunded) {
         setManageResult(`Cancelled — $${(data.refund_amount ?? 0).toFixed(2)} refunded to your card.`)
       } else {
@@ -4925,7 +4929,7 @@ function TabHome({ user, profile, vessel, marinaProfile, spaceProfile, leaseProf
         body: JSON.stringify({ auth_user_id: user.id }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || data.error || 'Could not check out')
+      if (!res.ok) throw new Error(cleanErr(data.detail || data.error, 'Could not check out'))
       if (data.needs_payment) {
         // Outstanding dock charges + no card on file (or a decline) — send them to pay first.
         if (data.checkout_url) {
